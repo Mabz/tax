@@ -1,0 +1,217 @@
+import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../constants/app_constants.dart';
+import '../models/border.dart';
+
+/// Service for managing border operations
+class BorderService {
+  static final SupabaseClient _supabase = Supabase.instance.client;
+
+  /// Get all borders for a specific country
+  static Future<List<Border>> getBordersByCountry(String countryId) async {
+    try {
+      debugPrint('🔍 Fetching borders for country: $countryId');
+
+      final response = await _supabase
+          .from(AppConstants.tableBorders)
+          .select()
+          .eq(AppConstants.fieldBorderCountryId, countryId)
+          .order(AppConstants.fieldBorderName);
+
+      debugPrint('✅ Retrieved ${response.length} borders');
+
+      return response.map<Border>((json) => Border.fromJson(json)).toList();
+    } catch (e) {
+      debugPrint('❌ Error fetching borders for country $countryId: $e');
+      rethrow;
+    }
+  }
+
+  /// Get all borders (for superuser access)
+  static Future<List<Border>> getAllBorders() async {
+    try {
+      debugPrint('🔍 Fetching all borders');
+
+      final response = await _supabase
+          .from(AppConstants.tableBorders)
+          .select()
+          .order(AppConstants.fieldBorderName);
+
+      debugPrint('✅ Retrieved ${response.length} borders');
+
+      return response.map<Border>((json) => Border.fromJson(json)).toList();
+    } catch (e) {
+      debugPrint('❌ Error fetching all borders: $e');
+      rethrow;
+    }
+  }
+
+  /// Get border by ID
+  static Future<Border?> getBorderById(String id) async {
+    try {
+      debugPrint('🔍 Fetching border by ID: $id');
+
+      final response = await _supabase
+          .from(AppConstants.tableBorders)
+          .select()
+          .eq(AppConstants.fieldId, id)
+          .maybeSingle();
+
+      if (response == null) {
+        debugPrint('⚠️ Border not found with ID: $id');
+        return null;
+      }
+
+      debugPrint('✅ Retrieved border: ${response[AppConstants.fieldBorderName]}');
+      return Border.fromJson(response);
+    } catch (e) {
+      debugPrint('❌ Error fetching border by ID $id: $e');
+      rethrow;
+    }
+  }
+
+  /// Create a new border
+  static Future<Border> createBorder({
+    required String countryId,
+    required String name,
+    required String borderTypeId,
+    bool isActive = true,
+    double? latitude,
+    double? longitude,
+    String? description,
+  }) async {
+    try {
+      debugPrint('🔄 Creating border: $name');
+
+      // Validate border name doesn't exist for this country
+      final existingBorder = await borderExistsInCountry(name, countryId);
+      if (existingBorder) {
+        throw Exception('A border with name "$name" already exists in this country');
+      }
+
+      final borderData = {
+        AppConstants.fieldBorderCountryId: countryId,
+        AppConstants.fieldBorderName: name,
+        AppConstants.fieldBorderTypeId: borderTypeId,
+        AppConstants.fieldBorderIsActive: isActive,
+        AppConstants.fieldBorderLatitude: latitude,
+        AppConstants.fieldBorderLongitude: longitude,
+        AppConstants.fieldBorderDescription: description,
+      };
+
+      final response = await _supabase
+          .from(AppConstants.tableBorders)
+          .insert(borderData)
+          .select()
+          .single();
+
+      debugPrint('✅ Created border: $name');
+      return Border.fromJson(response);
+    } catch (e) {
+      debugPrint('❌ Error creating border $name: $e');
+      rethrow;
+    }
+  }
+
+  /// Update an existing border
+  static Future<Border> updateBorder({
+    required String id,
+    required String name,
+    required String borderTypeId,
+    bool? isActive,
+    double? latitude,
+    double? longitude,
+    String? description,
+  }) async {
+    try {
+      debugPrint('🔄 Updating border: $id');
+
+      final borderData = {
+        AppConstants.fieldBorderName: name,
+        AppConstants.fieldBorderTypeId: borderTypeId,
+        AppConstants.fieldBorderIsActive: isActive,
+        AppConstants.fieldBorderLatitude: latitude,
+        AppConstants.fieldBorderLongitude: longitude,
+        AppConstants.fieldBorderDescription: description,
+        AppConstants.fieldUpdatedAt: DateTime.now().toIso8601String(),
+      };
+
+      final response = await _supabase
+          .from(AppConstants.tableBorders)
+          .update(borderData)
+          .eq(AppConstants.fieldId, id)
+          .select()
+          .single();
+
+      debugPrint('✅ Updated border: $name');
+      return Border.fromJson(response);
+    } catch (e) {
+      debugPrint('❌ Error updating border $id: $e');
+      rethrow;
+    }
+  }
+
+  /// Delete a border
+  static Future<void> deleteBorder(String id) async {
+    try {
+      debugPrint('🔄 Deleting border: $id');
+
+      await _supabase
+          .from(AppConstants.tableBorders)
+          .delete()
+          .eq(AppConstants.fieldId, id);
+
+      debugPrint('✅ Deleted border: $id');
+    } catch (e) {
+      debugPrint('❌ Error deleting border $id: $e');
+      rethrow;
+    }
+  }
+
+  /// Check if a border name exists in a specific country
+  static Future<bool> borderExistsInCountry(String name, String countryId) async {
+    try {
+      final response = await _supabase
+          .from(AppConstants.tableBorders)
+          .select(AppConstants.fieldId)
+          .eq(AppConstants.fieldBorderName, name)
+          .eq(AppConstants.fieldBorderCountryId, countryId)
+          .maybeSingle();
+
+      return response != null;
+    } catch (e) {
+      debugPrint('❌ Error checking if border exists: $e');
+      return false;
+    }
+  }
+
+  /// Toggle border active status
+  static Future<Border> toggleBorderStatus(String id, bool isActive) async {
+    try {
+      debugPrint('🔄 Toggling border status: $id to $isActive');
+
+      final response = await _supabase
+          .from(AppConstants.tableBorders)
+          .update({
+            AppConstants.fieldBorderIsActive: isActive,
+            AppConstants.fieldUpdatedAt: DateTime.now().toIso8601String(),
+          })
+          .eq(AppConstants.fieldId, id)
+          .select()
+          .single();
+
+      debugPrint('✅ Toggled border status: $id');
+      return Border.fromJson(response);
+    } catch (e) {
+      debugPrint('❌ Error toggling border status $id: $e');
+      rethrow;
+    }
+  }
+
+  /// Validate border name format
+  static bool isValidBorderName(String name) {
+    if (name.trim().isEmpty) return false;
+    if (name.length < 2 || name.length > 100) return false;
+    return true;
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "supabase": {
+      "command": "uvx",
+      "args": ["mcp-server-supabase@latest"],
+      "env": {
+        "SUPABASE_ACCESS_TOKEN": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN5ZHRwd2JnemlsZ3Jwb3p2ZXN2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MzkzNzIxMCwiZXhwIjoyMDY5NTEzMjEwfQ.7XG9Cvr3UmC2by27qytikpyWsirXKdTuLmY-neOcDFE",
+        "SUPABASE_PROJECT_REF": "cydtpwbgzilgrpozvesv"
+      },
+      "disabled": false,
+      "autoApprove": []
+    }
+  }
+}

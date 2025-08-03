@@ -1140,14 +1140,41 @@ class _AuditManagementScreenState extends State<AuditManagementScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          const SizedBox(height: 16),
-          _buildFilters(),
-          const SizedBox(height: 16),
-          const Divider(height: 1),
-          _buildAuditLogsList(),
-        ],
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Country header
+            if (_selectedCountry != null)
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _selectedCountry!['name'] as String,
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.orange.shade800,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${_auditLogs.length} audit log(s) found',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.orange.shade600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            _buildFilters(),
+            const SizedBox(height: 16),
+            const Divider(height: 1),
+            _buildAuditLogsList(),
+          ],
+        ),
       ),
     );
   }

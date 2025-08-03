@@ -6,6 +6,7 @@ class Border {
   final String countryId;
   final String name;
   final String borderTypeId;
+  final String? borderTypeLabel;
   final bool isActive;
   final double? latitude;
   final double? longitude;
@@ -18,6 +19,7 @@ class Border {
     required this.countryId,
     required this.name,
     required this.borderTypeId,
+    this.borderTypeLabel,
     required this.isActive,
     this.latitude,
     this.longitude,
@@ -28,18 +30,46 @@ class Border {
 
   /// Create Border from JSON (from Supabase)
   factory Border.fromJson(Map<String, dynamic> json) {
-    return Border(
-      id: json[AppConstants.fieldId] as String,
-      countryId: json[AppConstants.fieldBorderCountryId] as String,
-      name: json[AppConstants.fieldBorderName] as String,
-      borderTypeId: json[AppConstants.fieldBorderTypeId] as String,
-      isActive: json[AppConstants.fieldBorderIsActive] as bool? ?? true,
-      latitude: json[AppConstants.fieldBorderLatitude] as double?,
-      longitude: json[AppConstants.fieldBorderLongitude] as double?,
-      description: json[AppConstants.fieldBorderDescription] as String?,
-      createdAt: DateTime.parse(json[AppConstants.fieldCreatedAt] as String),
-      updatedAt: DateTime.parse(json[AppConstants.fieldUpdatedAt] as String),
-    );
+    // Handle both direct table queries and function results
+    if (json.containsKey('border_id')) {
+      // From database function results
+      return Border(
+        id: json['border_id'] as String,
+        countryId: json['country_id'] as String? ?? '',
+        name: json['border_name'] as String,
+        borderTypeId: json['border_type_id'] as String? ?? '',
+        isActive: json['is_active'] as bool? ?? true,
+        latitude: json['latitude'] as double?,
+        longitude: json['longitude'] as double?,
+        description: json['description'] as String?,
+        createdAt: json['created_at'] != null 
+            ? DateTime.parse(json['created_at'] as String)
+            : DateTime.now(),
+        updatedAt: json['updated_at'] != null 
+            ? DateTime.parse(json['updated_at'] as String)
+            : DateTime.now(),
+      );
+    } else {
+      // From direct table queries
+      String? borderTypeLabel;
+      if (json['border_types'] != null && json['border_types'] is Map) {
+        borderTypeLabel = json['border_types']['label'] as String?;
+      }
+      
+      return Border(
+        id: json[AppConstants.fieldId] as String,
+        countryId: json[AppConstants.fieldBorderCountryId] as String,
+        name: json[AppConstants.fieldBorderName] as String,
+        borderTypeId: json[AppConstants.fieldBorderTypeId] as String,
+        borderTypeLabel: borderTypeLabel,
+        isActive: json[AppConstants.fieldBorderIsActive] as bool? ?? true,
+        latitude: json[AppConstants.fieldBorderLatitude] as double?,
+        longitude: json[AppConstants.fieldBorderLongitude] as double?,
+        description: json[AppConstants.fieldBorderDescription] as String?,
+        createdAt: DateTime.parse(json[AppConstants.fieldCreatedAt] as String),
+        updatedAt: DateTime.parse(json[AppConstants.fieldUpdatedAt] as String),
+      );
+    }
   }
 
   /// Convert Border to JSON (for Supabase)
@@ -64,6 +94,7 @@ class Border {
     String? countryId,
     String? name,
     String? borderTypeId,
+    String? borderTypeLabel,
     bool? isActive,
     double? latitude,
     double? longitude,
@@ -76,6 +107,7 @@ class Border {
       countryId: countryId ?? this.countryId,
       name: name ?? this.name,
       borderTypeId: borderTypeId ?? this.borderTypeId,
+      borderTypeLabel: borderTypeLabel ?? this.borderTypeLabel,
       isActive: isActive ?? this.isActive,
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,

@@ -6,10 +6,13 @@ import '../constants/app_constants.dart';
 
 /// Dashboard screen for users to view and respond to role invitations
 class InvitationDashboardScreen extends StatefulWidget {
-  const InvitationDashboardScreen({super.key});
+  final String? countryId;
+  
+  const InvitationDashboardScreen({super.key, this.countryId});
 
   @override
-  State<InvitationDashboardScreen> createState() => _InvitationDashboardScreenState();
+  State<InvitationDashboardScreen> createState() =>
+      _InvitationDashboardScreenState();
 }
 
 class _InvitationDashboardScreenState extends State<InvitationDashboardScreen> {
@@ -46,7 +49,8 @@ class _InvitationDashboardScreenState extends State<InvitationDashboardScreen> {
             value: user.email!,
           ),
           callback: (payload) {
-            debugPrint('🔄 Real-time invitation change detected: ${payload.eventType}');
+            debugPrint(
+                '🔄 Real-time invitation change detected: ${payload.eventType}');
             _loadPendingInvitations();
           },
         )
@@ -55,9 +59,24 @@ class _InvitationDashboardScreenState extends State<InvitationDashboardScreen> {
 
   Future<void> _loadPendingInvitations() async {
     setState(() => _isLoading = true);
-    
+
     try {
-      final invitations = await InvitationService.getPendingInvitationsForUser();
+      List<RoleInvitation> invitations;
+      
+      if (widget.countryId != null) {
+        // Load invitations for specific country and filter for current user
+        final allInvitations = await InvitationService.getAllInvitationsForCountry(widget.countryId!);
+        final currentUser = Supabase.instance.client.auth.currentUser;
+        
+        invitations = allInvitations.where((invitation) => 
+          invitation.email == currentUser?.email &&
+          invitation.status == 'pending'
+        ).toList();
+      } else {
+        // Load all pending invitations for user across all countries
+        invitations = await InvitationService.getPendingInvitationsForUser();
+      }
+      
       setState(() {
         _pendingInvitations = invitations;
         _isLoading = false;
@@ -122,7 +141,8 @@ class _InvitationDashboardScreenState extends State<InvitationDashboardScreen> {
                   children: [
                     Row(
                       children: [
-                        Icon(Icons.person_add, color: Colors.green.shade700, size: 20),
+                        Icon(Icons.person_add,
+                            color: Colors.green.shade700, size: 20),
                         const SizedBox(width: 8),
                         Text(
                           'Role Details',
@@ -135,12 +155,15 @@ class _InvitationDashboardScreenState extends State<InvitationDashboardScreen> {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    _buildDetailRow('Role', invitation.formattedRoleName, Icons.badge),
+                    _buildDetailRow(
+                        'Role', invitation.formattedRoleName, Icons.badge),
                     const SizedBox(height: 8),
-                    _buildDetailRow('Country', invitation.formattedCountry, Icons.public),
+                    _buildDetailRow(
+                        'Country', invitation.formattedCountry, Icons.public),
                     if (invitation.roleDescription?.isNotEmpty == true) ...[
                       const SizedBox(height: 8),
-                      _buildDetailRow('Description', invitation.roleDescription!, Icons.info_outline),
+                      _buildDetailRow('Description',
+                          invitation.roleDescription!, Icons.info_outline),
                     ],
                   ],
                 ),
@@ -182,7 +205,8 @@ class _InvitationDashboardScreenState extends State<InvitationDashboardScreen> {
               backgroundColor: Colors.green,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
             ),
             icon: const Icon(Icons.check, size: 18),
             label: const Text('Accept Invitation'),
@@ -193,31 +217,34 @@ class _InvitationDashboardScreenState extends State<InvitationDashboardScreen> {
 
     if (confirmed == true) {
       // Show loading dialog
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          content: Row(
-            children: [
-              const CircularProgressIndicator(),
-              const SizedBox(width: 20),
-              const Expanded(child: Text('Accepting invitation...')),
-            ],
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => const AlertDialog(
+            content: Row(
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(width: 20),
+                Expanded(child: Text('Accepting invitation...')),
+              ],
+            ),
           ),
-        ),
-      );
+        );
+      }
 
       try {
         await InvitationService.acceptInvitation(invitation.id);
         if (mounted) {
           Navigator.of(context).pop(); // Close loading dialog
-          
+
           // Show success dialog
           showDialog(
             context: context,
             barrierDismissible: false,
             builder: (context) => AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
               title: Row(
                 children: [
                   Container(
@@ -236,7 +263,8 @@ class _InvitationDashboardScreenState extends State<InvitationDashboardScreen> {
                   const Expanded(
                     child: Text(
                       'Success!',
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                      style:
+                          TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                     ),
                   ),
                 ],
@@ -260,7 +288,8 @@ class _InvitationDashboardScreenState extends State<InvitationDashboardScreen> {
                     ),
                     child: Row(
                       children: [
-                        Icon(Icons.info, color: Colors.green.shade600, size: 20),
+                        Icon(Icons.info,
+                            color: Colors.green.shade600, size: 20),
                         const SizedBox(width: 8),
                         const Expanded(
                           child: Text(
@@ -279,7 +308,8 @@ class _InvitationDashboardScreenState extends State<InvitationDashboardScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.green,
                     foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8)),
                   ),
                   child: const Text('Great!'),
                 ),
@@ -290,12 +320,13 @@ class _InvitationDashboardScreenState extends State<InvitationDashboardScreen> {
       } catch (e) {
         if (mounted) {
           Navigator.of(context).pop(); // Close loading dialog
-          
+
           // Show error dialog
           showDialog(
             context: context,
             builder: (context) => AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
               title: Row(
                 children: [
                   Container(
@@ -314,7 +345,8 @@ class _InvitationDashboardScreenState extends State<InvitationDashboardScreen> {
                   const Expanded(
                     child: Text(
                       'Error',
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                      style:
+                          TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                     ),
                   ),
                 ],
@@ -326,7 +358,8 @@ class _InvitationDashboardScreenState extends State<InvitationDashboardScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.red,
                     foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8)),
                   ),
                   child: const Text('OK'),
                 ),
@@ -385,7 +418,8 @@ class _InvitationDashboardScreenState extends State<InvitationDashboardScreen> {
                   children: [
                     Row(
                       children: [
-                        Icon(Icons.person_remove, color: Colors.red.shade700, size: 20),
+                        Icon(Icons.person_remove,
+                            color: Colors.red.shade700, size: 20),
                         const SizedBox(width: 8),
                         Text(
                           'Invitation Details',
@@ -398,9 +432,11 @@ class _InvitationDashboardScreenState extends State<InvitationDashboardScreen> {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    _buildDetailRow('Role', invitation.formattedRoleName, Icons.badge),
+                    _buildDetailRow(
+                        'Role', invitation.formattedRoleName, Icons.badge),
                     const SizedBox(height: 8),
-                    _buildDetailRow('Country', invitation.formattedCountry, Icons.public),
+                    _buildDetailRow(
+                        'Country', invitation.formattedCountry, Icons.public),
                   ],
                 ),
               ),
@@ -413,7 +449,8 @@ class _InvitationDashboardScreenState extends State<InvitationDashboardScreen> {
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.warning, color: Colors.orange.shade600, size: 20),
+                    Icon(Icons.warning,
+                        color: Colors.orange.shade600, size: 20),
                     const SizedBox(width: 8),
                     const Expanded(
                       child: Text(
@@ -441,7 +478,8 @@ class _InvitationDashboardScreenState extends State<InvitationDashboardScreen> {
               backgroundColor: Colors.red,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
             ),
             icon: const Icon(Icons.close, size: 18),
             label: const Text('Decline Invitation'),
@@ -452,31 +490,34 @@ class _InvitationDashboardScreenState extends State<InvitationDashboardScreen> {
 
     if (confirmed == true) {
       // Show loading dialog
-      showDialog(
-        context: context,
+      if (mounted) {
+        showDialog(
+          context: context,
         barrierDismissible: false,
-        builder: (context) => AlertDialog(
+        builder: (context) => const AlertDialog(
           content: Row(
             children: [
-              const CircularProgressIndicator(),
-              const SizedBox(width: 20),
-              const Expanded(child: Text('Declining invitation...')),
+              CircularProgressIndicator(),
+              SizedBox(width: 20),
+              Expanded(child: Text('Declining invitation...')),
             ],
           ),
         ),
-      );
+        );
+      }
 
       try {
         await InvitationService.declineInvitation(invitation.id);
         if (mounted) {
           Navigator.of(context).pop(); // Close loading dialog
-          
+
           // Show success dialog
           showDialog(
             context: context,
             barrierDismissible: false,
             builder: (context) => AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
               title: Row(
                 children: [
                   Container(
@@ -495,7 +536,8 @@ class _InvitationDashboardScreenState extends State<InvitationDashboardScreen> {
                   const Expanded(
                     child: Text(
                       'Invitation Declined',
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                      style:
+                          TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                     ),
                   ),
                 ],
@@ -538,7 +580,8 @@ class _InvitationDashboardScreenState extends State<InvitationDashboardScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.orange,
                     foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8)),
                   ),
                   child: const Text('OK'),
                 ),
@@ -549,12 +592,13 @@ class _InvitationDashboardScreenState extends State<InvitationDashboardScreen> {
       } catch (e) {
         if (mounted) {
           Navigator.of(context).pop(); // Close loading dialog
-          
+
           // Show error dialog
           showDialog(
             context: context,
             builder: (context) => AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
               title: Row(
                 children: [
                   Container(
@@ -573,7 +617,8 @@ class _InvitationDashboardScreenState extends State<InvitationDashboardScreen> {
                   const Expanded(
                     child: Text(
                       'Error',
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                      style:
+                          TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                     ),
                   ),
                 ],
@@ -585,7 +630,8 @@ class _InvitationDashboardScreenState extends State<InvitationDashboardScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.red,
                     foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8)),
                   ),
                   child: const Text('OK'),
                 ),
@@ -663,7 +709,8 @@ class _InvitationDashboardScreenState extends State<InvitationDashboardScreen> {
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     color: Colors.orange.shade50,
                     borderRadius: BorderRadius.circular(20),
@@ -703,7 +750,8 @@ class _InvitationDashboardScreenState extends State<InvitationDashboardScreen> {
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.person, color: Colors.purple.shade600, size: 20),
+                      Icon(Icons.person,
+                          color: Colors.purple.shade600, size: 20),
                       const SizedBox(width: 12),
                       const Text(
                         'Role:',
@@ -811,95 +859,98 @@ class _InvitationDashboardScreenState extends State<InvitationDashboardScreen> {
           ),
         ],
       ),
-      body: _isLoading
-        ? const Center(child: CircularProgressIndicator())
-        : _pendingInvitations.isEmpty
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.inbox,
-                    size: 80,
-                    color: Colors.grey.shade400,
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    'No Pending Invitations',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey.shade600,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'You don\'t have any pending role invitations at the moment.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.grey.shade500,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Check back later or contact your administrator.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey.shade500,
-                    ),
-                  ),
-                ],
-              ),
-            )
-          : RefreshIndicator(
-              onRefresh: _loadPendingInvitations,
-              child: Column(
-                children: [
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(16),
-                    color: Colors.blue.shade50,
+      body: SafeArea(
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _pendingInvitations.isEmpty
+                ? Center(
                     child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(
-                          Icons.mail,
-                          size: 32,
-                          color: Colors.blue.shade700,
+                          Icons.inbox,
+                          size: 80,
+                          color: Colors.grey.shade400,
+                        ),
+                        const SizedBox(height: 24),
+                        Text(
+                          'No Pending Invitations',
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'You don\'t have any pending role invitations at the moment.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Colors.grey.shade500,
+                          ),
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'You have ${_pendingInvitations.length} pending invitation${_pendingInvitations.length == 1 ? '' : 's'}',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.blue.shade800,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Review and respond to your role invitations below',
+                          'Check back later or contact your administrator.',
+                          textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 14,
-                            color: Colors.blue.shade600,
+                            color: Colors.grey.shade500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : RefreshIndicator(
+                    onRefresh: _loadPendingInvitations,
+                    child: Column(
+                      children: [
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(16),
+                          color: Colors.blue.shade50,
+                          child: Column(
+                            children: [
+                              Icon(
+                                Icons.mail,
+                                size: 32,
+                                color: Colors.blue.shade700,
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'You have ${_pendingInvitations.length} pending invitation${_pendingInvitations.length == 1 ? '' : 's'}',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.blue.shade800,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Review and respond to your role invitations below',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.blue.shade600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Expanded(
+                          child: ListView.builder(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            itemCount: _pendingInvitations.length,
+                            itemBuilder: (context, index) {
+                              return _buildInvitationCard(
+                                  _pendingInvitations[index]);
+                            },
                           ),
                         ),
                       ],
                     ),
                   ),
-                  Expanded(
-                    child: ListView.builder(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      itemCount: _pendingInvitations.length,
-                      itemBuilder: (context, index) {
-                        return _buildInvitationCard(_pendingInvitations[index]);
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
+      ),
     );
   }
 }

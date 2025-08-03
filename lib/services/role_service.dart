@@ -60,10 +60,10 @@ class RoleService {
     );
   }
 
-  /// Check if current user is a customs official for a specific country
-  static Future<bool> isCustomsOfficial(String countryCode) async {
+  /// Check if current user is a border official for a specific country
+  static Future<bool> isBorderOfficial(String countryCode) async {
     return userHasRole(
-      AppConstants.roleCustomsOfficial,
+      AppConstants.roleBorderOfficial,
       countryCode: countryCode,
     );
   }
@@ -105,8 +105,8 @@ class RoleService {
     if (await userHasRole(AppConstants.roleCountryAuditor)) {
       roles.add(AppConstants.roleCountryAuditor);
     }
-    if (await userHasRole(AppConstants.roleCustomsOfficial)) {
-      roles.add(AppConstants.roleCustomsOfficial);
+    if (await userHasRole(AppConstants.roleBorderOfficial)) {
+      roles.add(AppConstants.roleBorderOfficial);
     }
     if (await userHasRole(AppConstants.roleLocalAuthority)) {
       roles.add(AppConstants.roleLocalAuthority);

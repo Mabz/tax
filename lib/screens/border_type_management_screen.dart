@@ -96,7 +96,7 @@ class _BorderTypeManagementScreenState
               // Capture contexts before async operation
               final navigator = Navigator.of(dialogContext);
               final scaffoldMessenger = ScaffoldMessenger.of(context);
-              
+
               try {
                 await BorderTypeService.deleteBorderType(borderType.id);
                 if (mounted) {
@@ -138,82 +138,85 @@ class _BorderTypeManagementScreenState
         foregroundColor: Colors.white,
         child: const Icon(Icons.add),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _loadBorderTypes,
-              child: _borderTypes.isEmpty
-                  ? const Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.border_all,
-                            size: 64,
-                            color: Colors.grey,
-                          ),
-                          SizedBox(height: 16),
-                          Text(
-                            'No border types found',
-                            style: TextStyle(fontSize: 18, color: Colors.grey),
-                          ),
-                          SizedBox(height: 8),
-                          Text(
-                            'Tap the + button to add a border type',
-                            style: TextStyle(color: Colors.grey),
-                          ),
-                        ],
-                      ),
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: _borderTypes.length,
-                      itemBuilder: (context, index) {
-                        final borderType = _borderTypes[index];
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          child: ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor: Colors.red.shade100,
-                              child: Icon(
-                                Icons.border_all,
-                                color: Colors.red.shade700,
+      body: SafeArea(
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : RefreshIndicator(
+                onRefresh: _loadBorderTypes,
+                child: _borderTypes.isEmpty
+                    ? const Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.border_all,
+                              size: 64,
+                              color: Colors.grey,
+                            ),
+                            SizedBox(height: 16),
+                            Text(
+                              'No border types found',
+                              style:
+                                  TextStyle(fontSize: 18, color: Colors.grey),
+                            ),
+                            SizedBox(height: 8),
+                            Text(
+                              'Tap the + button to add a border type',
+                              style: TextStyle(color: Colors.grey),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: _borderTypes.length,
+                        itemBuilder: (context, index) {
+                          final borderType = _borderTypes[index];
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            child: ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: Colors.red.shade100,
+                                child: Icon(
+                                  Icons.border_all,
+                                  color: Colors.red.shade700,
+                                ),
                               ),
+                              title: Text(borderType.label),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('Code: ${borderType.code}'),
+                                  if (borderType.description != null)
+                                    Text(borderType.description!),
+                                ],
+                              ),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.edit,
+                                        color: Colors.blue),
+                                    onPressed: () => _showBorderTypeDialog(
+                                        borderType: borderType),
+                                    tooltip: 'Edit Border Type',
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.delete,
+                                        color: Colors.red),
+                                    onPressed: () =>
+                                        _deleteBorderType(borderType),
+                                    tooltip: 'Delete Border Type',
+                                  ),
+                                ],
+                              ),
+                              isThreeLine: borderType.description != null,
                             ),
-                            title: Text(borderType.label),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('Code: ${borderType.code}'),
-                                if (borderType.description != null)
-                                  Text(borderType.description!),
-                              ],
-                            ),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  icon: const Icon(Icons.edit,
-                                      color: Colors.blue),
-                                  onPressed: () => _showBorderTypeDialog(
-                                      borderType: borderType),
-                                  tooltip: 'Edit Border Type',
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.delete,
-                                      color: Colors.red),
-                                  onPressed: () =>
-                                      _deleteBorderType(borderType),
-                                  tooltip: 'Delete Border Type',
-                                ),
-                              ],
-                            ),
-                            isThreeLine: borderType.description != null,
-                          ),
-                        );
-                      },
-                    ),
-            ),
+                          );
+                        },
+                      ),
+              ),
+      ),
     );
   }
 }

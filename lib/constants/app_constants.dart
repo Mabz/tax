@@ -10,6 +10,7 @@ class AppConstants {
   static const String userHasRoleFunction = 'user_has_role';
   static const String isSuperuserFunction = 'is_superuser';
   static const String getProfileByEmailFunction = 'get_profile_by_email';
+  static const String getProfilesByCountryFunction = 'get_profiles_by_country';
   
   /// Invitation function names
   static const String inviteUserToRoleFunction = 'invite_user_to_role';
@@ -17,13 +18,14 @@ class AppConstants {
   static const String acceptRoleInvitationFunction = 'accept_role_invitation';
   static const String declineRoleInvitationFunction = 'decline_role_invitation';
   static const String getPendingInvitationsFunction = 'get_pending_invitations_for_user';
+  static const String getAllInvitationsForCountryFunction = 'get_all_invitations_for_country';
   static const String resendInvitationFunction = 'resend_invitation';
 
   /// Role names (must match database roles table)
   static const String roleTraveller = 'traveller';
   static const String roleCountryAdmin = 'country_admin';
   static const String roleCountryAuditor = 'country_auditor';
-  static const String roleCustomsOfficial = 'customs_official';
+  static const String roleBorderOfficial = 'border_official';
   static const String roleLocalAuthority = 'local_authority';
   static const String roleSuperuser = 'superuser';
 
@@ -126,6 +128,12 @@ class AppConstants {
   static const String dbFieldCountryName = 'country_name';
   static const String dbFieldCountryCode = 'country_code';
   static const String dbFieldInvitedAt = 'invited_at';
+
+  /// Database function return field names (for get_profiles_by_country)
+  static const String dbFieldProfileId = 'profile_id';
+  static const String dbFieldFullName = 'full_name';
+  static const String dbFieldAssignedAt = 'assigned_at';
+  static const String dbFieldIsActive = 'is_active';
 
   /// Invitation status values
   static const String invitationStatusPending = 'pending';

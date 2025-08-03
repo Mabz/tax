@@ -285,129 +285,131 @@ class _CountryManagementScreenState extends State<CountryManagementScreen> {
         backgroundColor: Colors.red.shade100,
         foregroundColor: Colors.red.shade800,
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _loadCountries,
-              child: _countries.isEmpty
-                  ? const Center(
-                      child:
-                          Text('No countries found. Add one to get started.'),
-                    )
-                  : ListView.builder(
-                      itemCount: _countries.length,
-                      itemBuilder: (context, index) {
-                        final country = _countries[index];
-                        return Card(
-                          margin: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 4),
-                          child: ListTile(
-                            title: Row(
-                              children: [
-                                Expanded(child: Text(country.name)),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: country.isActive
-                                        ? Colors.green.shade100
-                                        : Colors.grey.shade100,
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(
+      body: SafeArea(
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : RefreshIndicator(
+                onRefresh: _loadCountries,
+                child: _countries.isEmpty
+                    ? const Center(
+                        child:
+                            Text('No countries found. Add one to get started.'),
+                      )
+                    : ListView.builder(
+                        itemCount: _countries.length,
+                        itemBuilder: (context, index) {
+                          final country = _countries[index];
+                          return Card(
+                            margin: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 4),
+                            child: ListTile(
+                              title: Row(
+                                children: [
+                                  Expanded(child: Text(country.name)),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8, vertical: 2),
+                                    decoration: BoxDecoration(
                                       color: country.isActive
-                                          ? Colors.green.shade300
-                                          : Colors.grey.shade300,
+                                          ? Colors.green.shade100
+                                          : Colors.grey.shade100,
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: country.isActive
+                                            ? Colors.green.shade300
+                                            : Colors.grey.shade300,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      country.isActive ? 'Active' : 'Inactive',
+                                      style: TextStyle(
+                                        color: country.isActive
+                                            ? Colors.green.shade700
+                                            : Colors.grey.shade600,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                      ),
                                     ),
                                   ),
-                                  child: Text(
-                                    country.isActive ? 'Active' : 'Inactive',
-                                    style: TextStyle(
-                                      color: country.isActive
-                                          ? Colors.green.shade700
-                                          : Colors.grey.shade600,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                              ],
+                                ],
+                              ),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('Code: ${country.countryCode}'),
+                                  Text(
+                                      'Revenue Service: ${country.revenueServiceName}'),
+                                ],
+                              ),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  // Status toggle button
+                                  country.isGlobal
+                                      ? Tooltip(
+                                          message:
+                                              'Global country status is protected',
+                                          child: Icon(
+                                            Icons.lock,
+                                            color: Colors.grey.shade400,
+                                          ),
+                                        )
+                                      : IconButton(
+                                          icon: Icon(
+                                            country.isActive
+                                                ? Icons.toggle_on
+                                                : Icons.toggle_off,
+                                            color: country.isActive
+                                                ? Colors.green
+                                                : Colors.grey,
+                                          ),
+                                          onPressed: () =>
+                                              _toggleCountryStatus(country),
+                                          tooltip: country.isActive
+                                              ? 'Deactivate'
+                                              : 'Activate',
+                                        ),
+                                  // Edit button
+                                  country.isGlobal
+                                      ? Tooltip(
+                                          message:
+                                              'Global country editing is protected',
+                                          child: Icon(
+                                            Icons.edit_off,
+                                            color: Colors.grey.shade400,
+                                          ),
+                                        )
+                                      : IconButton(
+                                          icon: const Icon(Icons.edit),
+                                          onPressed: () =>
+                                              _showEditCountryDialog(country),
+                                          tooltip: 'Edit',
+                                        ),
+                                  // Delete button
+                                  country.isGlobal
+                                      ? Tooltip(
+                                          message:
+                                              'Global country deletion is protected',
+                                          child: Icon(
+                                            Icons.delete_forever_outlined,
+                                            color: Colors.grey.shade400,
+                                          ),
+                                        )
+                                      : IconButton(
+                                          icon: const Icon(Icons.delete,
+                                              color: Colors.red),
+                                          onPressed: () =>
+                                              _deleteCountry(country),
+                                          tooltip: 'Delete',
+                                        ),
+                                ],
+                              ),
                             ),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('Code: ${country.countryCode}'),
-                                Text(
-                                    'Revenue Service: ${country.revenueServiceName}'),
-                              ],
-                            ),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                // Status toggle button
-                                country.isGlobal
-                                    ? Tooltip(
-                                        message:
-                                            'Global country status is protected',
-                                        child: Icon(
-                                          Icons.lock,
-                                          color: Colors.grey.shade400,
-                                        ),
-                                      )
-                                    : IconButton(
-                                        icon: Icon(
-                                          country.isActive
-                                              ? Icons.toggle_on
-                                              : Icons.toggle_off,
-                                          color: country.isActive
-                                              ? Colors.green
-                                              : Colors.grey,
-                                        ),
-                                        onPressed: () =>
-                                            _toggleCountryStatus(country),
-                                        tooltip: country.isActive
-                                            ? 'Deactivate'
-                                            : 'Activate',
-                                      ),
-                                // Edit button
-                                country.isGlobal
-                                    ? Tooltip(
-                                        message:
-                                            'Global country editing is protected',
-                                        child: Icon(
-                                          Icons.edit_off,
-                                          color: Colors.grey.shade400,
-                                        ),
-                                      )
-                                    : IconButton(
-                                        icon: const Icon(Icons.edit),
-                                        onPressed: () =>
-                                            _showEditCountryDialog(country),
-                                        tooltip: 'Edit',
-                                      ),
-                                // Delete button
-                                country.isGlobal
-                                    ? Tooltip(
-                                        message:
-                                            'Global country deletion is protected',
-                                        child: Icon(
-                                          Icons.delete_forever_outlined,
-                                          color: Colors.grey.shade400,
-                                        ),
-                                      )
-                                    : IconButton(
-                                        icon: const Icon(Icons.delete,
-                                            color: Colors.red),
-                                        onPressed: () =>
-                                            _deleteCountry(country),
-                                        tooltip: 'Delete',
-                                      ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-            ),
+                          );
+                        },
+                      ),
+              ),
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: _showAddCountryDialog,
         tooltip: 'Add Country',

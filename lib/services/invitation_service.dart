@@ -31,6 +31,124 @@ class InvitationService {
     }
   }
 
+  /// Get all invitations for a specific country using the new database function
+  static Future<List<RoleInvitation>> getAllInvitationsForCountry(String countryId) async {
+    try {
+      debugPrint('🔍 Fetching all invitations for country using new function: $countryId');
+
+      final response = await _supabase.rpc(
+        AppConstants.getAllInvitationsForCountryFunction,
+        params: {'target_country_id': countryId},
+      );
+
+      debugPrint('✅ Fetched ${response.length} invitations for country');
+
+      // Convert to RoleInvitation objects
+      return response.map<RoleInvitation>((json) {
+        // Map the database function results to RoleInvitation format
+        final mapped = {
+          AppConstants.fieldId: json['id'],
+          AppConstants.fieldRoleInvitationEmail: json['email'],
+          AppConstants.fieldRoleInvitationStatus: json['status'],
+          AppConstants.fieldRoleInvitationInvitedAt: json['invited_at'],
+          AppConstants.fieldRoleInvitationRespondedAt: json['responded_at'],
+          // Now using the actual fields from the updated database function
+          AppConstants.fieldRoleInvitationRoleId: json['role_id'],
+          AppConstants.fieldRoleInvitationCountryId: json['country_id'],
+          AppConstants.fieldRoleInvitationInvitedBy: json['invited_by_profile_id'],
+          // Optional fields
+          AppConstants.fieldRoleName: json['role_name'],
+          AppConstants.fieldRoleDisplayName: json['role_name'], // Use role_name as display name
+          AppConstants.fieldRoleDescription: json['role_description'],
+          'inviter_name': json['invited_by_name'],
+          'inviter_email': json['invited_by_email'],
+          // Add required fields for RoleInvitation model
+          AppConstants.fieldCreatedAt: json['invited_at'],
+          AppConstants.fieldUpdatedAt: json['responded_at'] ?? json['invited_at'],
+        };
+
+        return RoleInvitation.fromJson(mapped);
+      }).toList();
+    } catch (e) {
+      debugPrint('❌ Error fetching all invitations for country: $e');
+      return [];
+    }
+  }
+
+  /// Get invitations for a specific country (legacy method)
+  static Future<List<RoleInvitation>> getInvitationsForCountry(String countryId) async {
+    try {
+      debugPrint('🔍 Fetching invitations for country: $countryId');
+
+      final response = await _supabase
+          .from(AppConstants.tableRoleInvitations)
+          .select('''
+            ${AppConstants.fieldId},
+            ${AppConstants.fieldRoleInvitationEmail},
+            ${AppConstants.fieldRoleInvitationRoleId},
+            ${AppConstants.fieldRoleInvitationCountryId},
+            ${AppConstants.fieldRoleInvitationInvitedBy},
+            ${AppConstants.fieldRoleInvitationInvitedAt},
+            ${AppConstants.fieldRoleInvitationStatus},
+            ${AppConstants.fieldRoleInvitationRespondedAt},
+            ${AppConstants.fieldCreatedAt},
+            ${AppConstants.fieldUpdatedAt},
+            ${AppConstants.tableRoles}!inner(
+              ${AppConstants.fieldRoleName},
+              ${AppConstants.fieldRoleDisplayName}
+            ),
+            ${AppConstants.tableCountries}!inner(
+              ${AppConstants.fieldCountryName},
+              ${AppConstants.fieldCountryCode}
+            ),
+            inviter:${AppConstants.tableProfiles}!${AppConstants.fieldRoleInvitationInvitedBy}(
+              ${AppConstants.fieldProfileFullName}
+            )
+          ''')
+          .eq(AppConstants.fieldRoleInvitationCountryId, countryId)
+          .order(AppConstants.fieldRoleInvitationInvitedAt, ascending: false);
+
+      debugPrint('✅ Fetched ${response.length} invitations for country');
+
+      // Convert to RoleInvitation objects
+      return response.map((json) {
+        // Flatten nested objects for the model
+        final flattened = Map<String, dynamic>.from(json);
+
+        // Extract role information
+        if (json[AppConstants.tableRoles] != null) {
+          final role = json[AppConstants.tableRoles] as Map<String, dynamic>;
+          flattened[AppConstants.fieldRoleName] =
+              role[AppConstants.fieldRoleName];
+          flattened[AppConstants.fieldRoleDisplayName] =
+              role[AppConstants.fieldRoleDisplayName];
+        }
+
+        // Extract country information
+        if (json[AppConstants.tableCountries] != null) {
+          final country =
+              json[AppConstants.tableCountries] as Map<String, dynamic>;
+          flattened[AppConstants.fieldCountryName] =
+              country[AppConstants.fieldCountryName];
+          flattened[AppConstants.fieldCountryCode] =
+              country[AppConstants.fieldCountryCode];
+        }
+
+        // Extract inviter information
+        if (json['inviter'] != null) {
+          final inviter = json['inviter'] as Map<String, dynamic>;
+          flattened['inviter_name'] =
+              inviter[AppConstants.fieldProfileFullName];
+        }
+
+        return RoleInvitation.fromJson(flattened);
+      }).toList();
+    } catch (e) {
+      debugPrint('❌ Error fetching invitations for country: $e');
+      return [];
+    }
+  }
+
   /// Get all invitations for admin management (superuser sees all, country admin sees their countries)
   static Future<List<RoleInvitation>> getAllInvitations() async {
     try {
@@ -180,13 +298,13 @@ class InvitationService {
               DateTime.now().toIso8601String(),
           AppConstants.fieldUpdatedAt: json[AppConstants.dbFieldInvitedAt] ??
               DateTime.now().toIso8601String(),
-          AppConstants.fieldRoleName: json[AppConstants.dbFieldRoleName] ?? '',
+          'role_name': json[AppConstants.dbFieldRoleName] ?? '',
           AppConstants.fieldRoleDisplayName:
               json[AppConstants.dbFieldRoleName] ??
                   '', // Use role_name as display name
           AppConstants.fieldRoleDescription:
               json[AppConstants.dbFieldRoleDescription] ?? '',
-          AppConstants.fieldCountryName:
+          'country_name':
               json[AppConstants.dbFieldCountryName] ?? '',
           AppConstants.fieldCountryCode:
               json[AppConstants.dbFieldCountryCode] ?? '',
@@ -291,7 +409,7 @@ class InvitationService {
             .inFilter(AppConstants.fieldRoleName, [
           AppConstants.roleCountryAdmin,
           AppConstants.roleCountryAuditor,
-          AppConstants.roleCustomsOfficial,
+          AppConstants.roleBorderOfficial,
           AppConstants.roleLocalAuthority,
         ]).order(AppConstants.fieldRoleDisplayName);
 

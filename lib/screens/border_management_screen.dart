@@ -4,6 +4,7 @@ import '../models/border.dart' as border_model;
 import '../models/border_type.dart';
 import '../services/border_service.dart';
 import '../services/border_type_service.dart';
+import '../services/country_service.dart';
 import '../services/role_service.dart';
 
 class BorderManagementScreen extends StatefulWidget {
@@ -31,13 +32,16 @@ class _BorderManagementScreenState extends State<BorderManagementScreen> {
 
   Future<void> _checkPermissionsAndLoadData() async {
     try {
-      // Check if user has country admin role
+      // Check if user is superuser or has country admin role
+      final isSuperuser = await RoleService.isSuperuser();
       final hasAdminRole = await RoleService.hasAdminRole();
-      if (!hasAdminRole) {
+
+      if (!isSuperuser && !hasAdminRole) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Access denied. Country admin role required.'),
+              content: Text(
+                  'Access denied. Superuser or country admin role required.'),
               backgroundColor: Colors.red,
             ),
           );
@@ -66,7 +70,32 @@ class _BorderManagementScreenState extends State<BorderManagementScreen> {
 
   Future<void> _loadCountries() async {
     try {
-      final countries = await RoleService.getCountryAdminCountries();
+      final isSuperuser = await RoleService.isSuperuser();
+      List<Map<String, dynamic>> countries;
+
+      if (isSuperuser) {
+        // Superusers can see all active countries
+        final allCountries = await CountryService.getActiveCountries();
+        countries = allCountries
+            .map<Map<String, dynamic>>((country) => {
+                  AppConstants.fieldId: country.id,
+                  AppConstants.fieldCountryName: country.name,
+                  AppConstants.fieldCountryCode: country.countryCode,
+                  AppConstants.fieldCountryIsActive: country.isActive,
+                  AppConstants.fieldCountryIsGlobal: country.isGlobal,
+                  AppConstants.fieldCountryRevenueServiceName:
+                      country.revenueServiceName,
+                  AppConstants.fieldCreatedAt:
+                      country.createdAt.toIso8601String(),
+                  AppConstants.fieldUpdatedAt:
+                      country.updatedAt.toIso8601String(),
+                })
+            .toList();
+      } else {
+        // Country admins can only see their assigned countries
+        countries = await RoleService.getCountryAdminCountries();
+      }
+
       if (mounted) {
         setState(() {
           _countries = countries;
@@ -312,161 +341,157 @@ class _BorderManagementScreenState extends State<BorderManagementScreen> {
         backgroundColor: Colors.orange.shade100,
         foregroundColor: Colors.orange.shade800,
       ),
-      body: Column(
-        children: [
-          // Show selected country info (read-only)
-          if (_selectedCountry != null)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16.0),
-              color: Colors.orange.shade50,
-              child: Row(
-                children: [
-                  Icon(Icons.public, color: Colors.orange.shade700),
-                  const SizedBox(width: 12),
-                  Text(
-                    '${_selectedCountry![AppConstants.fieldCountryName]} (${_selectedCountry![AppConstants.fieldCountryCode]})',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.orange.shade800,
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Show selected country info (read-only)
+            if (_selectedCountry != null)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16.0),
+                color: Colors.orange.shade50,
+                child: Row(
+                  children: [
+                    Icon(Icons.public, color: Colors.orange.shade700),
+                    const SizedBox(width: 12),
+                    Text(
+                      '${_selectedCountry![AppConstants.fieldCountryName]} (${_selectedCountry![AppConstants.fieldCountryCode]})',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.orange.shade800,
+                      ),
                     ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    'Change in drawer',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.orange.shade600,
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          // Borders List
-          Expanded(
-            child: _isLoadingBorders
-                ? const Center(child: CircularProgressIndicator())
-                : _borders.isEmpty
-                    ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.border_all,
-                                size: 64,
-                                color: Colors.orange.shade300,
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                'No Borders Found',
-                                style: TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.orange.shade700,
+            // Borders List
+            Expanded(
+              child: _isLoadingBorders
+                  ? const Center(child: CircularProgressIndicator())
+                  : _borders.isEmpty
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.border_all,
+                                  size: 64,
+                                  color: Colors.orange.shade300,
                                 ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                _selectedCountry != null
-                                    ? 'No borders have been created for ${_selectedCountry![AppConstants.fieldCountryName]} yet.'
-                                    : 'Select a country to view its borders.',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(color: Colors.orange.shade600),
-                              ),
-                            ],
+                                const SizedBox(height: 16),
+                                Text(
+                                  'No Borders Found',
+                                  style: TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.orange.shade700,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  _selectedCountry != null
+                                      ? 'No borders have been created for ${_selectedCountry![AppConstants.fieldCountryName]} yet.'
+                                      : 'Select a country to view its borders.',
+                                  textAlign: TextAlign.center,
+                                  style:
+                                      TextStyle(color: Colors.orange.shade600),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      : RefreshIndicator(
+                          onRefresh: _loadBorders,
+                          child: ListView.builder(
+                            padding: const EdgeInsets.all(16.0),
+                            itemCount: _borders.length,
+                            itemBuilder: (context, index) {
+                              final border = _borders[index];
+                              return Card(
+                                margin: const EdgeInsets.only(bottom: 8.0),
+                                child: ListTile(
+                                  leading: CircleAvatar(
+                                    backgroundColor: border.isActive
+                                        ? Colors.orange.shade100
+                                        : Colors.grey.shade100,
+                                    child: Icon(
+                                      Icons.location_on,
+                                      color: border.isActive
+                                          ? Colors.orange.shade700
+                                          : Colors.grey,
+                                    ),
+                                  ),
+                                  title: Text(
+                                    border.name,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color:
+                                          border.isActive ? null : Colors.grey,
+                                    ),
+                                  ),
+                                  subtitle: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                          'Type: ${_getBorderTypeName(border.borderTypeId)}'),
+                                      if (border.description != null)
+                                        Text(border.description!),
+                                      Text(
+                                        'Status: ${border.isActive ? 'Active' : 'Inactive'}',
+                                        style: TextStyle(
+                                          color: border.isActive
+                                              ? Colors.green
+                                              : Colors.red,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        onPressed: () =>
+                                            _toggleBorderStatus(border),
+                                        icon: Icon(
+                                          border.isActive
+                                              ? Icons.toggle_on
+                                              : Icons.toggle_off,
+                                          color: border.isActive
+                                              ? Colors.green
+                                              : Colors.grey,
+                                        ),
+                                        tooltip: border.isActive
+                                            ? 'Deactivate border'
+                                            : 'Activate border',
+                                      ),
+                                      IconButton(
+                                        onPressed: () =>
+                                            _showEditBorderDialog(border),
+                                        icon: const Icon(Icons.edit,
+                                            color: Colors.blue),
+                                        tooltip: 'Edit border',
+                                      ),
+                                      IconButton(
+                                        onPressed: () => _deleteBorder(border),
+                                        icon: const Icon(Icons.delete,
+                                            color: Colors.red),
+                                        tooltip: 'Delete border',
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
                           ),
                         ),
-                      )
-                    : RefreshIndicator(
-                        onRefresh: _loadBorders,
-                        child: ListView.builder(
-                          padding: const EdgeInsets.all(16.0),
-                          itemCount: _borders.length,
-                          itemBuilder: (context, index) {
-                            final border = _borders[index];
-                            return Card(
-                              margin: const EdgeInsets.only(bottom: 8.0),
-                              child: ListTile(
-                                leading: CircleAvatar(
-                                  backgroundColor: border.isActive
-                                      ? Colors.orange.shade100
-                                      : Colors.grey.shade100,
-                                  child: Icon(
-                                    Icons.location_on,
-                                    color: border.isActive
-                                        ? Colors.orange.shade700
-                                        : Colors.grey,
-                                  ),
-                                ),
-                                title: Text(
-                                  border.name,
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: border.isActive ? null : Colors.grey,
-                                  ),
-                                ),
-                                subtitle: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                        'Type: ${_getBorderTypeName(border.borderTypeId)}'),
-                                    if (border.description != null)
-                                      Text(border.description!),
-                                    Text(
-                                      'Status: ${border.isActive ? 'Active' : 'Inactive'}',
-                                      style: TextStyle(
-                                        color: border.isActive
-                                            ? Colors.green
-                                            : Colors.red,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    IconButton(
-                                      onPressed: () =>
-                                          _toggleBorderStatus(border),
-                                      icon: Icon(
-                                        border.isActive
-                                            ? Icons.toggle_on
-                                            : Icons.toggle_off,
-                                        color: border.isActive
-                                            ? Colors.green
-                                            : Colors.grey,
-                                      ),
-                                      tooltip: border.isActive
-                                          ? 'Deactivate border'
-                                          : 'Activate border',
-                                    ),
-                                    IconButton(
-                                      onPressed: () =>
-                                          _showEditBorderDialog(border),
-                                      icon: const Icon(Icons.edit,
-                                          color: Colors.blue),
-                                      tooltip: 'Edit border',
-                                    ),
-                                    IconButton(
-                                      onPressed: () => _deleteBorder(border),
-                                      icon: const Icon(Icons.delete,
-                                          color: Colors.red),
-                                      tooltip: 'Delete border',
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
       floatingActionButton: _selectedCountry != null
           ? FloatingActionButton(

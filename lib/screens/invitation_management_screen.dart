@@ -67,9 +67,24 @@ class _InvitationManagementScreenState
     setState(() => _isLoading = true);
 
     try {
+      // Determine which invitations to load based on selected country
+      Future<List<RoleInvitation>> invitationsFuture;
+
+      if (widget.selectedCountry != null) {
+        // Load invitations for the specific selected country using new function
+        invitationsFuture = InvitationService.getAllInvitationsForCountry(
+            widget.selectedCountry!.id);
+        debugPrint(
+            '🌍 Loading invitations for country: ${widget.selectedCountry!.name}');
+      } else {
+        // Load all invitations (fallback for superusers or when no country selected)
+        invitationsFuture = InvitationService.getAllInvitations();
+        debugPrint('🌍 Loading all invitations (no country filter)');
+      }
+
       // Load invitations and roles concurrently
       final results = await Future.wait([
-        InvitationService.getAllInvitations(),
+        invitationsFuture,
         InvitationService.getInvitableRoles(),
       ]);
 
@@ -78,6 +93,9 @@ class _InvitationManagementScreenState
         _roles = results[1] as List<Map<String, dynamic>>;
         _isLoading = false;
       });
+
+      debugPrint(
+          '✅ Loaded ${_invitations.length} invitations and ${_roles.length} roles');
     } catch (e) {
       setState(() => _isLoading = false);
       if (mounted) {
@@ -208,7 +226,7 @@ class _InvitationManagementScreenState
                       // Capture context before async operation
                       final navigator = Navigator.of(context);
                       final scaffoldMessenger = ScaffoldMessenger.of(context);
-                      
+
                       try {
                         await InvitationService.inviteUserToRole(
                           email: email,
@@ -472,7 +490,11 @@ class _InvitationManagementScreenState
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Manage Invitations'),
+        title: Text(
+          widget.selectedCountry != null
+              ? 'Invitations - ${widget.selectedCountry!.name}'
+              : 'Manage Invitations',
+        ),
         backgroundColor: theme.$2,
         foregroundColor: theme.$3,
         actions: [
@@ -483,46 +505,96 @@ class _InvitationManagementScreenState
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _invitations.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.mail_outline,
-                        size: 64,
-                        color: Colors.grey.shade400,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'No invitations found',
-                        style: TextStyle(
-                          fontSize: 18,
-                          color: Colors.grey.shade600,
+      body: SafeArea(
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _invitations.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.inbox,
+                          size: 80,
+                          color: Colors.grey.shade400,
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Send your first invitation using the + button',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey.shade500,
+                        const SizedBox(height: 24),
+                        Text(
+                          'No Invitations',
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          widget.selectedCountry != null
+                              ? 'No role invitations have been sent for ${widget.selectedCountry!.name} yet.'
+                              : 'No role invitations have been sent yet.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Colors.grey.shade500,
+                          ),
+                        ),
+                        if (widget.selectedCountry != null) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            'Use the + button to send your first invitation.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey.shade500,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  )
+                : Column(
+                    children: [
+                      // Country header (if country is selected)
+                      if (widget.selectedCountry != null)
+                        Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                widget.selectedCountry!.name,
+                                style: TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.orange.shade800,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${_invitations.length} invitation(s) sent',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.orange.shade600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      // Invitation list
+                      Expanded(
+                        child: RefreshIndicator(
+                          onRefresh: _loadData,
+                          child: ListView.builder(
+                            itemCount: _invitations.length,
+                            itemBuilder: (context, index) {
+                              return _buildInvitationCard(_invitations[index]);
+                            },
+                          ),
                         ),
                       ),
                     ],
                   ),
-                )
-              : RefreshIndicator(
-                  onRefresh: _loadData,
-                  child: ListView.builder(
-                    itemCount: _invitations.length,
-                    itemBuilder: (context, index) {
-                      return _buildInvitationCard(_invitations[index]);
-                    },
-                  ),
-                ),
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: _showInviteDialog,
         backgroundColor: theme.$1,

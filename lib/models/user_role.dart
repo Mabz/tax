@@ -1,7 +1,7 @@
 enum UserRole {
   traveller(
       'traveller', 'Traveller', 'Regular traveller crossing borders', false),
-  customsOfficial('customs_official', 'Customs Official',
+  borderOfficial('border_official', 'Border Official',
       'Official processing border crossings', true),
   countryAdmin('country_admin', 'Country Administrator',
       'Administrator managing country-specific settings', true),
@@ -158,7 +158,7 @@ class UserRoleData {
 
   bool isSuperuser() => hasRole(UserRole.superuser);
   bool isCountryAdmin() => hasRole(UserRole.countryAdmin);
-  bool isCustomsOfficial() => hasRole(UserRole.customsOfficial);
+  bool isBorderOfficial() => hasRole(UserRole.borderOfficial);
   bool isTraveller() => hasRole(UserRole.traveller);
 
   String? getCountryForRole(UserRole role) {

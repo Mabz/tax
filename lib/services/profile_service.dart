@@ -61,6 +61,25 @@ class ProfileService {
     }
   }
 
+  /// Get profiles by country using the database function
+  static Future<List<Map<String, dynamic>>> getProfilesByCountry(String countryId) async {
+    try {
+      final result = await _supabase.rpc(
+        AppConstants.getProfilesByCountryFunction,
+        params: {
+          'target_country_id': countryId,
+        },
+      );
+
+      if (result == null) return [];
+      
+      return List<Map<String, dynamic>>.from(result);
+    } catch (e) {
+      debugPrint('❌ ProfileService.getProfilesByCountry error: $e');
+      rethrow;
+    }
+  }
+
   /// Update an existing profile
   static Future<Profile> updateProfile({
     required String id,

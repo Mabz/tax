@@ -178,148 +178,156 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Profile: ${widget.profile.fullName ?? 'Unknown'}'),
-        backgroundColor: Colors.red.shade100,
-        foregroundColor: Colors.red.shade800,
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Profile Information Card
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Profile Information',
-                            style: Theme.of(context).textTheme.headlineSmall,
-                          ),
-                          const SizedBox(height: 16),
-                          _buildInfoRow('Full Name',
-                              widget.profile.fullName ?? 'Not set'),
-                          _buildInfoRow(
-                              'Email', widget.profile.email ?? 'Not set'),
-                          _buildInfoRow('Status',
-                              widget.profile.isActive ? 'Active' : 'Inactive'),
-                          _buildInfoRow(
-                              'Created', widget.profile.createdAt.toString()),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  // Roles Section
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Assigned Roles',
-                        style: Theme.of(context).textTheme.headlineSmall,
-                      ),
-                      ElevatedButton.icon(
-                        onPressed: _showAssignRoleDialog,
-                        icon: const Icon(Icons.add),
-                        label: const Text('Assign Role'),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  if (_userRoles.isEmpty)
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(32),
-                        child: Center(
-                          child: Column(
-                            children: [
-                              Icon(
-                                Icons.person_off,
-                                size: 48,
-                                color: Colors.grey.shade400,
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                'No roles assigned',
-                                style: TextStyle(
-                                  color: Colors.grey.shade600,
-                                  fontSize: 16,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    )
-                  else
-                    ..._userRoles.map((role) => Card(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          child: ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor: Colors.blue.shade100,
-                              child: Icon(
-                                Icons.security,
-                                color: Colors.blue.shade700,
-                              ),
-                            ),
-                            title: Text(role['roles']['display_name'] ??
-                                'Unknown Role'),
-                            subtitle: Column(
+        appBar: AppBar(
+          title: Text('Profile: ${widget.profile.fullName ?? 'Unknown'}'),
+          backgroundColor: Colors.red.shade100,
+          foregroundColor: Colors.red.shade800,
+        ),
+        body: SafeArea(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : SingleChildScrollView(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Profile Information Card
+                        Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                    'Role: ${role['roles']['name'] ?? 'Unknown'}'),
-                                if (role['countries'] != null)
-                                  Text(
-                                      'Country: ${role['countries']['name']} (${role['countries']['country_code']})'),
-                                if (role['expires_at'] != null)
-                                  Text('Expires: ${role['expires_at']}'),
+                                  'Profile Information',
+                                  style:
+                                      Theme.of(context).textTheme.headlineSmall,
+                                ),
+                                const SizedBox(height: 16),
+                                _buildInfoRow('Full Name',
+                                    widget.profile.fullName ?? 'Not set'),
+                                _buildInfoRow(
+                                    'Email', widget.profile.email ?? 'Not set'),
+                                _buildInfoRow(
+                                    'Status',
+                                    widget.profile.isActive
+                                        ? 'Active'
+                                        : 'Inactive'),
+                                _buildInfoRow('Created',
+                                    widget.profile.createdAt.toString()),
                               ],
                             ),
-                            trailing: role['roles']['name'] ==
-                                    AppConstants.roleTraveller
-                                ? Tooltip(
-                                    message: 'Default role cannot be removed',
-                                    child: Icon(
-                                      Icons.lock,
+                          ),
+                        ),
+
+                        const SizedBox(height: 24),
+
+                        // Roles Section
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Assigned Roles',
+                              style: Theme.of(context).textTheme.headlineSmall,
+                            ),
+                            ElevatedButton.icon(
+                              onPressed: _showAssignRoleDialog,
+                              icon: const Icon(Icons.add),
+                              label: const Text('Assign Role'),
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        if (_userRoles.isEmpty)
+                          Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(32),
+                              child: Center(
+                                child: Column(
+                                  children: [
+                                    Icon(
+                                      Icons.person_off,
+                                      size: 48,
                                       color: Colors.grey.shade400,
                                     ),
-                                  )
-                                : Row(
-                                    mainAxisSize: MainAxisSize.min,
+                                    const SizedBox(height: 16),
+                                    Text(
+                                      'No roles assigned',
+                                      style: TextStyle(
+                                        color: Colors.grey.shade600,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          )
+                        else
+                          ..._userRoles.map((role) => Card(
+                                margin: const EdgeInsets.only(bottom: 8),
+                                child: ListTile(
+                                  leading: CircleAvatar(
+                                    backgroundColor: Colors.blue.shade100,
+                                    child: Icon(
+                                      Icons.security,
+                                      color: Colors.blue.shade700,
+                                    ),
+                                  ),
+                                  title: Text(role['roles']['display_name'] ??
+                                      'Unknown Role'),
+                                  subtitle: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
-                                      IconButton(
-                                        icon: const Icon(Icons.edit,
-                                            color: Colors.blue),
-                                        onPressed: () =>
-                                            _showEditRoleDialog(role),
-                                        tooltip: 'Edit Role',
-                                      ),
-                                      IconButton(
-                                        icon: const Icon(Icons.remove_circle,
-                                            color: Colors.red),
-                                        onPressed: () =>
-                                            _showRemoveRoleConfirmation(role),
-                                        tooltip: 'Remove Role',
-                                      ),
+                                      Text(
+                                          'Role: ${role['roles']['name'] ?? 'Unknown'}'),
+                                      if (role['countries'] != null)
+                                        Text(
+                                            'Country: ${role['countries']['name']} (${role['countries']['country_code']})'),
+                                      if (role['expires_at'] != null)
+                                        Text('Expires: ${role['expires_at']}'),
                                     ],
                                   ),
-                            isThreeLine: true,
-                          ),
-                        )),
-                ],
-              ),
-            ),
-    );
+                                  trailing: role['roles']['name'] ==
+                                          AppConstants.roleTraveller
+                                      ? Tooltip(
+                                          message:
+                                              'Default role cannot be removed',
+                                          child: Icon(
+                                            Icons.lock,
+                                            color: Colors.grey.shade400,
+                                          ),
+                                        )
+                                      : Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            IconButton(
+                                              icon: const Icon(Icons.edit,
+                                                  color: Colors.blue),
+                                              onPressed: () =>
+                                                  _showEditRoleDialog(role),
+                                              tooltip: 'Edit Role',
+                                            ),
+                                            IconButton(
+                                              icon: const Icon(
+                                                  Icons.remove_circle,
+                                                  color: Colors.red),
+                                              onPressed: () =>
+                                                  _showRemoveRoleConfirmation(
+                                                      role),
+                                              tooltip: 'Remove Role',
+                                            ),
+                                          ],
+                                        ),
+                                  isThreeLine: true,
+                                ),
+                              )),
+                      ],
+                    ),
+                  )));
   }
 
   Widget _buildInfoRow(String label, String value) {

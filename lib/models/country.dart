@@ -5,7 +5,6 @@ class Country {
   final String id;
   final String name;
   final String countryCode;
-  final String revenueServiceName;
   final bool isActive;
   final bool isGlobal;
   final DateTime createdAt;
@@ -15,7 +14,6 @@ class Country {
     required this.id,
     required this.name,
     required this.countryCode,
-    required this.revenueServiceName,
     required this.isActive,
     required this.isGlobal,
     required this.createdAt,
@@ -28,8 +26,6 @@ class Country {
       id: json[AppConstants.fieldId] as String,
       name: json[AppConstants.fieldCountryName] as String,
       countryCode: json[AppConstants.fieldCountryCode] as String,
-      revenueServiceName:
-          json[AppConstants.fieldCountryRevenueServiceName] as String,
       isActive: json[AppConstants.fieldCountryIsActive] as bool? ?? false,
       isGlobal: json[AppConstants.fieldCountryIsGlobal] as bool? ?? false,
       createdAt: DateTime.parse(json[AppConstants.fieldCreatedAt] as String),
@@ -43,7 +39,6 @@ class Country {
       AppConstants.fieldId: id,
       AppConstants.fieldCountryName: name,
       AppConstants.fieldCountryCode: countryCode,
-      AppConstants.fieldCountryRevenueServiceName: revenueServiceName,
       AppConstants.fieldCountryIsActive: isActive,
       AppConstants.fieldCountryIsGlobal: isGlobal,
       AppConstants.fieldCreatedAt: createdAt.toIso8601String(),
@@ -56,7 +51,6 @@ class Country {
     String? id,
     String? name,
     String? countryCode,
-    String? revenueServiceName,
     bool? isActive,
     bool? isGlobal,
     DateTime? createdAt,
@@ -66,7 +60,6 @@ class Country {
       id: id ?? this.id,
       name: name ?? this.name,
       countryCode: countryCode ?? this.countryCode,
-      revenueServiceName: revenueServiceName ?? this.revenueServiceName,
       isActive: isActive ?? this.isActive,
       isGlobal: isGlobal ?? this.isGlobal,
       createdAt: createdAt ?? this.createdAt,
@@ -76,7 +69,7 @@ class Country {
 
   @override
   String toString() {
-    return 'Country(id: $id, name: $name, countryCode: $countryCode, revenueServiceName: $revenueServiceName, isActive: $isActive, isGlobal: $isGlobal)';
+    return 'Country(id: $id, name: $name, countryCode: $countryCode, isActive: $isActive, isGlobal: $isGlobal)';
   }
 
   @override

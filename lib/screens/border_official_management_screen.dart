@@ -27,14 +27,16 @@ class _BorderOfficialManagementScreenState
 
   String get _countryId => widget.selectedCountry['id'] as String;
   String get _countryName => widget.selectedCountry['name'] as String;
+  String get _authorityName =>
+      widget.selectedCountry['authority_name'] as String;
 
   @override
   void initState() {
     super.initState();
-    _loadCountryData();
+    _loadAuthorityData();
   }
 
-  Future<void> _loadCountryData() async {
+  Future<void> _loadAuthorityData() async {
     try {
       setState(() {
         _isLoading = true;
@@ -55,7 +57,7 @@ class _BorderOfficialManagementScreenState
       });
     } catch (e) {
       setState(() {
-        _error = 'Failed to load country data: $e';
+        _error = 'Failed to load border officials: $e';
         _isLoading = false;
       });
     }
@@ -74,7 +76,7 @@ class _BorderOfficialManagementScreenState
             backgroundColor: Colors.orange,
           ),
         );
-        await _loadCountryData();
+        await _loadAuthorityData();
       }
     } catch (e) {
       if (mounted) {
@@ -118,7 +120,7 @@ class _BorderOfficialManagementScreenState
         borderAssignments: _borderAssignments,
         onAssign: _assignOfficialToBorderSilent,
         onRevoke: _revokeOfficialFromBorderSilent,
-        onSaved: _loadCountryData,
+        onSaved: _loadAuthorityData,
       ),
     );
   }
@@ -133,7 +135,7 @@ class _BorderOfficialManagementScreenState
         selectedOfficial: official,
         onAssign: _assignOfficialToBorderSilent,
         onRevoke: _revokeOfficialFromBorderSilent,
-        onSaved: _loadCountryData,
+        onSaved: _loadAuthorityData,
       ),
     );
   }
@@ -186,7 +188,7 @@ class _BorderOfficialManagementScreenState
             ),
             const SizedBox(height: 16),
             ElevatedButton(
-              onPressed: _loadCountryData,
+              onPressed: _loadAuthorityData,
               child: const Text('Retry'),
             ),
           ],
@@ -196,14 +198,14 @@ class _BorderOfficialManagementScreenState
 
     return Column(
       children: [
-        _buildCountryHeader(),
+        _buildAuthorityHeader(),
         const SizedBox(height: 16),
         Expanded(child: _buildContent()),
       ],
     );
   }
 
-  Widget _buildCountryHeader() {
+  Widget _buildAuthorityHeader() {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -214,7 +216,7 @@ class _BorderOfficialManagementScreenState
       child: Row(
         children: [
           Icon(
-            Icons.location_on,
+            Icons.business,
             color: Colors.orange.shade800,
             size: 24,
           ),
@@ -232,11 +234,19 @@ class _BorderOfficialManagementScreenState
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  _countryName,
+                  _authorityName,
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
                     color: Colors.orange.shade800,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _countryName,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.orange.shade600,
                   ),
                 ),
               ],
@@ -357,29 +367,14 @@ class _BorderOfficialManagementScreenState
                       ),
                     ],
                   ),
-                  trailing: SizedBox(
-                    width: 80,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (official.hasAssignedBorders)
-                          Icon(Icons.check_circle,
-                              color: Colors.green.shade600, size: 20)
-                        else
-                          Icon(Icons.radio_button_unchecked,
-                              color: Colors.grey.shade400, size: 20),
-                        const SizedBox(width: 4),
-                        IconButton(
-                          onPressed: () =>
-                              _showBorderAssignmentDialogForOfficial(official),
-                          icon: const Icon(Icons.edit, size: 20),
-                          tooltip: 'Edit border assignments',
-                          padding: const EdgeInsets.all(4),
-                          constraints:
-                              const BoxConstraints(minWidth: 32, minHeight: 32),
-                        ),
-                      ],
-                    ),
+                  trailing: IconButton(
+                    onPressed: () =>
+                        _showBorderAssignmentDialogForOfficial(official),
+                    icon: const Icon(Icons.edit, size: 20),
+                    tooltip: 'Edit border assignments',
+                    padding: const EdgeInsets.all(4),
+                    constraints:
+                        const BoxConstraints(minWidth: 32, minHeight: 32),
                   ),
                   children: [
                     Padding(
@@ -387,31 +382,64 @@ class _BorderOfficialManagementScreenState
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            'Assigned Borders:',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.orange.shade800,
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'Assigned Borders:',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.orange.shade800,
+                              ),
                             ),
                           ),
                           const SizedBox(height: 8),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 4,
-                            children:
-                                official.assignedBordersList.map((borderName) {
-                              return Chip(
-                                label: Text(
-                                  borderName,
-                                  style: const TextStyle(fontSize: 12),
-                                  overflow: TextOverflow.ellipsis,
-                                  maxLines: 1,
+                          official.assignedBordersList.isEmpty
+                              ? Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      vertical: 12, horizontal: 16),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey.shade100,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border:
+                                        Border.all(color: Colors.grey.shade300),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        Icons.info_outline,
+                                        color: Colors.grey.shade600,
+                                        size: 16,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        'No borders assigned',
+                                        style: TextStyle(
+                                          color: Colors.grey.shade600,
+                                          fontSize: 14,
+                                          fontStyle: FontStyle.italic,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              : Wrap(
+                                  spacing: 8,
+                                  runSpacing: 4,
+                                  children: official.assignedBordersList
+                                      .map((borderName) {
+                                    return Chip(
+                                      label: Text(
+                                        borderName,
+                                        style: const TextStyle(fontSize: 12),
+                                        overflow: TextOverflow.ellipsis,
+                                        maxLines: 1,
+                                      ),
+                                      backgroundColor: Colors.orange.shade50,
+                                      side: BorderSide(
+                                          color: Colors.orange.shade200),
+                                    );
+                                  }).toList(),
                                 ),
-                                backgroundColor: Colors.orange.shade50,
-                                side: BorderSide(color: Colors.orange.shade200),
-                              );
-                            }).toList(),
-                          ),
                         ],
                       ),
                     ),
@@ -673,124 +701,291 @@ class _BorderAssignmentDialogState extends State<_BorderAssignmentDialog> {
       );
     }
 
-    return AlertDialog(
-      title: const Text('Manage Border Assignments'),
-      content: SizedBox(
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Container(
         width: MediaQuery.of(context).size.width > 600
-            ? 500
-            : MediaQuery.of(context).size.width * 0.9,
-        height: MediaQuery.of(context).size.height * 0.7,
+            ? 600
+            : MediaQuery.of(context).size.width * 0.95,
+        height: MediaQuery.of(context).size.height * 0.75,
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Official selector
-            DropdownButtonFormField<BorderOfficial>(
-              value: _selectedOfficial,
-              decoration: const InputDecoration(
-                labelText: 'Select Border Official',
-                border: OutlineInputBorder(),
+            // Official selector card
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.orange.shade200),
               ),
-              items: widget.borderOfficials.map((official) {
-                return DropdownMenuItem<BorderOfficial>(
-                  value: official,
-                  child: Text(
-                    '${official.fullName} (${official.email})',
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.person,
+                        color: Colors.orange.shade700,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Select Border Official',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: Colors.orange.shade800,
+                        ),
+                      ),
+                    ],
                   ),
-                );
-              }).toList(),
-              onChanged: (BorderOfficial? official) {
-                setState(() {
-                  _selectedOfficial = official;
-                  _initializeBorderAssignments();
-                });
-              },
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<BorderOfficial>(
+                    value: _selectedOfficial,
+                    decoration: InputDecoration(
+                      hintText: 'Choose an official...',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(color: Colors.orange.shade300),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(color: Colors.orange.shade300),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide:
+                            BorderSide(color: Colors.orange.shade600, width: 2),
+                      ),
+                      filled: true,
+                      fillColor: Colors.white,
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                    ),
+                    items: widget.borderOfficials.map((official) {
+                      return DropdownMenuItem<BorderOfficial>(
+                        value: official,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              official.fullName,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
+                            const SizedBox(height: 1),
+                            Text(
+                              official.email,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.grey.shade600,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                    onChanged: (BorderOfficial? official) {
+                      setState(() {
+                        _selectedOfficial = official;
+                        _initializeBorderAssignments();
+                      });
+                    },
+                    isExpanded: true,
+
+                    /// 👇 This is the fix
+                    selectedItemBuilder: (BuildContext context) {
+                      return widget.borderOfficials.map((official) {
+                        return Text(
+                          official.fullName,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        );
+                      }).toList();
+                    },
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 20),
 
-            // Border assignments header
-            Text(
-              'Border Access (${_borderAssignments.values.where((v) => v).length}/${widget.availableBorders.length} assigned)',
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
+            // Border assignments section
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey.shade200),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.location_on,
+                        color: Colors.grey.shade700,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Border Access (${_borderAssignments.values.where((v) => v).length}/${widget.availableBorders.length} assigned)',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey.shade800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Border checkboxes
+                  SizedBox(
+                    height: MediaQuery.of(context).size.height * 0.28,
+                    child: widget.availableBorders.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.location_off,
+                                  size: 48,
+                                  color: Colors.grey.shade400,
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'No borders available for this country.',
+                                  style: TextStyle(
+                                    color: Colors.grey.shade600,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : ListView.builder(
+                            itemCount: widget.availableBorders.length,
+                            itemBuilder: (context, index) {
+                              final border = widget.availableBorders[index];
+                              final isAssigned =
+                                  _borderAssignments[border.id] ?? false;
+
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 8),
+                                decoration: BoxDecoration(
+                                  color: isAssigned
+                                      ? Colors.orange.shade50
+                                      : Colors.white,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: isAssigned
+                                        ? Colors.orange.shade300
+                                        : Colors.grey.shade300,
+                                  ),
+                                ),
+                                child: CheckboxListTile(
+                                  title: Text(
+                                    border.name,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      color: isAssigned
+                                          ? Colors.orange.shade800
+                                          : Colors.grey.shade800,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                    maxLines: 1,
+                                  ),
+                                  subtitle: Text(
+                                    'Type: ${border.borderTypeLabel ?? border.borderTypeId}',
+                                    style: TextStyle(
+                                      color: isAssigned
+                                          ? Colors.orange.shade600
+                                          : Colors.grey.shade600,
+                                      fontSize: 12,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                    maxLines: 1,
+                                  ),
+                                  value: isAssigned,
+                                  onChanged: _isLoading
+                                      ? null
+                                      : (bool? value) {
+                                          setState(() {
+                                            _borderAssignments[border.id] =
+                                                value ?? false;
+                                          });
+                                        },
+                                  activeColor: Colors.orange.shade600,
+                                  controlAffinity:
+                                      ListTileControlAffinity.leading,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 4),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
 
-            // Border checkboxes
-            Expanded(
-              child: widget.availableBorders.isEmpty
-                  ? const Center(
-                      child: Text(
-                        'No borders available for this country.',
-                        style: TextStyle(color: Colors.grey),
-                      ),
-                    )
-                  : ListView.builder(
-                      itemCount: widget.availableBorders.length,
-                      itemBuilder: (context, index) {
-                        final border = widget.availableBorders[index];
-                        final isAssigned =
-                            _borderAssignments[border.id] ?? false;
-
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          child: CheckboxListTile(
-                            title: Text(
-                              border.name,
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.w600),
-                              overflow: TextOverflow.ellipsis,
-                              maxLines: 1,
-                            ),
-                            subtitle: Text(
-                              'Type: ${border.borderTypeLabel ?? border.borderTypeId}',
-                              style: TextStyle(color: Colors.grey.shade600),
-                              overflow: TextOverflow.ellipsis,
-                              maxLines: 1,
-                            ),
-                            value: isAssigned,
-                            onChanged: _isLoading
-                                ? null
-                                : (bool? value) {
-                                    setState(() {
-                                      _borderAssignments[border.id] =
-                                          value ?? false;
-                                    });
-                                  },
-                            activeColor: Colors.orange,
-                            controlAffinity: ListTileControlAffinity.leading,
+            // Action buttons
+            Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 12,
+              children: [
+                TextButton(
+                  onPressed:
+                      _isLoading ? null : () => Navigator.of(context).pop(),
+                  child: Text(
+                    'Cancel',
+                    style: TextStyle(color: Colors.grey.shade600),
+                  ),
+                ),
+                ElevatedButton.icon(
+                  onPressed: _isLoading ? null : _saveBorderAssignments,
+                  icon: _isLoading
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.white),
                           ),
-                        );
-                      },
+                        )
+                      : const Icon(Icons.save, size: 18),
+                  label: Text(_isLoading ? 'Saving...' : 'Save Changes'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange.shade600,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 20, vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
                     ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: _isLoading ? null : () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        ElevatedButton(
-          onPressed: _isLoading ? null : _saveBorderAssignments,
-          style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-          child: _isLoading
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                  ),
-                )
-              : const Text('Save Changes',
-                  style: TextStyle(color: Colors.white)),
-        ),
-      ],
     );
   }
 }

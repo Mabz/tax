@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/identity_documents.dart';
 import '../models/payment_details.dart';
 import '../services/profile_management_service.dart';
+import '../enums/pass_verification_method.dart';
 
 class ProfileSettingsScreen extends StatefulWidget {
   const ProfileSettingsScreen({super.key});
@@ -18,6 +19,18 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
   final _fullNameController = TextEditingController();
   final _nationalIdController = TextEditingController();
   final _passportController = TextEditingController();
+  final _staticPinController =
+      TextEditingController(); // New controller for static PIN
+  
+  // Individual PIN digit controllers
+  final _pinDigit1Controller = TextEditingController();
+  final _pinDigit2Controller = TextEditingController();
+  final _pinDigit3Controller = TextEditingController();
+  
+  // Focus nodes for PIN digits
+  final _pinDigit1Focus = FocusNode();
+  final _pinDigit2Focus = FocusNode();
+  final _pinDigit3Focus = FocusNode();
 
   // State
   bool _isLoading = true;
@@ -25,7 +38,8 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
   Map<String, dynamic>? _profileData;
   IdentityDocuments? _identityDocuments;
   PaymentDetails? _paymentDetails;
-  bool _requirePassConfirmation = false;
+  PassVerificationMethod _selectedVerificationMethod =
+      PassVerificationMethod.none; // Changed from bool
 
   // Countries data
   List<Map<String, dynamic>> _countries = [];
@@ -44,15 +58,22 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
     _fullNameController.dispose();
     _nationalIdController.dispose();
     _passportController.dispose();
+    _staticPinController.dispose(); // Dispose new controller
+    
+    // Dispose PIN digit controllers and focus nodes
+    _pinDigit1Controller.dispose();
+    _pinDigit2Controller.dispose();
+    _pinDigit3Controller.dispose();
+    _pinDigit1Focus.dispose();
+    _pinDigit2Focus.dispose();
+    _pinDigit3Focus.dispose();
+    
     super.dispose();
   }
 
   Future<void> _loadProfileData() async {
     try {
       setState(() => _isLoading = true);
-
-      // Test countries function first
-      await ProfileManagementService.testCountriesFunction();
 
       // Load all data in parallel
       final results = await Future.wait([
@@ -69,17 +90,8 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
         setState(() {
           _profileData = profileData;
           _identityDocuments = identityDocs;
-          _countries = countries;
-
-          print('📊 Profile data loaded:');
-          print('  - Countries count: ${countries.length}');
-          print('  - First few countries: ${countries.take(3).toList()}');
-          print(
-              '  - Identity docs country ID: ${identityDocs.countryOfOriginId}');
-          print(
-              '  - Selected country ID will be: ${identityDocs.countryOfOriginId}');
-          print(
-              '  - Available country IDs: ${countries.map((c) => c['id']).toList()}');
+          // Filter out 'Global' country
+          _countries = countries.where((c) => c['name'] != 'Global').toList();
 
           // Populate controllers
           _fullNameController.text =
@@ -90,8 +102,26 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
 
           // Load payment details and preferences
           _paymentDetails = PaymentDetails.fromJson(profileData ?? {});
-          _requirePassConfirmation =
-              profileData?['require_manual_pass_confirmation'] ?? false;
+
+          // Update for new pass confirmation preferences
+          final String? confirmationTypeString =
+              profileData?['pass_confirmation_type']?.toString();
+          _selectedVerificationMethod = PassVerificationMethod.values
+              .firstWhere((e) => e.name == confirmationTypeString,
+                  orElse: () => PassVerificationMethod.none);
+          
+          // Load existing PIN into individual digit controllers
+          final String existingPin = profileData?['static_confirmation_code']?.toString() ?? '';
+          _staticPinController.text = existingPin;
+          if (existingPin.length == 3) {
+            _pinDigit1Controller.text = existingPin[0];
+            _pinDigit2Controller.text = existingPin[1];
+            _pinDigit3Controller.text = existingPin[2];
+          } else {
+            _pinDigit1Controller.clear();
+            _pinDigit2Controller.clear();
+            _pinDigit3Controller.clear();
+          }
 
           _isLoading = false;
         });
@@ -195,26 +225,95 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
     }
   }
 
-  Future<void> _updatePassConfirmationPreference(bool value) async {
-    try {
-      await ProfileManagementService.updatePassConfirmationPreference(value);
-      setState(() => _requirePassConfirmation = value);
-
+  Future<void> _updatePassConfirmationPreference(
+      PassVerificationMethod method) async {
+    debugPrint('Selected PassVerificationMethod: ${method.name}');
+    
+    // For staticPin, first update the UI to show the text box
+    if (method == PassVerificationMethod.staticPin) {
+      setState(() {
+        _selectedVerificationMethod = method;
+      });
+      // Show a message that they need to enter a PIN
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please enter your 3-digit PIN below'),
+            backgroundColor: Colors.blue,
+          ),
+        );
+      }
+      return; // Don't save yet, wait for PIN input
+    }
+    
+    // For other methods, proceed with saving immediately
+    try {
+      setState(() => _isSaving = true);
+      await ProfileManagementService.updatePassConfirmationPreference(
+          method, null);
+      if (mounted) {
+        setState(() {
+          _selectedVerificationMethod = method;
+          _isSaving = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(value
-                ? 'Manual pass confirmation enabled'
-                : 'Manual pass confirmation disabled'),
+            content: Text('${method.label} enabled'),
             backgroundColor: Colors.green,
           ),
         );
       }
     } catch (e) {
       if (mounted) {
+        setState(() => _isSaving = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error updating preference: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _savePinPreference() async {
+    // Combine the three digit controllers
+    String staticPin = _pinDigit1Controller.text + 
+                      _pinDigit2Controller.text + 
+                      _pinDigit3Controller.text;
+
+    if (staticPin.length != 3 ||
+        !RegExp(r'^[0-9]+$').hasMatch(staticPin)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please enter all 3 digits of your PIN.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    try {
+      setState(() => _isSaving = true);
+      await ProfileManagementService.updatePassConfirmationPreference(
+          PassVerificationMethod.staticPin, staticPin);
+      if (mounted) {
+        setState(() => _isSaving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Personal PIN saved successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isSaving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error saving PIN: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -437,8 +536,8 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
               prefixIcon: Icon(Icons.flag),
               border: OutlineInputBorder(),
             ),
-            items: _countries.map((country) {
-              print('🆕 Creating dropdown item: ${country['id']} - ${country['name']}');
+            // Filter out 'Global' country
+            items: _countries.where((c) => c['name'] != 'Global').map((country) {
               return DropdownMenuItem<String>(
                 value: country['id'].toString(),
                 child: Text('${country['name']} (${country['country_code']})'),
@@ -671,6 +770,90 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
     );
   }
 
+  Widget _buildPinDigitBox(int digitIndex) {
+    TextEditingController controller;
+    FocusNode focusNode;
+    FocusNode? nextFocusNode;
+    
+    switch (digitIndex) {
+      case 0:
+        controller = _pinDigit1Controller;
+        focusNode = _pinDigit1Focus;
+        nextFocusNode = _pinDigit2Focus;
+        break;
+      case 1:
+        controller = _pinDigit2Controller;
+        focusNode = _pinDigit2Focus;
+        nextFocusNode = _pinDigit3Focus;
+        break;
+      case 2:
+        controller = _pinDigit3Controller;
+        focusNode = _pinDigit3Focus;
+        nextFocusNode = null;
+        break;
+      default:
+        throw ArgumentError('Invalid digit index: $digitIndex');
+    }
+    
+    return Container(
+      width: 60,
+      height: 60,
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.blue, width: 2),
+        borderRadius: BorderRadius.circular(12),
+        color: Colors.blue.shade50,
+      ),
+      child: TextField(
+        controller: controller,
+        focusNode: focusNode,
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          fontSize: 24,
+          fontWeight: FontWeight.bold,
+          color: Colors.blue,
+        ),
+        keyboardType: TextInputType.number,
+        maxLength: 1,
+        decoration: const InputDecoration(
+          border: InputBorder.none,
+          counterText: '',
+        ),
+        onChanged: (value) {
+          if (value.isNotEmpty && RegExp(r'^[0-9]$').hasMatch(value)) {
+            // Move to next field if this isn't the last one
+            if (nextFocusNode != null) {
+              nextFocusNode.requestFocus();
+            } else {
+              // Last digit entered, check if all 3 are filled
+              _checkAndAutoSave();
+            }
+          } else if (value.isEmpty) {
+            // If user deletes, move to previous field
+            if (digitIndex > 0) {
+              switch (digitIndex) {
+                case 1:
+                  _pinDigit1Focus.requestFocus();
+                  break;
+                case 2:
+                  _pinDigit2Focus.requestFocus();
+                  break;
+              }
+            }
+          }
+        },
+      ),
+    );
+  }
+  
+  void _checkAndAutoSave() {
+    if (_pinDigit1Controller.text.isNotEmpty &&
+        _pinDigit2Controller.text.isNotEmpty &&
+        _pinDigit3Controller.text.isNotEmpty) {
+      // All digits filled, auto-save
+      _savePinPreference();
+    }
+  }
+
   Widget _buildPreferencesTab() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -696,55 +879,111 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Manual Pass Confirmation',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
+                // No Verification option
+                RadioListTile<PassVerificationMethod>(
+                  title: Text(PassVerificationMethod.none.label),
+                  subtitle: Text(PassVerificationMethod.none.description),
+                  value: PassVerificationMethod.none,
+                  groupValue: _selectedVerificationMethod,
+                  onChanged: (PassVerificationMethod? newValue) async {
+                    if (newValue != null) {
+                      await _updatePassConfirmationPreference(newValue);
+                    }
+                  },
+                ),
+                
+                // Personal PIN option
+                RadioListTile<PassVerificationMethod>(
+                  title: Text(PassVerificationMethod.staticPin.label),
+                  subtitle: Text(PassVerificationMethod.staticPin.description),
+                  value: PassVerificationMethod.staticPin,
+                  groupValue: _selectedVerificationMethod,
+                  onChanged: (PassVerificationMethod? newValue) async {
+                    if (newValue != null) {
+                      await _updatePassConfirmationPreference(newValue);
+                    }
+                  },
+                ),
+                
+                // PIN input boxes (appears right after Personal PIN)
+                if (_selectedVerificationMethod == PassVerificationMethod.staticPin)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16.0, vertical: 12.0),
+                    child: Column(
+                      children: [
+                        const Text(
+                          'Enter your 3-digit PIN:',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.blue,
                           ),
-                          SizedBox(height: 4),
-                          Text(
-                            'Require manual confirmation before pass activation',
-                            style: TextStyle(
-                              color: Colors.grey,
-                              fontSize: 14,
+                        ),
+                        const SizedBox(height: 16),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
+                            _buildPinDigitBox(0),
+                            _buildPinDigitBox(1),
+                            _buildPinDigitBox(2),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: _isSaving ? null : _savePinPreference,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blue,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
                             ),
+                            child: _isSaving
+                                ? const SizedBox(
+                                    height: 20,
+                                    width: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                    ),
+                                  )
+                                : const Text('Save PIN', style: TextStyle(fontSize: 16)),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                    Switch(
-                      value: _requirePassConfirmation,
-                      onChanged: _updatePassConfirmationPreference,
-                      activeColor: Colors.blue.shade600,
-                    ),
-                  ],
+                  ),
+                
+                // Secure Code option
+                RadioListTile<PassVerificationMethod>(
+                  title: Text(PassVerificationMethod.dynamicCode.label),
+                  subtitle: Text(PassVerificationMethod.dynamicCode.description),
+                  value: PassVerificationMethod.dynamicCode,
+                  groupValue: _selectedVerificationMethod,
+                  onChanged: (PassVerificationMethod? newValue) async {
+                    if (newValue != null) {
+                      await _updatePassConfirmationPreference(newValue);
+                    }
+                  },
                 ),
                 const SizedBox(height: 12),
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: _requirePassConfirmation
-                        ? Colors.orange.shade50
-                        : Colors.green.shade50,
+                    color: _selectedVerificationMethod ==
+                            PassVerificationMethod.none
+                        ? Colors.green.shade50
+                        : Colors.blue.shade50,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
-                    _requirePassConfirmation
-                        ? 'When enabled, you will need to manually confirm each pass before it becomes active. This gives you more control but requires additional steps.'
-                        : 'When disabled, passes will be automatically activated upon purchase. This provides a seamless experience.',
+                    _selectedVerificationMethod.description,
                     style: TextStyle(
-                      color: _requirePassConfirmation
-                          ? Colors.orange.shade800
-                          : Colors.green.shade800,
+                      color: _selectedVerificationMethod ==
+                              PassVerificationMethod.none
+                          ? Colors.green.shade800
+                          : Colors.blue.shade800,
                       fontSize: 12,
                     ),
                   ),

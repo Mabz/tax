@@ -1,6 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/purchased_pass.dart';
-import '../models/country.dart';
+import '../models/authority.dart';
 import '../models/pass_template.dart';
 
 class PassService {
@@ -59,7 +59,7 @@ class PassService {
                 case PostgresChangeEvent.insert:
                   if (newRecord.isNotEmpty) {
                     // For new passes, we need to fetch the full pass data with JOINs
-                    // since the raw record doesn't include joined data like border_name
+                    // since the raw record doesn't include joined data like border_name, authority_name
                     final passId = newRecord['id'];
                     final fullPassData =
                         await _supabase.rpc('get_passes_for_user', params: {
@@ -212,27 +212,27 @@ class PassService {
         .toList();
   }
 
-  /// Gets active countries for pass template selection
-  static Future<List<Country>> getActiveCountries() async {
+  /// Gets active authorities for pass template selection
+  static Future<List<Authority>> getActiveAuthorities() async {
     final response = await _supabase
-        .from('countries')
-        .select('*')
+        .from('authorities')
+        .select('*, countries!inner(*)')
         .eq('is_active', true)
-        .neq('name', 'Global')
+        .eq('countries.is_active', true)
         .order('name');
 
     final List<dynamic> data = response as List<dynamic>;
     return data
-        .map((json) => Country.fromJson(json as Map<String, dynamic>))
+        .map((json) => Authority.fromJson(json as Map<String, dynamic>))
         .toList();
   }
 
-  /// Gets pass templates for a specific country
-  static Future<List<PassTemplate>> getPassTemplatesForCountry(
-      String countryId) async {
+  /// Gets pass templates for a specific authority
+  static Future<List<PassTemplate>> getPassTemplatesForAuthority(
+      String authorityId) async {
     final response =
-        await _supabase.rpc('get_pass_templates_for_country', params: {
-      'target_country_id': countryId,
+        await _supabase.rpc('get_pass_templates_for_authority', params: {
+      'target_authority_id': authorityId,
     });
 
     if (response == null) return [];
@@ -241,5 +241,56 @@ class PassService {
     return data
         .map((json) => PassTemplate.fromJson(json as Map<String, dynamic>))
         .toList();
+  }
+
+  // =====================================================
+  // BRIDGE METHODS FOR BACKWARD COMPATIBILITY
+  // =====================================================
+  // These methods maintain compatibility with existing UI
+  // while transitioning to authority-centric model
+
+  /// Gets active countries for pass template selection (BRIDGE METHOD)
+  /// This converts authorities back to country format for existing UI
+  static Future<List<Map<String, dynamic>>> getActiveCountries() async {
+    final authorities = await PassService.getActiveAuthorities();
+    
+    // Group authorities by country and return unique countries
+    final Map<String, Map<String, dynamic>> countryMap = {};
+    
+    for (final authority in authorities) {
+      // Skip authorities without proper country data
+      if (authority.countryName == null || authority.countryName!.isEmpty) {
+        continue;
+      }
+      
+      countryMap[authority.countryId] = {
+          'id': authority.countryId,
+          'name': authority.countryName,
+          'country_code': authority.countryCode ?? '',
+          'is_active': true,
+        };
+    }
+    
+    return countryMap.values.toList();
+  }
+
+  /// Gets pass templates for a specific country (BRIDGE METHOD)
+  /// This finds all authorities for the country and returns their templates
+  static Future<List<PassTemplate>> getPassTemplatesForCountry(
+      String countryId) async {
+    // Get all authorities for this country
+    final authorities = await PassService.getActiveAuthorities();
+    final countryAuthorities = authorities
+        .where((auth) => auth.countryId == countryId)
+        .toList();
+    
+    // Get templates from all authorities in this country
+    final List<PassTemplate> allTemplates = [];
+    for (final authority in countryAuthorities) {
+      final templates = await PassService.getPassTemplatesForAuthority(authority.id);
+      allTemplates.addAll(templates);
+    }
+    
+    return allTemplates;
   }
 }

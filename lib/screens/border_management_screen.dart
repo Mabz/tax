@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
 import '../constants/app_constants.dart';
+import '../models/authority.dart';
 import '../models/border.dart' as border_model;
 import '../models/border_type.dart';
+import '../services/authority_service.dart';
 import '../services/border_service.dart';
 import '../services/border_type_service.dart';
-import '../services/country_service.dart';
 import '../services/role_service.dart';
 
 class BorderManagementScreen extends StatefulWidget {
-  final Map<String, dynamic>? selectedCountry;
+  final Map<String, dynamic>? selectedCountry; // For backward compatibility
 
   const BorderManagementScreen({super.key, this.selectedCountry});
 
@@ -17,8 +18,8 @@ class BorderManagementScreen extends StatefulWidget {
 }
 
 class _BorderManagementScreenState extends State<BorderManagementScreen> {
-  List<Map<String, dynamic>> _countries = [];
-  Map<String, dynamic>? _selectedCountry;
+  List<Authority> _authorities = [];
+  Authority? _selectedAuthority;
   List<border_model.Border> _borders = [];
   List<BorderType> _borderTypes = [];
   bool _isLoading = true;
@@ -50,7 +51,7 @@ class _BorderManagementScreenState extends State<BorderManagementScreen> {
         return;
       }
 
-      await _loadCountries();
+      await _loadAuthorities();
       await _loadBorderTypes();
     } catch (e) {
       debugPrint('❌ Error checking permissions: $e');
@@ -68,57 +69,41 @@ class _BorderManagementScreenState extends State<BorderManagementScreen> {
     }
   }
 
-  Future<void> _loadCountries() async {
+  Future<void> _loadAuthorities() async {
     try {
       final isSuperuser = await RoleService.isSuperuser();
-      List<Map<String, dynamic>> countries;
+      List<Authority> authorities;
 
       if (isSuperuser) {
-        // Superusers can see all active countries
-        final allCountries = await CountryService.getActiveCountries();
-        countries = allCountries
-            .map<Map<String, dynamic>>((country) => {
-                  AppConstants.fieldId: country.id,
-                  AppConstants.fieldCountryName: country.name,
-                  AppConstants.fieldCountryCode: country.countryCode,
-                  AppConstants.fieldCountryIsActive: country.isActive,
-                  AppConstants.fieldCountryIsGlobal: country.isGlobal,
-                  AppConstants.fieldCountryRevenueServiceName:
-                      country.revenueServiceName,
-                  AppConstants.fieldCreatedAt:
-                      country.createdAt.toIso8601String(),
-                  AppConstants.fieldUpdatedAt:
-                      country.updatedAt.toIso8601String(),
-                })
-            .toList();
+        // Superusers can see all authorities
+        authorities = await AuthorityService.getAllAuthorities();
       } else {
-        // Country admins can only see their assigned countries
-        countries = await RoleService.getCountryAdminCountries();
+        // Country admins can only see their assigned authorities
+        authorities = await AuthorityService.getAdminAuthorities();
       }
 
       if (mounted) {
         setState(() {
-          _countries = countries;
-          if (_countries.isNotEmpty) {
-            // Use passed country if available and valid, otherwise use first
+          _authorities = authorities;
+          if (_authorities.isNotEmpty) {
+            // Use passed country to find matching authority if available
             if (widget.selectedCountry != null) {
-              // Find the matching country object from the loaded countries list
-              final matchingCountry = _countries.firstWhere(
-                (c) =>
-                    c[AppConstants.fieldId] ==
-                    widget.selectedCountry![AppConstants.fieldId],
-                orElse: () => _countries.first,
+              final countryId = widget.selectedCountry![AppConstants.fieldId];
+              // Find authority for the selected country
+              final matchingAuthority = _authorities.firstWhere(
+                (a) => a.countryId == countryId,
+                orElse: () => _authorities.first,
               );
-              _selectedCountry = matchingCountry;
+              _selectedAuthority = matchingAuthority;
             } else {
-              _selectedCountry = _countries.first;
+              _selectedAuthority = _authorities.first;
             }
             _loadBorders();
           }
         });
       }
     } catch (e) {
-      debugPrint('❌ Error loading countries: $e');
+      debugPrint('❌ Error loading authorities: $e');
       rethrow;
     }
   }
@@ -138,23 +123,31 @@ class _BorderManagementScreenState extends State<BorderManagementScreen> {
   }
 
   Future<void> _loadBorders() async {
-    if (_selectedCountry == null) return;
+    if (_selectedAuthority == null) return;
 
     setState(() {
       _isLoadingBorders = true;
     });
 
     try {
-      final borders = await BorderService.getBordersByCountry(
-          _selectedCountry![AppConstants.fieldId]);
+      debugPrint('🔍 Loading borders for authority: ${_selectedAuthority!.name}');
+      
+      final borders = await BorderService.getBordersByAuthority(_selectedAuthority!.id);
+      
+      debugPrint('✅ Loaded ${borders.length} borders');
+      
       if (mounted) {
         setState(() {
           _borders = borders;
+          _isLoadingBorders = false;
         });
       }
     } catch (e) {
       debugPrint('❌ Error loading borders: $e');
       if (mounted) {
+        setState(() {
+          _isLoadingBorders = false;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error loading borders: $e')),
         );
@@ -169,11 +162,11 @@ class _BorderManagementScreenState extends State<BorderManagementScreen> {
   }
 
   void _showAddBorderDialog() {
-    if (_selectedCountry == null || _borderTypes.isEmpty) {
+    if (_selectedAuthority == null || _borderTypes.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-              'Please select a country and ensure border types are loaded'),
+              'Please select an authority and ensure border types are loaded'),
         ),
       );
       return;
@@ -183,8 +176,8 @@ class _BorderManagementScreenState extends State<BorderManagementScreen> {
       context: context,
       builder: (context) => _AddEditBorderDialog(
         borderTypes: _borderTypes,
-        countryId: _selectedCountry![AppConstants.fieldId],
-        onSaved: () {
+        authorityId: _selectedAuthority!.id,
+        onSave: () {
           _loadBorders();
         },
       ),
@@ -197,8 +190,8 @@ class _BorderManagementScreenState extends State<BorderManagementScreen> {
       builder: (context) => _AddEditBorderDialog(
         border: border,
         borderTypes: _borderTypes,
-        countryId: _selectedCountry![AppConstants.fieldId],
-        onSaved: () {
+        authorityId: _selectedAuthority!.id,
+        onSave: () {
           _loadBorders();
         },
       ),
@@ -295,7 +288,7 @@ class _BorderManagementScreenState extends State<BorderManagementScreen> {
       );
     }
 
-    if (_countries.isEmpty) {
+    if (_authorities.isEmpty) {
       return Scaffold(
         appBar: AppBar(
           title: const Text('Border Management'),
@@ -315,7 +308,7 @@ class _BorderManagementScreenState extends State<BorderManagementScreen> {
                 ),
                 SizedBox(height: 16),
                 Text(
-                  'No Countries Assigned',
+                  'No Authorities Assigned',
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
@@ -324,7 +317,7 @@ class _BorderManagementScreenState extends State<BorderManagementScreen> {
                 ),
                 SizedBox(height: 8),
                 Text(
-                  'You are not assigned as a country administrator for any countries.',
+                  'You are not assigned as an administrator for any authorities.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.grey),
                 ),
@@ -344,22 +337,37 @@ class _BorderManagementScreenState extends State<BorderManagementScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Show selected country info (read-only)
-            if (_selectedCountry != null)
+            // Show selected authority info (read-only)
+            if (_selectedAuthority != null)
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(16.0),
                 color: Colors.orange.shade50,
                 child: Row(
                   children: [
-                    Icon(Icons.public, color: Colors.orange.shade700),
+                    Icon(Icons.business, color: Colors.orange.shade700),
                     const SizedBox(width: 12),
-                    Text(
-                      '${_selectedCountry![AppConstants.fieldCountryName]} (${_selectedCountry![AppConstants.fieldCountryCode]})',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.orange.shade800,
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _selectedAuthority!.name,
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.orange.shade800,
+                            ),
+                          ),
+                          if (_selectedAuthority!.countryName != null)
+                            Text(
+                              '${_selectedAuthority!.countryName} (${_selectedAuthority!.countryCode ?? ''})',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.orange.shade600,
+                              ),
+                            ),
+                        ],
                       ),
                     ),
                   ],
@@ -392,9 +400,9 @@ class _BorderManagementScreenState extends State<BorderManagementScreen> {
                                 ),
                                 const SizedBox(height: 8),
                                 Text(
-                                  _selectedCountry != null
-                                      ? 'No borders have been created for ${_selectedCountry![AppConstants.fieldCountryName]} yet.'
-                                      : 'Select a country to view its borders.',
+                                  _selectedAuthority != null
+                                      ? 'No borders have been created for ${_selectedAuthority!.name} yet.'
+                                      : 'Select an authority to view its borders.',
                                   textAlign: TextAlign.center,
                                   style:
                                       TextStyle(color: Colors.orange.shade600),
@@ -493,7 +501,7 @@ class _BorderManagementScreenState extends State<BorderManagementScreen> {
           ],
         ),
       ),
-      floatingActionButton: _selectedCountry != null
+      floatingActionButton: _selectedAuthority != null
           ? FloatingActionButton(
               onPressed: _showAddBorderDialog,
               backgroundColor: Colors.orange,
@@ -509,14 +517,14 @@ class _BorderManagementScreenState extends State<BorderManagementScreen> {
 class _AddEditBorderDialog extends StatefulWidget {
   final border_model.Border? border;
   final List<BorderType> borderTypes;
-  final String countryId;
-  final VoidCallback onSaved;
+  final String authorityId;
+  final VoidCallback onSave;
 
   const _AddEditBorderDialog({
     this.border,
     required this.borderTypes,
-    required this.countryId,
-    required this.onSaved,
+    required this.authorityId,
+    required this.onSave,
   });
 
   @override
@@ -597,9 +605,9 @@ class _AddEditBorderDialogState extends State<_AddEditBorderDialog> {
           description: description,
         );
       } else {
-        // Create new border
+        // Create new border using the authority ID directly
         await BorderService.createBorder(
-          countryId: widget.countryId,
+          authorityId: widget.authorityId,
           name: name,
           borderTypeId: _selectedBorderType!.id,
           isActive: _isActive,
@@ -620,7 +628,7 @@ class _AddEditBorderDialogState extends State<_AddEditBorderDialog> {
             ),
           ),
         );
-        widget.onSaved();
+        widget.onSave();
       }
     } catch (e) {
       if (mounted) {

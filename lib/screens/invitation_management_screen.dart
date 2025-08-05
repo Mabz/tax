@@ -3,7 +3,6 @@ import '../constants/app_constants.dart';
 import '../models/role_invitation.dart';
 import '../models/country.dart';
 import '../services/invitation_service.dart';
-import '../services/role_service.dart';
 
 /// Screen for managing role invitations (Superuser and Country Admin access)
 class InvitationManagementScreen extends StatefulWidget {
@@ -24,7 +23,17 @@ class _InvitationManagementScreenState
   List<RoleInvitation> _invitations = [];
   List<Map<String, dynamic>> _roles = [];
   bool _isLoading = true;
-  bool _isSuperuser = false;
+
+  // Helper getter to extract authority information from selectedCountry
+  String? get _authorityName {
+    if (widget.selectedCountry == null) return null;
+    // Check if this is authority data passed as country (from home_screen.dart)
+    final countryData = widget.selectedCountry!;
+    if (countryData is Map) {
+      return (countryData as Map<String, dynamic>)['authority_name'];
+    }
+    return widget.selectedCountry!.name; // Fallback to country name
+  }
 
   @override
   void initState() {
@@ -49,7 +58,6 @@ class _InvitationManagementScreenState
         return;
       }
 
-      _isSuperuser = await RoleService.isSuperuser();
       await _loadData();
     } catch (e) {
       if (mounted) {
@@ -90,7 +98,10 @@ class _InvitationManagementScreenState
 
       setState(() {
         _invitations = results[0] as List<RoleInvitation>;
-        _roles = results[1] as List<Map<String, dynamic>>;
+        // Filter out superuser role - it should never be available for invitation
+        _roles = (results[1] as List<Map<String, dynamic>>)
+            .where((role) => role[AppConstants.fieldRoleName] != 'superuser')
+            .toList();
         _isLoading = false;
       });
 
@@ -159,56 +170,6 @@ class _InvitationManagementScreenState
                       setDialogState(() => selectedRoleName = value);
                     },
                   ),
-                  const SizedBox(height: 16),
-                  // Show selected country info (read-only)
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey.shade300),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.flag, color: Colors.orange),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Country',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey,
-                                ),
-                              ),
-                              Text(
-                                widget.selectedCountry != null
-                                    ? '${widget.selectedCountry!.name} (${widget.selectedCountry!.countryCode})'
-                                    : 'No country selected',
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (widget.selectedCountry == null) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      'Please select a country in the drawer menu first',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.red.shade600,
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),
@@ -221,7 +182,7 @@ class _InvitationManagementScreenState
             ElevatedButton(
               onPressed: email.isNotEmpty &&
                       selectedRoleName != null &&
-                      widget.selectedCountry != null
+                      _authorityName != null
                   ? () async {
                       // Capture context before async operation
                       final navigator = Navigator.of(context);
@@ -484,17 +445,11 @@ class _InvitationManagementScreenState
 
   @override
   Widget build(BuildContext context) {
-    final theme = _isSuperuser
-        ? (Colors.red, Colors.red.shade100, Colors.red.shade800)
-        : (Colors.orange, Colors.orange.shade100, Colors.orange.shade800);
+    final theme = (Colors.orange, Colors.orange.shade100, Colors.orange.shade800);
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          widget.selectedCountry != null
-              ? 'Invitations - ${widget.selectedCountry!.name}'
-              : 'Manage Invitations',
-        ),
+        title: const Text('Invitations'),
         backgroundColor: theme.$2,
         foregroundColor: theme.$3,
         actions: [
@@ -505,84 +460,95 @@ class _InvitationManagementScreenState
           ),
         ],
       ),
-      body: SafeArea(
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : _invitations.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.inbox,
-                          size: 80,
-                          color: Colors.grey.shade400,
-                        ),
-                        const SizedBox(height: 24),
-                        Text(
-                          'No Invitations',
-                          style: TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.grey.shade600,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          widget.selectedCountry != null
-                              ? 'No role invitations have been sent for ${widget.selectedCountry!.name} yet.'
-                              : 'No role invitations have been sent yet.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: Colors.grey.shade500,
-                          ),
-                        ),
-                        if (widget.selectedCountry != null) ...[
-                          const SizedBox(height: 8),
-                          Text(
-                            'Use the + button to send your first invitation.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey.shade500,
-                            ),
-                          ),
-                        ],
-                      ],
+      body: Column(
+        children: [
+          // Authority header - fixed below app bar
+          if (_authorityName != null)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                border: Border(
+                  bottom: BorderSide(
+                    color: Colors.orange.shade200,
+                    width: 1,
+                  ),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _authorityName!,
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.orange.shade800,
                     ),
-                  )
-                : Column(
-                    children: [
-                      // Country header (if country is selected)
-                      if (widget.selectedCountry != null)
-                        Padding(
-                          padding: const EdgeInsets.all(16),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${_invitations.length} invitation(s) sent',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.orange.shade600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          // Content area - scrollable
+          Expanded(
+            child: SafeArea(
+              top: false, // Don't add safe area at top since we have the header
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _invitations.isEmpty
+                      ? Center(
                           child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
+                              Icon(
+                                Icons.inbox,
+                                size: 80,
+                                color: Colors.grey.shade400,
+                              ),
+                              const SizedBox(height: 24),
                               Text(
-                                widget.selectedCountry!.name,
+                                'No Invitations',
                                 style: TextStyle(
                                   fontSize: 24,
                                   fontWeight: FontWeight.bold,
-                                  color: Colors.orange.shade800,
+                                  color: Colors.grey.shade600,
                                 ),
                               ),
-                              const SizedBox(height: 4),
+                              const SizedBox(height: 12),
                               Text(
-                                '${_invitations.length} invitation(s) sent',
+                                _authorityName != null
+                                    ? 'No role invitations have been sent for $_authorityName yet.'
+                                    : 'No role invitations have been sent yet.',
+                                textAlign: TextAlign.center,
                                 style: TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.orange.shade600,
+                                  fontSize: 16,
+                                  color: Colors.grey.shade500,
                                 ),
                               ),
+                              if (_authorityName != null) ...[
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Use the + button to send your first invitation.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey.shade500,
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
-                        ),
-                      // Invitation list
-                      Expanded(
-                        child: RefreshIndicator(
+                        )
+                      : RefreshIndicator(
                           onRefresh: _loadData,
                           child: ListView.builder(
                             itemCount: _invitations.length,
@@ -591,9 +557,9 @@ class _InvitationManagementScreenState
                             },
                           ),
                         ),
-                      ),
-                    ],
-                  ),
+            ),
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _showInviteDialog,

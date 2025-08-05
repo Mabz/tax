@@ -8,17 +8,29 @@ class AppConstants {
 
   /// Database function names
   static const String userHasRoleFunction = 'user_has_role';
+  static const String profileHasRoleFunction = 'profile_has_role';
   static const String isSuperuserFunction = 'is_superuser';
   static const String getProfileByEmailFunction = 'get_profile_by_email';
   static const String getProfilesByCountryFunction = 'get_profiles_by_country';
-  
+  static const String getPassesForUserFunction = 'get_passes_for_user';
+  static const String getPassesForProfileFunction = 'get_passes_for_profile';
+  static const String getVehiclesForUserFunction = 'get_vehicles_for_user';
+  static const String getVehiclesForProfileFunction = 'get_vehicles_for_profile';
+
   /// Invitation function names
   static const String inviteUserToRoleFunction = 'invite_user_to_role';
+  static const String inviteProfileToRoleFunction = 'invite_profile_to_role';
   static const String deleteRoleInvitationFunction = 'delete_role_invitation';
   static const String acceptRoleInvitationFunction = 'accept_role_invitation';
   static const String declineRoleInvitationFunction = 'decline_role_invitation';
-  static const String getPendingInvitationsFunction = 'get_pending_invitations_for_user';
-  static const String getAllInvitationsForCountryFunction = 'get_all_invitations_for_country';
+  static const String getPendingInvitationsFunction =
+      'get_pending_invitations_for_user';
+  static const String getPendingInvitationsForProfileFunction =
+      'get_pending_invitations_for_profile';
+  static const String getAllInvitationsForCountryFunction =
+      'get_all_invitations_for_country';
+  static const String getAllInvitationsForAuthorityFunction =
+      'get_all_invitations_for_authority';
   static const String resendInvitationFunction = 'resend_invitation';
 
   /// Role names (must match database roles table)
@@ -54,6 +66,7 @@ class AppConstants {
   static const String tableRoles = 'roles';
   static const String tableProfiles = 'profiles';
   static const String tableCountries = 'countries';
+  static const String tableAuthorities = 'authorities';
   static const String tableProfileRoles = 'profile_roles';
   static const String tableAuditLogs = 'audit_logs';
   static const String tableBorderTypes = 'border_types';
@@ -82,6 +95,14 @@ class AppConstants {
   static const String fieldCountryIsActive = 'is_active';
   static const String fieldCountryIsGlobal = 'is_global';
 
+  /// Authorities table fields
+  static const String fieldAuthorityCountryId = 'country_id';
+  static const String fieldAuthorityName = 'name';
+  static const String fieldAuthorityCode = 'code';
+  static const String fieldAuthorityType = 'authority_type';
+  static const String fieldAuthorityDescription = 'description';
+  static const String fieldAuthorityIsActive = 'is_active';
+
   /// Border Types table fields
   static const String fieldBorderTypeCode = 'code';
   static const String fieldBorderTypeLabel = 'label';
@@ -89,6 +110,7 @@ class AppConstants {
 
   /// Borders table fields
   static const String fieldBorderCountryId = 'country_id';
+  static const String fieldBorderAuthorityId = 'authority_id';
   static const String fieldBorderName = 'name';
   static const String fieldBorderTypeId = 'border_type_id';
   static const String fieldBorderIsActive = 'is_active';
@@ -100,6 +122,7 @@ class AppConstants {
   static const String fieldProfileRoleProfileId = 'profile_id';
   static const String fieldProfileRoleRoleId = 'role_id';
   static const String fieldProfileRoleCountryId = 'country_id';
+  static const String fieldProfileRoleAuthorityId = 'authority_id';
   static const String fieldProfileRoleAssignedBy = 'assigned_by_profile_id';
   static const String fieldProfileRoleAssignedAt = 'assigned_at';
   static const String fieldProfileRoleExpiresAt = 'expires_at';
@@ -115,6 +138,7 @@ class AppConstants {
   static const String fieldRoleInvitationEmail = 'email';
   static const String fieldRoleInvitationRoleId = 'role_id';
   static const String fieldRoleInvitationCountryId = 'country_id';
+  static const String fieldRoleInvitationAuthorityId = 'authority_id';
   static const String fieldRoleInvitationInvitedBy = 'invited_by_profile_id';
   static const String fieldRoleInvitationInvitedAt = 'invited_at';
   static const String fieldRoleInvitationStatus = 'status';

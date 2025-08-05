@@ -7,22 +7,22 @@ import '../models/border.dart';
 class BorderService {
   static final SupabaseClient _supabase = Supabase.instance.client;
 
-  /// Get all borders for a specific country
-  static Future<List<Border>> getBordersByCountry(String countryId) async {
+  /// Get all borders for a specific authority
+  static Future<List<Border>> getBordersByAuthority(String authorityId) async {
     try {
-      debugPrint('🔍 Fetching borders for country: $countryId');
+      debugPrint('🔍 Fetching borders for authority: $authorityId');
 
       final response = await _supabase
           .from(AppConstants.tableBorders)
           .select()
-          .eq(AppConstants.fieldBorderCountryId, countryId)
+          .eq(AppConstants.fieldBorderAuthorityId, authorityId)
           .order(AppConstants.fieldBorderName);
 
       debugPrint('✅ Retrieved ${response.length} borders');
 
       return response.map<Border>((json) => Border.fromJson(json)).toList();
     } catch (e) {
-      debugPrint('❌ Error fetching borders for country $countryId: $e');
+      debugPrint('❌ Error fetching borders for authority $authorityId: $e');
       rethrow;
     }
   }
@@ -62,7 +62,8 @@ class BorderService {
         return null;
       }
 
-      debugPrint('✅ Retrieved border: ${response[AppConstants.fieldBorderName]}');
+      debugPrint(
+          '✅ Retrieved border: ${response[AppConstants.fieldBorderName]}');
       return Border.fromJson(response);
     } catch (e) {
       debugPrint('❌ Error fetching border by ID $id: $e');
@@ -72,7 +73,7 @@ class BorderService {
 
   /// Create a new border
   static Future<Border> createBorder({
-    required String countryId,
+    required String authorityId,
     required String name,
     required String borderTypeId,
     bool isActive = true,
@@ -83,14 +84,15 @@ class BorderService {
     try {
       debugPrint('🔄 Creating border: $name');
 
-      // Validate border name doesn't exist for this country
-      final existingBorder = await borderExistsInCountry(name, countryId);
+      // Validate border name doesn't exist for this authority
+      final existingBorder = await borderExistsInAuthority(name, authorityId);
       if (existingBorder) {
-        throw Exception('A border with name "$name" already exists in this country');
+        throw Exception(
+            'A border with name "$name" already exists in this authority');
       }
 
       final borderData = {
-        AppConstants.fieldBorderCountryId: countryId,
+        AppConstants.fieldBorderAuthorityId: authorityId,
         AppConstants.fieldBorderName: name,
         AppConstants.fieldBorderTypeId: borderTypeId,
         AppConstants.fieldBorderIsActive: isActive,
@@ -168,14 +170,15 @@ class BorderService {
     }
   }
 
-  /// Check if a border name exists in a specific country
-  static Future<bool> borderExistsInCountry(String name, String countryId) async {
+  /// Check if a border name exists in a specific authority
+  static Future<bool> borderExistsInAuthority(
+      String name, String authorityId) async {
     try {
       final response = await _supabase
           .from(AppConstants.tableBorders)
           .select(AppConstants.fieldId)
           .eq(AppConstants.fieldBorderName, name)
-          .eq(AppConstants.fieldBorderCountryId, countryId)
+          .eq(AppConstants.fieldBorderAuthorityId, authorityId)
           .maybeSingle();
 
       return response != null;
@@ -213,5 +216,55 @@ class BorderService {
     if (name.trim().isEmpty) return false;
     if (name.length < 2 || name.length > 100) return false;
     return true;
+  }
+
+  /// Get all borders for a specific country (temporary bridge method)
+  /// This method finds the authority for the country and calls getBordersByAuthority
+  static Future<List<Border>> getBordersByCountry(String countryId) async {
+    try {
+      debugPrint(
+          '🔍 Fetching borders for country: $countryId (via authority lookup)');
+
+      final authorityId = await getAuthorityIdForCountry(countryId);
+      if (authorityId == null) {
+        debugPrint('⚠️ No active authority found for country: $countryId');
+        return [];
+      }
+
+      debugPrint('✅ Found authority: $authorityId for country: $countryId');
+
+      // Now get borders for this authority
+      return await getBordersByAuthority(authorityId);
+    } catch (e) {
+      debugPrint('❌ Error fetching borders for country $countryId: $e');
+      rethrow;
+    }
+  }
+
+  /// Get authority ID for a specific country (bridge method for authority migration)
+  /// This method finds the active authority for a given country
+  static Future<String?> getAuthorityIdForCountry(String countryId) async {
+    try {
+      debugPrint('🔍 Finding authority for country: $countryId');
+
+      final authorityResponse = await _supabase
+          .from(AppConstants.tableAuthorities)
+          .select(AppConstants.fieldId)
+          .eq(AppConstants.fieldAuthorityCountryId, countryId)
+          .eq(AppConstants.fieldAuthorityIsActive, true)
+          .maybeSingle();
+
+      if (authorityResponse == null) {
+        debugPrint('⚠️ No active authority found for country: $countryId');
+        return null;
+      }
+
+      final authorityId = authorityResponse[AppConstants.fieldId] as String;
+      debugPrint('✅ Found authority: $authorityId for country: $countryId');
+      return authorityId;
+    } catch (e) {
+      debugPrint('❌ Error finding authority for country $countryId: $e');
+      rethrow;
+    }
   }
 }

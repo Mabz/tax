@@ -31,40 +31,56 @@ class InvitationService {
     }
   }
 
-  /// Get all invitations for a specific country using the new database function
-  static Future<List<RoleInvitation>> getAllInvitationsForCountry(String countryId) async {
+  /// Get all invitations for a specific country using the authority-based function
+  static Future<List<RoleInvitation>> getAllInvitationsForCountry(
+      String countryId) async {
     try {
-      debugPrint('🔍 Fetching all invitations for country using new function: $countryId');
+      debugPrint('🔍 Fetching all invitations for country: $countryId');
 
+      // First, get the authority ID for this country
+      final authorityId = await _getAuthorityIdForCountry(countryId);
+      if (authorityId == null) {
+        debugPrint('⚠️ No active authority found for country: $countryId');
+        return [];
+      }
+
+      debugPrint('✅ Found authority: $authorityId for country: $countryId');
+
+      // Now get invitations for the authority
       final response = await _supabase.rpc(
-        AppConstants.getAllInvitationsForCountryFunction,
-        params: {'target_country_id': countryId},
+        AppConstants.getAllInvitationsForAuthorityFunction,
+        params: {'target_authority_id': authorityId},
       );
 
-      debugPrint('✅ Fetched ${response.length} invitations for country');
+      debugPrint('✅ Fetched ${response.length} invitations for authority');
 
       // Convert to RoleInvitation objects
       return response.map<RoleInvitation>((json) {
         // Map the database function results to RoleInvitation format
         final mapped = {
-          AppConstants.fieldId: json['id'],
+          AppConstants.fieldId: json['invitation_id'],
           AppConstants.fieldRoleInvitationEmail: json['email'],
           AppConstants.fieldRoleInvitationStatus: json['status'],
           AppConstants.fieldRoleInvitationInvitedAt: json['invited_at'],
           AppConstants.fieldRoleInvitationRespondedAt: json['responded_at'],
-          // Now using the actual fields from the updated database function
+          // Required fields for RoleInvitation model
           AppConstants.fieldRoleInvitationRoleId: json['role_id'],
-          AppConstants.fieldRoleInvitationCountryId: json['country_id'],
-          AppConstants.fieldRoleInvitationInvitedBy: json['invited_by_profile_id'],
-          // Optional fields
+          AppConstants.fieldRoleInvitationCountryId: countryId,
+          AppConstants.fieldRoleInvitationInvitedBy:
+              json['invited_by_profile_id'],
+          // Optional fields from the authority function
           AppConstants.fieldRoleName: json['role_name'],
-          AppConstants.fieldRoleDisplayName: json['role_name'], // Use role_name as display name
+          AppConstants.fieldRoleDisplayName:
+              json['role_display_name'] ?? json['role_name'],
           AppConstants.fieldRoleDescription: json['role_description'],
-          'inviter_name': json['invited_by_name'],
-          'inviter_email': json['invited_by_email'],
+          'inviter_name': json['inviter_name'],
+          'inviter_email': json['inviter_email'],
+          'authority_name': json['authority_name'],
+          'country_name': json['country_name'],
           // Add required fields for RoleInvitation model
           AppConstants.fieldCreatedAt: json['invited_at'],
-          AppConstants.fieldUpdatedAt: json['responded_at'] ?? json['invited_at'],
+          AppConstants.fieldUpdatedAt:
+              json['responded_at'] ?? json['invited_at'],
         };
 
         return RoleInvitation.fromJson(mapped);
@@ -75,8 +91,36 @@ class InvitationService {
     }
   }
 
+  /// Get authority ID for a specific country (bridge method for authority migration)
+  /// This method finds the active authority for a given country
+  static Future<String?> _getAuthorityIdForCountry(String countryId) async {
+    try {
+      debugPrint('🔍 Finding authority for country: $countryId');
+
+      final authorityResponse = await _supabase
+          .from(AppConstants.tableAuthorities)
+          .select(AppConstants.fieldId)
+          .eq(AppConstants.fieldAuthorityCountryId, countryId)
+          .eq(AppConstants.fieldAuthorityIsActive, true)
+          .maybeSingle();
+
+      if (authorityResponse == null) {
+        debugPrint('⚠️ No active authority found for country: $countryId');
+        return null;
+      }
+
+      final authorityId = authorityResponse[AppConstants.fieldId] as String;
+      debugPrint('✅ Found authority: $authorityId for country: $countryId');
+      return authorityId;
+    } catch (e) {
+      debugPrint('❌ Error finding authority for country $countryId: $e');
+      rethrow;
+    }
+  }
+
   /// Get invitations for a specific country (legacy method)
-  static Future<List<RoleInvitation>> getInvitationsForCountry(String countryId) async {
+  static Future<List<RoleInvitation>> getInvitationsForCountry(
+      String countryId) async {
     try {
       debugPrint('🔍 Fetching invitations for country: $countryId');
 
@@ -279,35 +323,31 @@ class InvitationService {
       return (response as List).map((json) {
         // Map function response to RoleInvitation format
         final mapped = {
-          AppConstants.fieldId: json[AppConstants.dbFieldId],
-          AppConstants.fieldRoleInvitationEmail:
-              json[AppConstants.dbFieldEmail] ?? '',
+          AppConstants.fieldId: json['id'],
+          AppConstants.fieldRoleInvitationEmail: json['email'] ?? '',
           AppConstants.fieldRoleInvitationRoleId:
               '', // Not provided by function
-          AppConstants.fieldRoleInvitationCountryId:
+          AppConstants.fieldRoleInvitationAuthorityId:
               '', // Not provided by function
           AppConstants.fieldRoleInvitationInvitedBy:
               '', // Not provided by function
           AppConstants.fieldRoleInvitationInvitedAt:
-              json[AppConstants.dbFieldInvitedAt] ??
-                  DateTime.now().toIso8601String(),
+              json['invited_at'] ?? DateTime.now().toIso8601String(),
           AppConstants.fieldRoleInvitationStatus:
               AppConstants.invitationStatusPending,
           AppConstants.fieldRoleInvitationRespondedAt: null,
-          AppConstants.fieldCreatedAt: json[AppConstants.dbFieldInvitedAt] ??
-              DateTime.now().toIso8601String(),
-          AppConstants.fieldUpdatedAt: json[AppConstants.dbFieldInvitedAt] ??
-              DateTime.now().toIso8601String(),
-          'role_name': json[AppConstants.dbFieldRoleName] ?? '',
+          AppConstants.fieldCreatedAt:
+              json['invited_at'] ?? DateTime.now().toIso8601String(),
+          AppConstants.fieldUpdatedAt:
+              json['invited_at'] ?? DateTime.now().toIso8601String(),
+          AppConstants.fieldRoleName: json['role_name'] ?? '',
           AppConstants.fieldRoleDisplayName:
-              json[AppConstants.dbFieldRoleName] ??
-                  '', // Use role_name as display name
-          AppConstants.fieldRoleDescription:
-              json[AppConstants.dbFieldRoleDescription] ?? '',
-          'country_name':
-              json[AppConstants.dbFieldCountryName] ?? '',
-          AppConstants.fieldCountryCode:
-              json[AppConstants.dbFieldCountryCode] ?? '',
+              json['role_name'] ?? '', // Use role_name as display name
+          AppConstants.fieldRoleDescription: json['role_description'] ?? '',
+          'authority_name': json['authority_name'] ?? '',
+          AppConstants.fieldCountryName: json['country_name'] ?? '',
+          AppConstants.fieldCountryCode: json['country_code'] ?? '',
+          'inviter_name': json['inviter_name'] ?? '',
         };
 
         return RoleInvitation.fromJson(mapped);

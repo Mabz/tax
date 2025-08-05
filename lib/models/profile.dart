@@ -61,6 +61,17 @@ class Profile {
     );
   }
 
+  /// Check if profile is complete (has required fields)
+  bool get isComplete {
+    return fullName != null &&
+        fullName!.trim().isNotEmpty &&
+        email != null &&
+        email!.trim().isNotEmpty;
+  }
+
+  /// Check if profile needs setup (missing critical information)
+  bool get needsSetup => !isComplete;
+
   @override
   String toString() {
     return 'Profile(id: $id, fullName: $fullName, email: $email)';

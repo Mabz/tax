@@ -10,7 +10,7 @@ class PassTemplateService {
 
   /// Creates a new pass template
   static Future<void> createPassTemplate({
-    required String countryId,
+    required String authorityId,
     required String creatorProfileId,
     required String vehicleTypeId,
     required String description,
@@ -22,7 +22,7 @@ class PassTemplateService {
   }) async {
     try {
       await _supabase.rpc('create_pass_template', params: {
-        'target_country_id': countryId,
+        'target_authority_id': authorityId,
         'creator_profile_id': creatorProfileId,
         'vehicle_type_id': vehicleTypeId,
         'description': description,
@@ -73,13 +73,13 @@ class PassTemplateService {
     }
   }
 
-  /// Gets pass templates for a country (with JOIN data)
-  static Future<List<PassTemplate>> getPassTemplatesForCountry(
-      String countryId) async {
+  /// Gets pass templates for an authority (with JOIN data)
+  static Future<List<PassTemplate>> getPassTemplatesForAuthority(
+      String authorityId) async {
     try {
       final response =
-          await _supabase.rpc('get_pass_templates_for_country', params: {
-        'target_country_id': countryId,
+          await _supabase.rpc('get_pass_templates_for_authority', params: {
+        'target_authority_id': authorityId,
       });
 
       if (response == null) return [];
@@ -87,7 +87,7 @@ class PassTemplateService {
       return (response as List)
           .map((item) => PassTemplate.fromJson({
                 'id': item['id'],
-                'country_id': countryId,
+                'authority_id': authorityId,
                 'border_id': null, // Will be handled by border_name
                 'created_by_profile_id': '', // Not returned by function
                 'vehicle_type_id': '', // Will be handled by vehicle_type
@@ -110,13 +110,13 @@ class PassTemplateService {
     }
   }
 
-  /// Gets vehicle tax rates for a country to use as templates
-  static Future<List<VehicleTaxRate>> getTaxRatesForCountry(
-      String countryId) async {
+  /// Gets vehicle tax rates for an authority to use as templates
+  static Future<List<VehicleTaxRate>> getTaxRatesForAuthority(
+      String authorityId) async {
     try {
       final response =
-          await _supabase.rpc('get_vehicle_tax_rates_for_country', params: {
-        'target_country_id': countryId,
+          await _supabase.rpc('get_vehicle_tax_rates_for_authority', params: {
+        'target_authority_id': authorityId,
       });
 
       if (response == null) return [];
@@ -144,12 +144,13 @@ class PassTemplateService {
     }
   }
 
-  /// Gets borders for a country
-  static Future<List<border_model.Border>> getBordersForCountry(
-      String countryId) async {
+  /// Gets borders for an authority
+  static Future<List<border_model.Border>> getBordersForAuthority(
+      String authorityId) async {
     try {
-      final response = await _supabase.rpc('get_borders_for_country', params: {
-        'target_country_id': countryId,
+      final response =
+          await _supabase.rpc('get_borders_for_authority', params: {
+        'target_authority_id': authorityId,
       });
 
       if (response == null) return [];
@@ -158,7 +159,7 @@ class PassTemplateService {
         return border_model.Border.fromJson({
           'border_id': item['border_id'],
           'border_name': item['border_name'],
-          'country_id': countryId,
+          'authority_id': authorityId,
           'border_type_id': '', // Not needed for this use case
           'border_type': item['border_type'] ?? '',
           'is_active': true,
@@ -183,4 +184,7 @@ class PassTemplateService {
       throw Exception('Failed to get currencies: $e');
     }
   }
+
+  // Note: Bridge methods removed - now using authority-based approach directly
+  // All screens should get authority ID first, then use authority-based methods
 }

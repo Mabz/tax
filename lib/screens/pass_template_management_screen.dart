@@ -31,6 +31,7 @@ class _PassTemplateManagementScreenState
   List<Currency> _currencies = [];
   bool _isLoading = true;
   String? _error;
+  String? _authorityId;
 
   @override
   void initState() {
@@ -69,18 +70,20 @@ class _PassTemplateManagementScreenState
         _error = null;
       });
 
-      final countryId = widget.country['id'] as String;
+      // Get the authority ID directly from the country object (passed from home screen)
+      final authorityId = widget.country['authority_id'] as String;
 
-      // Load all required data
+      // Load all required data using authority-based methods
       final results = await Future.wait([
-        PassTemplateService.getPassTemplatesForCountry(countryId),
-        PassTemplateService.getTaxRatesForCountry(countryId),
+        PassTemplateService.getPassTemplatesForAuthority(authorityId),
+        PassTemplateService.getTaxRatesForAuthority(authorityId),
         PassTemplateService.getVehicleTypes(),
-        PassTemplateService.getBordersForCountry(countryId),
+        PassTemplateService.getBordersForAuthority(authorityId),
         PassTemplateService.getActiveCurrencies(),
       ]);
 
       setState(() {
+        _authorityId = authorityId;
         _passTemplates = results[0] as List<PassTemplate>;
         _taxRates = results[1] as List<VehicleTaxRate>;
         _vehicleTypes = results[2] as List<VehicleType>;
@@ -101,7 +104,7 @@ class _PassTemplateManagementScreenState
       context: context,
       builder: (context) => _PassTemplateDialog(
         template: template,
-        countryId: widget.country['id'] as String,
+        authorityId: _authorityId!,
         countryName: widget.country['name'] as String,
         taxRates: _taxRates,
         vehicleTypes: _vehicleTypes,
@@ -364,7 +367,7 @@ class _PassTemplateManagementScreenState
 
 class _PassTemplateDialog extends StatefulWidget {
   final PassTemplate? template;
-  final String countryId;
+  final String authorityId;
   final String countryName;
   final List<VehicleTaxRate> taxRates;
   final List<VehicleType> vehicleTypes;
@@ -374,7 +377,7 @@ class _PassTemplateDialog extends StatefulWidget {
 
   const _PassTemplateDialog({
     this.template,
-    required this.countryId,
+    required this.authorityId,
     required this.countryName,
     required this.taxRates,
     required this.vehicleTypes,
@@ -548,7 +551,7 @@ class _PassTemplateDialogState extends State<_PassTemplateDialog> {
         // Create new template
         final currentUser = Supabase.instance.client.auth.currentUser!;
         await PassTemplateService.createPassTemplate(
-          countryId: widget.countryId,
+          authorityId: widget.authorityId,
           creatorProfileId: currentUser.id,
           vehicleTypeId: _selectedVehicleType!.id,
           description: _descriptionController.text.trim(),

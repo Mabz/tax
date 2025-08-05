@@ -5,7 +5,7 @@ class RoleInvitation {
   final String id;
   final String email;
   final String roleId;
-  final String countryId;
+  final String authorityId;
   final String invitedByProfileId;
   final DateTime invitedAt;
   final String status;
@@ -17,6 +17,7 @@ class RoleInvitation {
   final String? roleName;
   final String? roleDisplayName;
   final String? roleDescription;
+  final String? authorityName;
   final String? countryName;
   final String? countryCode;
   final String? inviterName;
@@ -25,7 +26,7 @@ class RoleInvitation {
     required this.id,
     required this.email,
     required this.roleId,
-    required this.countryId,
+    required this.authorityId,
     required this.invitedByProfileId,
     required this.invitedAt,
     required this.status,
@@ -35,6 +36,7 @@ class RoleInvitation {
     this.roleName,
     this.roleDisplayName,
     this.roleDescription,
+    this.authorityName,
     this.countryName,
     this.countryCode,
     this.inviterName,
@@ -46,18 +48,22 @@ class RoleInvitation {
       id: json[AppConstants.fieldId] as String,
       email: json[AppConstants.fieldRoleInvitationEmail] as String,
       roleId: json[AppConstants.fieldRoleInvitationRoleId] as String,
-      countryId: json[AppConstants.fieldRoleInvitationCountryId] as String,
-      invitedByProfileId: json[AppConstants.fieldRoleInvitationInvitedBy] as String,
-      invitedAt: DateTime.parse(json[AppConstants.fieldRoleInvitationInvitedAt] as String),
+      authorityId: json[AppConstants.fieldRoleInvitationAuthorityId] as String,
+      invitedByProfileId:
+          json[AppConstants.fieldRoleInvitationInvitedBy] as String,
+      invitedAt: DateTime.parse(
+          json[AppConstants.fieldRoleInvitationInvitedAt] as String),
       status: json[AppConstants.fieldRoleInvitationStatus] as String,
       respondedAt: json[AppConstants.fieldRoleInvitationRespondedAt] != null
-          ? DateTime.parse(json[AppConstants.fieldRoleInvitationRespondedAt] as String)
+          ? DateTime.parse(
+              json[AppConstants.fieldRoleInvitationRespondedAt] as String)
           : null,
       createdAt: DateTime.parse(json[AppConstants.fieldCreatedAt] as String),
       updatedAt: DateTime.parse(json[AppConstants.fieldUpdatedAt] as String),
       roleName: json[AppConstants.fieldRoleName] as String?,
       roleDisplayName: json[AppConstants.fieldRoleDisplayName] as String?,
       roleDescription: json[AppConstants.fieldRoleDescription] as String?,
+      authorityName: json['authority_name'] as String?,
       countryName: json[AppConstants.fieldCountryName] as String?,
       countryCode: json[AppConstants.fieldCountryCode] as String?,
       inviterName: json['inviter_name'] as String?,
@@ -70,16 +76,20 @@ class RoleInvitation {
       AppConstants.fieldId: id,
       AppConstants.fieldRoleInvitationEmail: email,
       AppConstants.fieldRoleInvitationRoleId: roleId,
-      AppConstants.fieldRoleInvitationCountryId: countryId,
+      AppConstants.fieldRoleInvitationAuthorityId: authorityId,
       AppConstants.fieldRoleInvitationInvitedBy: invitedByProfileId,
       AppConstants.fieldRoleInvitationInvitedAt: invitedAt.toIso8601String(),
       AppConstants.fieldRoleInvitationStatus: status,
-      AppConstants.fieldRoleInvitationRespondedAt: respondedAt?.toIso8601String(),
+      AppConstants.fieldRoleInvitationRespondedAt:
+          respondedAt?.toIso8601String(),
       AppConstants.fieldCreatedAt: createdAt.toIso8601String(),
       AppConstants.fieldUpdatedAt: updatedAt.toIso8601String(),
       if (roleName != null) AppConstants.fieldRoleName: roleName,
-      if (roleDisplayName != null) AppConstants.fieldRoleDisplayName: roleDisplayName,
-      if (roleDescription != null) AppConstants.fieldRoleDescription: roleDescription,
+      if (roleDisplayName != null)
+        AppConstants.fieldRoleDisplayName: roleDisplayName,
+      if (roleDescription != null)
+        AppConstants.fieldRoleDescription: roleDescription,
+      if (authorityName != null) 'authority_name': authorityName,
       if (countryName != null) AppConstants.fieldCountryName: countryName,
       if (countryCode != null) AppConstants.fieldCountryCode: countryCode,
       if (inviterName != null) 'inviter_name': inviterName,
@@ -91,7 +101,7 @@ class RoleInvitation {
     String? id,
     String? email,
     String? roleId,
-    String? countryId,
+    String? authorityId,
     String? invitedByProfileId,
     DateTime? invitedAt,
     String? status,
@@ -101,6 +111,7 @@ class RoleInvitation {
     String? roleName,
     String? roleDisplayName,
     String? roleDescription,
+    String? authorityName,
     String? countryName,
     String? countryCode,
     String? inviterName,
@@ -109,7 +120,7 @@ class RoleInvitation {
       id: id ?? this.id,
       email: email ?? this.email,
       roleId: roleId ?? this.roleId,
-      countryId: countryId ?? this.countryId,
+      authorityId: authorityId ?? this.authorityId,
       invitedByProfileId: invitedByProfileId ?? this.invitedByProfileId,
       invitedAt: invitedAt ?? this.invitedAt,
       status: status ?? this.status,
@@ -119,6 +130,7 @@ class RoleInvitation {
       roleName: roleName ?? this.roleName,
       roleDisplayName: roleDisplayName ?? this.roleDisplayName,
       roleDescription: roleDescription ?? this.roleDescription,
+      authorityName: authorityName ?? this.authorityName,
       countryName: countryName ?? this.countryName,
       countryCode: countryCode ?? this.countryCode,
       inviterName: inviterName ?? this.inviterName,
@@ -137,13 +149,19 @@ class RoleInvitation {
   /// Get formatted role display name
   String get formattedRoleName => roleDisplayName ?? roleName ?? 'Unknown Role';
 
-  /// Get formatted country display
-  String get formattedCountry {
+  /// Get formatted authority display
+  String get formattedAuthority {
+    if (authorityName != null) {
+      return authorityName!;
+    }
     if (countryName != null && countryCode != null) {
       return '$countryName ($countryCode)';
     }
-    return countryName ?? countryCode ?? 'Unknown Country';
+    return countryName ?? countryCode ?? 'Unknown Authority';
   }
+
+  /// Get formatted country display (legacy)
+  String get formattedCountry => formattedAuthority;
 
   /// Get status display text
   String get statusDisplay {
@@ -177,7 +195,7 @@ class RoleInvitation {
 
   @override
   String toString() {
-    return 'RoleInvitation(id: $id, email: $email, role: $roleName, country: $countryCode, status: $status)';
+    return 'RoleInvitation(id: $id, email: $email, role: $roleName, authority: $authorityName, status: $status)';
   }
 
   @override

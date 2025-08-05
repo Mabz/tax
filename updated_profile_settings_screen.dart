@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_supabase_auth/models/identity_documents.dart';
 import 'package:flutter_supabase_auth/models/payment_details.dart';
 import 'package:flutter_supabase_auth/services/profile_management_service.dart';
+import 'package:flutter_supabase_auth/enums/pass_verification_method.dart';
 
 class ProfileSettingsScreen extends StatefulWidget {
   const ProfileSettingsScreen({super.key});
@@ -66,7 +67,11 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
         setState(() {
           _profileData = profileData;
           _identityDocuments = identityDocs;
-          _countries = countries;
+          // Filter out GLOBAL country code from country selection
+          _countries = countries
+              .where((country) =>
+                  country['country_code']?.toString().toUpperCase() != 'GLOBAL')
+              .toList();
 
           // Populate controllers
           _fullNameController.text =
@@ -184,7 +189,10 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
 
   Future<void> _updatePassConfirmationPreference(bool value) async {
     try {
-      await ProfileManagementService.updatePassConfirmationPreference(value);
+      await ProfileManagementService.updatePassConfirmationPreference(
+        value ? PassVerificationMethod.staticPin : PassVerificationMethod.none,
+        null, // staticPin is not collected by this UI
+      );
       setState(() => _requirePassConfirmation = value);
 
       if (mounted) {

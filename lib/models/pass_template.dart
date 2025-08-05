@@ -1,5 +1,6 @@
 class PassTemplate {
   final String id;
+  final String authorityId;
   final String countryId;
   final String? borderId;
   final String createdByProfileId;
@@ -12,13 +13,15 @@ class PassTemplate {
   final bool isActive;
   final DateTime createdAt;
   final DateTime updatedAt;
-  
+
   // Additional fields from JOIN queries
   final String? borderName;
   final String? vehicleType;
+  final String? authorityName;
 
   const PassTemplate({
     required this.id,
+    required this.authorityId,
     required this.countryId,
     this.borderId,
     required this.createdByProfileId,
@@ -33,11 +36,13 @@ class PassTemplate {
     required this.updatedAt,
     this.borderName,
     this.vehicleType,
+    this.authorityName,
   });
 
   factory PassTemplate.fromJson(Map<String, dynamic> json) {
     return PassTemplate(
       id: json['id']?.toString() ?? '',
+      authorityId: json['authority_id']?.toString() ?? '',
       countryId: json['country_id']?.toString() ?? '',
       borderId: json['border_id']?.toString(),
       createdByProfileId: json['created_by_profile_id']?.toString() ?? '',
@@ -48,16 +53,20 @@ class PassTemplate {
       taxAmount: (json['tax_amount'] as num?)?.toDouble() ?? 0.0,
       currencyCode: json['currency_code']?.toString() ?? '',
       isActive: json['is_active'] == true,
-      createdAt: DateTime.parse(json['created_at']?.toString() ?? DateTime.now().toIso8601String()),
-      updatedAt: DateTime.parse(json['updated_at']?.toString() ?? DateTime.now().toIso8601String()),
+      createdAt: DateTime.parse(
+          json['created_at']?.toString() ?? DateTime.now().toIso8601String()),
+      updatedAt: DateTime.parse(
+          json['updated_at']?.toString() ?? DateTime.now().toIso8601String()),
       borderName: json['border_name']?.toString(),
       vehicleType: json['vehicle_type']?.toString(),
+      authorityName: json['authority_name']?.toString(),
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
       'id': id,
+      'authority_id': authorityId,
       'country_id': countryId,
       'border_id': borderId,
       'created_by_profile_id': createdByProfileId,
@@ -72,11 +81,13 @@ class PassTemplate {
       'updated_at': updatedAt.toIso8601String(),
       'border_name': borderName,
       'vehicle_type': vehicleType,
+      'authority_name': authorityName,
     };
   }
 
   PassTemplate copyWith({
     String? id,
+    String? authorityId,
     String? countryId,
     String? borderId,
     String? createdByProfileId,
@@ -91,9 +102,11 @@ class PassTemplate {
     DateTime? updatedAt,
     String? borderName,
     String? vehicleType,
+    String? authorityName,
   }) {
     return PassTemplate(
       id: id ?? this.id,
+      authorityId: authorityId ?? this.authorityId,
       countryId: countryId ?? this.countryId,
       borderId: borderId ?? this.borderId,
       createdByProfileId: createdByProfileId ?? this.createdByProfileId,
@@ -108,6 +121,7 @@ class PassTemplate {
       updatedAt: updatedAt ?? this.updatedAt,
       borderName: borderName ?? this.borderName,
       vehicleType: vehicleType ?? this.vehicleType,
+      authorityName: authorityName ?? this.authorityName,
     );
   }
 

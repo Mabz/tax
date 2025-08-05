@@ -93,9 +93,10 @@ class BorderOfficialService {
   static Future<List<border_model.Border>> getBordersForCountry(
       String countryId) async {
     try {
+      // Query borders through authorities table for authority-centric model
       final response = await _supabase.from('borders').select('''
             id,
-            country_id,
+            authority_id,
             name,
             border_type_id,
             border_types(label),
@@ -104,8 +105,11 @@ class BorderOfficialService {
             longitude,
             description,
             created_at,
-            updated_at
-          ''').eq('country_id', countryId).eq('is_active', true).order('name');
+            updated_at,
+            authorities!inner(country_id)
+          ''').eq('authorities.country_id', countryId)
+            .eq('is_active', true)
+            .order('name');
 
       return (response as List)
           .map((item) => border_model.Border.fromJson(item))
@@ -129,10 +133,11 @@ class BorderOfficialService {
             profile_roles!inner(
               is_active,
               expires_at,
-              roles!inner(name)
+              roles!inner(name),
+              authorities!inner(country_id)
             )
           ''')
-          .eq('profile_roles.country_id', countryId)
+          .eq('profile_roles.authorities.country_id', countryId)
           .eq('profile_roles.roles.name', 'border_official')
           .eq('profile_roles.is_active', true)
           .order('full_name');

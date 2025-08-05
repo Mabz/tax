@@ -29,6 +29,12 @@ class _CountryUserManagementScreenState
   String? _errorMessage;
   final TextEditingController _searchController = TextEditingController();
 
+  // Helper getter to extract authority information from selectedCountry
+  String get _authorityName {
+    return widget.selectedCountry['authority_name'] as String? ?? 
+           widget.selectedCountry['name'] as String;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -130,7 +136,7 @@ class _CountryUserManagementScreenState
         builder: (context) => _UserRoleManagementDialog(
           profile: profile,
           countryId: widget.selectedCountry['id'] as String,
-          countryName: widget.selectedCountry['name'] as String,
+          authorityName: _authorityName,
           onRoleChanged: _loadUsers,
         ),
       );
@@ -142,7 +148,7 @@ class _CountryUserManagementScreenState
       context: context,
       builder: (context) => _InviteUserDialog(
         countryCode: widget.selectedCountry['country_code'] as String,
-        countryName: widget.selectedCountry['name'] as String,
+        authorityName: _authorityName,
         onInviteSent: () {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Invitation sent successfully')),
@@ -169,7 +175,7 @@ class _CountryUserManagementScreenState
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Users - ${widget.selectedCountry['name']}'),
+        title: const Text('Manage Users'),
         backgroundColor: Colors.orange.shade100,
         foregroundColor: Colors.orange.shade800,
         actions: [
@@ -189,112 +195,127 @@ class _CountryUserManagementScreenState
           ),
         ],
       ),
-      body: SafeArea(
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : _errorMessage != null
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.error_outline,
-                            size: 64,
-                            color: Colors.red.shade400,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            'Access Error',
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleLarge
-                                ?.copyWith(
-                                  color: Colors.red.shade700,
-                                ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            _errorMessage!,
-                            style: Theme.of(context).textTheme.bodyMedium,
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-                      ),
-                    ),
-                  )
-                : _users.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.people_outline,
-                              size: 64,
-                              color: Colors.grey.shade400,
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'No Users Found',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleLarge
-                                  ?.copyWith(
-                                    color: Colors.grey.shade600,
-                                  ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'No users have been assigned roles in this country yet.',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodyMedium
-                                  ?.copyWith(
-                                    color: Colors.grey.shade500,
-                                  ),
-                              textAlign: TextAlign.center,
-                            ),
-                            const SizedBox(height: 24),
-                            ElevatedButton.icon(
-                              onPressed: _showInviteDialog,
-                              icon: const Icon(Icons.person_add),
-                              label: const Text('Invite User'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.orange.shade600,
-                                foregroundColor: Colors.white,
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                    : Column(
-                        children: [
-                          // Country header
-                          Padding(
-                            padding: const EdgeInsets.all(16),
+      body: Column(
+        children: [
+          // Authority header - fixed below app bar
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.orange.shade50,
+              border: Border(
+                bottom: BorderSide(
+                  color: Colors.orange.shade200,
+                  width: 1,
+                ),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _authorityName,
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.orange.shade800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${_users.length} user(s) assigned',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.orange.shade600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Content area - scrollable
+          Expanded(
+            child: SafeArea(
+              top: false, // Don't add safe area at top since we have the header
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _errorMessage != null
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
                             child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Text(
-                                  widget.selectedCountry['name'] as String,
-                                  style: TextStyle(
-                                    fontSize: 24,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.orange.shade800,
-                                  ),
+                                Icon(
+                                  Icons.error_outline,
+                                  size: 64,
+                                  color: Colors.red.shade400,
                                 ),
-                                const SizedBox(height: 4),
+                                const SizedBox(height: 16),
                                 Text(
-                                  '${_users.length} user(s) assigned',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.orange.shade600,
-                                  ),
+                                  'Access Error',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleLarge
+                                      ?.copyWith(
+                                        color: Colors.red.shade700,
+                                      ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  _errorMessage!,
+                                  style: Theme.of(context).textTheme.bodyMedium,
+                                  textAlign: TextAlign.center,
                                 ),
                               ],
                             ),
                           ),
+                        )
+                      : _users.isEmpty
+                          ? Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.people_outline,
+                                    size: 64,
+                                    color: Colors.grey.shade400,
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    'No Users Found',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleLarge
+                                        ?.copyWith(
+                                          color: Colors.grey.shade600,
+                                        ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'No users have been assigned roles in this authority yet.',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodyMedium
+                                        ?.copyWith(
+                                          color: Colors.grey.shade500,
+                                        ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                  const SizedBox(height: 24),
+                                  ElevatedButton.icon(
+                                    onPressed: _showInviteDialog,
+                                    icon: const Icon(Icons.person_add),
+                                    label: const Text('Invite User'),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.orange.shade600,
+                                      foregroundColor: Colors.white,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          : Column(
+                              children: [
                           // Search bar
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -453,9 +474,12 @@ class _CountryUserManagementScreenState
                                       },
                                     ),
                                   ),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
+            ),
+          ),
+        ],
       ),
       floatingActionButton: _users.isNotEmpty
           ? FloatingActionButton(
@@ -566,13 +590,13 @@ class _CountryUserManagementScreenState
 class _UserRoleManagementDialog extends StatefulWidget {
   final Profile profile;
   final String countryId;
-  final String countryName;
+  final String authorityName;
   final VoidCallback onRoleChanged;
 
   const _UserRoleManagementDialog({
     required this.profile,
     required this.countryId,
-    required this.countryName,
+    required this.authorityName,
     required this.onRoleChanged,
   });
 
@@ -738,7 +762,7 @@ class _UserRoleManagementDialogState extends State<_UserRoleManagementDialog> {
                           ),
                         ),
                         Text(
-                          'Roles in ${widget.countryName}',
+                          'Roles in ${widget.authorityName}',
                           style: TextStyle(
                             fontSize: 14,
                             color: Colors.grey.shade600,
@@ -784,7 +808,7 @@ class _UserRoleManagementDialogState extends State<_UserRoleManagementDialog> {
                               ),
                               const SizedBox(height: 8),
                               Text(
-                                'This user has no roles in ${widget.countryName}',
+                                'This user has no roles in ${widget.authorityName}',
                                 style: TextStyle(color: Colors.grey.shade500),
                                 textAlign: TextAlign.center,
                               ),
@@ -1054,12 +1078,12 @@ class _AssignRoleDialogState extends State<_AssignRoleDialog> {
 /// Dialog for inviting a new user to the country
 class _InviteUserDialog extends StatefulWidget {
   final String countryCode;
-  final String countryName;
+  final String authorityName;
   final VoidCallback onInviteSent;
 
   const _InviteUserDialog({
     required this.countryCode,
-    required this.countryName,
+    required this.authorityName,
     required this.onInviteSent,
   });
 
@@ -1121,7 +1145,7 @@ class _InviteUserDialogState extends State<_InviteUserDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text('Invite User to ${widget.countryName}'),
+      title: Text('Invite User to ${widget.authorityName}'),
       content: Form(
         key: _formKey,
         child: Column(

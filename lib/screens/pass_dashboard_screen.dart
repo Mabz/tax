@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../models/purchased_pass.dart';
 import '../models/pass_template.dart';
-import '../models/country.dart';
 import '../models/vehicle.dart';
 import '../services/pass_service.dart';
 import '../services/vehicle_service.dart';
@@ -151,6 +150,22 @@ class _PassDashboardScreenState extends State<PassDashboardScreen>
             _buildPassesTab(),
           ],
         ),
+      ),
+      floatingActionButton: AnimatedBuilder(
+        animation: _tabController,
+        builder: (context, child) {
+          // Only show FAB on the "My Passes" tab (index 1)
+          if (_tabController.index == 1) {
+            return FloatingActionButton.extended(
+              onPressed: _showPurchaseDialog,
+              backgroundColor: Colors.blue.shade600,
+              foregroundColor: Colors.white,
+              icon: const Icon(Icons.add),
+              label: const Text('Purchase Pass'),
+            );
+          }
+          return const SizedBox.shrink();
+        },
       ),
     );
   }
@@ -377,7 +392,7 @@ class _PassDashboardScreenState extends State<PassDashboardScreen>
           ),
           const SizedBox(height: 24),
           ElevatedButton.icon(
-            onPressed: () => _tabController.animateTo(0),
+            onPressed: _showPurchaseDialog,
             icon: const Icon(Icons.add_shopping_cart),
             label: const Text('Purchase Pass'),
             style: ElevatedButton.styleFrom(
@@ -800,11 +815,11 @@ class PassPurchaseDialog extends StatefulWidget {
 
 class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
   int _currentStep = 0;
-  List<Country> _countries = [];
+  List<Map<String, dynamic>> _countries = [];
   List<PassTemplate> _passTemplates = [];
   List<Vehicle> _vehicles = [];
 
-  Country? _selectedCountry;
+  Map<String, dynamic>? _selectedCountry;
   PassTemplate? _selectedPassTemplate;
   Vehicle? _selectedVehicle;
 
@@ -868,7 +883,7 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
     try {
       setState(() => _isLoadingTemplates = true);
       final templates =
-          await PassService.getPassTemplatesForCountry(_selectedCountry!.id);
+          await PassService.getPassTemplatesForCountry(_selectedCountry!['id']);
       setState(() {
         _passTemplates = templates;
         _selectedPassTemplate = null;
@@ -1037,21 +1052,77 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
       children: [
         const Text('Choose the country for your border pass:'),
         const SizedBox(height: 16),
-        ...(_countries
-            .map((country) => RadioListTile<Country>(
-                  title: Text(country.name),
-                  subtitle: Text(country.countryCode),
-                  value: country,
-                  groupValue: _selectedCountry,
-                  onChanged: (value) {
-                    setState(() {
-                      _selectedCountry = value;
-                      _selectedPassTemplate = null;
-                      _passTemplates.clear();
-                    });
-                  },
-                ))
-            .toList()),
+        ...(_countries.map((country) {
+          final isSelected = _selectedCountry?['id'] == country['id'];
+          return Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            decoration: BoxDecoration(
+              color: isSelected ? Colors.blue.shade100 : Colors.grey.shade50,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isSelected ? Colors.blue.shade400 : Colors.transparent,
+                width: 2,
+              ),
+            ),
+            child: InkWell(
+              onTap: () {
+                setState(() {
+                  _selectedCountry = country;
+                  _selectedPassTemplate = null;
+                  _passTemplates.clear();
+                });
+              },
+              borderRadius: BorderRadius.circular(12),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            country['name'] ?? 'Unknown Country',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                              color: isSelected
+                                  ? Colors.blue.shade800
+                                  : Colors.grey.shade800,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            country['country_code'] ?? '',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: isSelected
+                                  ? Colors.blue.shade600
+                                  : Colors.grey.shade600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (isSelected)
+                      Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade600,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.check,
+                          color: Colors.white,
+                          size: 16,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }).toList()),
       ],
     );
   }
@@ -1066,13 +1137,14 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
     }
 
     if (_passTemplates.isEmpty) {
-      return Text('No pass templates available for ${_selectedCountry!.name}.');
+      return Text(
+          'No pass templates available for ${_selectedCountry!['name']}.');
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Choose a pass for ${_selectedCountry!.name}:'),
+        Text('Choose a pass for ${_selectedCountry!['name']}:'),
         const SizedBox(height: 16),
         Container(
           width: double.infinity,
@@ -1092,7 +1164,8 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                _selectedPassTemplate!.description,
+                                _selectedPassTemplate!.authorityName ??
+                                    'Unknown Authority',
                                 style: const TextStyle(
                                   fontWeight: FontWeight.w600,
                                   fontSize: 16,
@@ -1332,8 +1405,9 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
           const Text('Purchase Summary:',
               style: TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
-          _buildSummaryRow('Country', _selectedCountry?.name ?? ''),
-          _buildSummaryRow('Pass', _selectedPassTemplate?.description ?? ''),
+          _buildSummaryRow('Country', _selectedCountry?['name'] ?? ''),
+          _buildSummaryRow(
+              'Authority', _selectedPassTemplate?.authorityName ?? ''),
           if (_selectedPassTemplate?.borderName != null)
             _buildSummaryRow('Border', _selectedPassTemplate!.borderName!),
           _buildSummaryRow(
@@ -1460,12 +1534,21 @@ class _PassSelectionDialogState extends State<PassSelectionDialog> {
   final TextEditingController _searchController = TextEditingController();
   PassTemplate? _selectedTemplate;
 
+  // Active filters
+  String? _selectedBorder;
+  String? _selectedVehicleType;
+
+  // Available filter values
+  List<String> _availableBorders = [];
+  List<String> _availableVehicleTypes = [];
+
   @override
   void initState() {
     super.initState();
     _filteredTemplates = widget.passTemplates;
     _selectedTemplate = widget.selectedTemplate;
     _searchController.addListener(_filterTemplates);
+    _extractFilterValues();
   }
 
   @override
@@ -1474,15 +1557,91 @@ class _PassSelectionDialogState extends State<PassSelectionDialog> {
     super.dispose();
   }
 
+  void _extractFilterValues() {
+    // Extract unique borders and vehicle types from templates
+    final borders = widget.passTemplates
+        .where((t) => t.borderName != null)
+        .map((t) => t.borderName!)
+        .toSet()
+        .toList();
+    borders.sort();
+
+    final vehicleTypes = widget.passTemplates
+        .where((t) => t.vehicleType != null)
+        .map((t) => t.vehicleType!)
+        .toSet()
+        .toList();
+    vehicleTypes.sort();
+
+    setState(() {
+      _availableBorders = borders;
+      _availableVehicleTypes = vehicleTypes;
+    });
+  }
+
   void _filterTemplates() {
     final query = _searchController.text.toLowerCase();
     setState(() {
       _filteredTemplates = widget.passTemplates.where((template) {
-        return template.description.toLowerCase().contains(query) ||
-            (template.borderName?.toLowerCase().contains(query) ?? false) ||
-            (template.vehicleType?.toLowerCase().contains(query) ?? false);
+        // Apply border filter
+        if (_selectedBorder != null && template.borderName != _selectedBorder) {
+          return false;
+        }
+
+        // Apply vehicle type filter
+        if (_selectedVehicleType != null &&
+            template.vehicleType != _selectedVehicleType) {
+          return false;
+        }
+
+        // Apply text search
+        if (query.isNotEmpty) {
+          return (template.authorityName?.toLowerCase().contains(query) ??
+                  false) ||
+              (template.borderName?.toLowerCase().contains(query) ?? false) ||
+              (template.vehicleType?.toLowerCase().contains(query) ?? false);
+        }
+
+        return true;
       }).toList();
     });
+  }
+
+  void _addBorderFilter(String border) {
+    setState(() {
+      _selectedBorder = border;
+    });
+    _filterTemplates();
+  }
+
+  void _addVehicleTypeFilter(String vehicleType) {
+    setState(() {
+      _selectedVehicleType = vehicleType;
+    });
+    _filterTemplates();
+  }
+
+  void _removeBorderFilter() {
+    setState(() {
+      _selectedBorder = null;
+    });
+    _filterTemplates();
+  }
+
+  void _removeVehicleTypeFilter() {
+    setState(() {
+      _selectedVehicleType = null;
+    });
+    _filterTemplates();
+  }
+
+  void _clearAllFilters() {
+    setState(() {
+      _selectedBorder = null;
+      _selectedVehicleType = null;
+      _searchController.clear();
+    });
+    _filterTemplates();
   }
 
   @override
@@ -1498,7 +1657,7 @@ class _PassSelectionDialogState extends State<PassSelectionDialog> {
               children: [
                 Expanded(
                   child: Text(
-                    'Select Pass Template',
+                    'Select Pass',
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                           fontWeight: FontWeight.bold,
                         ),
@@ -1511,18 +1670,125 @@ class _PassSelectionDialogState extends State<PassSelectionDialog> {
               ],
             ),
             const SizedBox(height: 16),
-            TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                hintText: 'Search passes...',
-                prefixIcon: const Icon(Icons.search),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
+            // Search with integrated filters
+            Container(
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.grey.shade400),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                children: [
+                  // Active filter chips inside the search box
+                  if (_selectedBorder != null || _selectedVehicleType != null)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+                      child: Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
+                        children: [
+                          if (_selectedBorder != null)
+                            Chip(
+                              label: Text(
+                                'Border: $_selectedBorder',
+                                style: const TextStyle(fontSize: 11),
+                              ),
+                              backgroundColor: Colors.blue.shade100,
+                              deleteIcon: const Icon(Icons.close, size: 14),
+                              onDeleted: _removeBorderFilter,
+                              materialTapTargetSize:
+                                  MaterialTapTargetSize.shrinkWrap,
+                              visualDensity: VisualDensity.compact,
+                            ),
+                          if (_selectedVehicleType != null)
+                            Chip(
+                              label: Text(
+                                'Vehicle: $_selectedVehicleType',
+                                style: const TextStyle(fontSize: 11),
+                              ),
+                              backgroundColor: Colors.green.shade100,
+                              deleteIcon: const Icon(Icons.close, size: 14),
+                              onDeleted: _removeVehicleTypeFilter,
+                              materialTapTargetSize:
+                                  MaterialTapTargetSize.shrinkWrap,
+                              visualDensity: VisualDensity.compact,
+                            ),
+                        ],
+                      ),
+                    ),
+                  // Search text field
+                  TextField(
+                    controller: _searchController,
+                    decoration: InputDecoration(
+                      hintText: 'Search passes...',
+                      prefixIcon: const Icon(Icons.search),
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      suffixIcon: (_searchController.text.isNotEmpty ||
+                              _selectedBorder != null ||
+                              _selectedVehicleType != null)
+                          ? IconButton(
+                              onPressed: _clearAllFilters,
+                              icon: const Icon(Icons.clear),
+                              tooltip: 'Clear all filters',
+                            )
+                          : PopupMenuButton<String>(
+                              icon: const Icon(Icons.filter_list),
+                              tooltip: 'Add filters',
+                              onSelected: (value) {
+                                if (value.startsWith('border:')) {
+                                  _addBorderFilter(value.substring(7));
+                                } else if (value.startsWith('vehicle:')) {
+                                  _addVehicleTypeFilter(value.substring(8));
+                                }
+                              },
+                              itemBuilder: (context) => [
+                                if (_availableBorders.isNotEmpty) ...[
+                                  const PopupMenuItem<String>(
+                                    enabled: false,
+                                    child: Text(
+                                      'Filter by Border:',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                  ..._availableBorders
+                                      .map((border) => PopupMenuItem<String>(
+                                            value: 'border:$border',
+                                            enabled: _selectedBorder != border,
+                                            child: Text(border),
+                                          )),
+                                  const PopupMenuDivider(),
+                                ],
+                                if (_availableVehicleTypes.isNotEmpty) ...[
+                                  const PopupMenuItem<String>(
+                                    enabled: false,
+                                    child: Text(
+                                      'Filter by Vehicle Type:',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                  ..._availableVehicleTypes.map(
+                                      (vehicleType) => PopupMenuItem<String>(
+                                            value: 'vehicle:$vehicleType',
+                                            enabled: _selectedVehicleType !=
+                                                vehicleType,
+                                            child: Text(vehicleType),
+                                          )),
+                                ],
+                              ],
+                            ),
+                    ),
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 16),
@@ -1540,14 +1806,24 @@ class _PassSelectionDialogState extends State<PassSelectionDialog> {
                         final template = _filteredTemplates[index];
                         final isSelected = _selectedTemplate?.id == template.id;
 
-                        return Card(
+                        return Container(
                           margin: const EdgeInsets.only(bottom: 8),
-                          elevation: isSelected ? 4 : 1,
-                          color: isSelected ? Colors.blue.shade50 : null,
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? Colors.blue.shade100
+                                : Colors.grey.shade50,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: isSelected
+                                  ? Colors.blue.shade400
+                                  : Colors.transparent,
+                              width: 2,
+                            ),
+                          ),
                           child: InkWell(
                             onTap: () =>
                                 setState(() => _selectedTemplate = template),
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(12),
                             child: Padding(
                               padding: const EdgeInsets.all(16),
                               child: Column(
@@ -1557,22 +1833,31 @@ class _PassSelectionDialogState extends State<PassSelectionDialog> {
                                     children: [
                                       Expanded(
                                         child: Text(
-                                          template.description,
+                                          template.authorityName ??
+                                              'Unknown Authority',
                                           style: TextStyle(
                                             fontWeight: FontWeight.bold,
                                             fontSize: 16,
                                             color: isSelected
                                                 ? Colors.blue.shade800
-                                                : null,
+                                                : Colors.grey.shade800,
                                           ),
                                           overflow: TextOverflow.ellipsis,
-                                          maxLines: 2,
+                                          maxLines: 1,
                                         ),
                                       ),
                                       if (isSelected)
-                                        Icon(
-                                          Icons.check_circle,
-                                          color: Colors.blue.shade600,
+                                        Container(
+                                          padding: const EdgeInsets.all(4),
+                                          decoration: BoxDecoration(
+                                            color: Colors.blue.shade600,
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: const Icon(
+                                            Icons.check,
+                                            color: Colors.white,
+                                            size: 16,
+                                          ),
                                         ),
                                     ],
                                   ),
@@ -1580,13 +1865,23 @@ class _PassSelectionDialogState extends State<PassSelectionDialog> {
                                   if (template.borderName != null)
                                     Text(
                                       'Border: ${template.borderName}',
-                                      style: const TextStyle(fontSize: 14),
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: isSelected
+                                            ? Colors.blue.shade700
+                                            : Colors.grey.shade600,
+                                      ),
                                       overflow: TextOverflow.ellipsis,
                                       maxLines: 1,
                                     ),
                                   Text(
                                     'Vehicle Type: ${template.vehicleType ?? 'Any'}',
-                                    style: const TextStyle(fontSize: 14),
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: isSelected
+                                          ? Colors.blue.shade700
+                                          : Colors.grey.shade600,
+                                    ),
                                     overflow: TextOverflow.ellipsis,
                                     maxLines: 1,
                                   ),
@@ -1599,15 +1894,28 @@ class _PassSelectionDialogState extends State<PassSelectionDialog> {
                                         '${template.entryLimit} entries • ${template.expirationDays} days',
                                         style: TextStyle(
                                           fontSize: 14,
-                                          color: Colors.grey.shade600,
+                                          color: isSelected
+                                              ? Colors.blue.shade600
+                                              : Colors.grey.shade600,
                                         ),
                                       ),
-                                      Text(
-                                        '${template.currencyCode} ${template.taxAmount.toStringAsFixed(2)}',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.green.shade700,
-                                          fontSize: 16,
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 8, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: isSelected
+                                              ? Colors.blue.shade600
+                                              : Colors.green.shade600,
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                        ),
+                                        child: Text(
+                                          '${template.currencyCode} ${template.taxAmount.toStringAsFixed(2)}',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.white,
+                                            fontSize: 14,
+                                          ),
                                         ),
                                       ),
                                     ],

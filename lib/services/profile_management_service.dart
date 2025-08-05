@@ -1,30 +1,16 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/identity_documents.dart';
+import '../enums/pass_verification_method.dart';
 
 class ProfileManagementService {
   static final _supabase = Supabase.instance.client;
 
   /// Get all countries for selection
-  static Future<List<Map<String, dynamic>>>
-      getAllCountriesForSelection() async {
+  static Future<List<Map<String, dynamic>>> getAllCountriesForSelection() async {
     try {
-      print('🌍 Calling get_all_countries_for_selection function...');
       final response = await _supabase.rpc('get_all_countries_for_selection');
-      print('🌍 Raw response: $response');
-      print('🌍 Response type: ${response.runtimeType}');
-
-      if (response == null) {
-        print('🌍 Response is null!');
-        return [];
-      }
-
-      final countries = List<Map<String, dynamic>>.from(response);
-      print('🌍 Parsed countries count: ${countries.length}');
-      print('🌍 First few countries: ${countries.take(3).toList()}');
-
-      return countries;
+      return List<Map<String, dynamic>>.from(response ?? []);
     } catch (e) {
-      print('🌍 Error getting countries: $e');
       throw Exception('Failed to get countries: $e');
     }
   }
@@ -32,16 +18,12 @@ class ProfileManagementService {
   /// Get current user's identity documents
   static Future<IdentityDocuments> getMyIdentityDocuments() async {
     try {
-      print('🆔 Calling get_my_identity_documents...');
-      final response = await _supabase.rpc('get_my_identity_documents');
-      print('🆔 Identity response: $response');
-      print('🆔 Response type: ${response.runtimeType}');
+      final user = _supabase.auth.currentUser;
+      if (user == null) throw Exception('User not authenticated');
       
-      if (response != null && response is List && response.isNotEmpty) {
-        final data = response[0] as Map<String, dynamic>;
-        print('🆔 Processing identity data: $data');
-        
-        // Create IdentityDocuments from the function response
+      final data = await getIdentityDocumentsForProfile(user.id);
+      
+      if (data != null) {
         return IdentityDocuments(
           countryOfOriginId: data['country_of_origin_id']?.toString(),
           countryName: data['country_name']?.toString(),
@@ -54,10 +36,8 @@ class ProfileManagementService {
         );
       }
       
-      print('🆔 No identity documents found, returning empty');
       return IdentityDocuments();
     } catch (e) {
-      print('🆔 Error getting identity documents: $e');
       throw Exception('Failed to get identity documents: $e');
     }
   }
@@ -94,33 +74,28 @@ class ProfileManagementService {
   static Future<Map<String, dynamic>?> getIdentityDocumentsForProfile(
       String profileId) async {
     try {
-      print('🆔 Calling get_identity_documents_for_profile for: $profileId');
       final response =
           await _supabase.rpc('get_identity_documents_for_profile', params: {
         'profile_id': profileId,
       });
-      print('🆔 Profile identity response: $response');
 
       if (response != null && response is List && response.isNotEmpty) {
-        final data = response[0] as Map<String, dynamic>;
-        print('🆔 Processing profile identity data: $data');
-        return data;
+        return response[0] as Map<String, dynamic>;
       }
 
-      print('🆔 No identity documents found for profile: $profileId');
       return null;
     } catch (e) {
-      print('🆔 Error getting identity documents for profile: $e');
       throw Exception('Failed to get identity documents for profile: $e');
     }
   }
 
   /// Update pass confirmation preference
   static Future<void> updatePassConfirmationPreference(
-      bool requireConfirmation) async {
+      PassVerificationMethod method, String? staticPin) async {
     try {
       await _supabase.rpc('update_pass_confirmation_preference', params: {
-        'require_confirmation': requireConfirmation,
+        'pass_confirmation_type': method.name,
+        'static_confirmation_code': staticPin,
       });
     } catch (e) {
       throw Exception('Failed to update pass confirmation preference: $e');
@@ -159,26 +134,6 @@ class ProfileManagementService {
     }
   }
 
-  /// Test database connection and countries function
-  static Future<void> testCountriesFunction() async {
-    try {
-      print('🧪 Testing database connection...');
-
-      // Test direct table query
-      final directQuery = await _supabase
-          .from('countries')
-          .select('id, name, country_code')
-          .limit(5);
-      print('🧪 Direct countries query result: $directQuery');
-
-      // Test RPC function
-      final rpcResult = await _supabase.rpc('get_all_countries_for_selection');
-      print('🧪 RPC function result: $rpcResult');
-    } catch (e) {
-      print('🧪 Test error: $e');
-    }
-  }
-
   /// Get current user's profile data including payment details
   static Future<Map<String, dynamic>?> getMyProfile() async {
     try {
@@ -191,7 +146,7 @@ class ProfileManagementService {
             country_of_origin_id,
             national_id_number,
             passport_number,
-            require_manual_pass_confirmation ,
+            require_manual_pass_confirmation,
             card_holder_name,
             card_last4,
             card_exp_month,

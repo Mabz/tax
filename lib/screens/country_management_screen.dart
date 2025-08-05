@@ -337,8 +337,7 @@ class _CountryManagementScreenState extends State<CountryManagementScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text('Code: ${country.countryCode}'),
-                                  Text(
-                                      'Revenue Service: ${country.revenueServiceName}'),
+                                  Text('Active: ${country.isActive ? 'Yes' : 'No'}'),
                                 ],
                               ),
                               trailing: Row(
@@ -449,7 +448,6 @@ class _CountryFormDialogState extends State<_CountryFormDialog> {
     if (widget.country != null) {
       _nameController.text = widget.country!.name;
       _countryCodeController.text = widget.country!.countryCode;
-      _revenueServiceController.text = widget.country!.revenueServiceName;
       _isActive = widget.country!.isActive;
     }
   }

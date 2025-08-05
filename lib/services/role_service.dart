@@ -124,42 +124,50 @@ class RoleService {
         return [];
       }
 
-      debugPrint('🔍 Fetching country admin countries for user: ${currentUser.id}');
+      debugPrint(
+          '🔍 Fetching country admin countries for user: ${currentUser.id}');
 
       final response = await _supabase
           .from(AppConstants.tableProfileRoles)
           .select('''
-            ${AppConstants.fieldProfileRoleCountryId},
-            ${AppConstants.tableCountries}!inner(
-              ${AppConstants.fieldId},
-              ${AppConstants.fieldCountryName},
-              ${AppConstants.fieldCountryCode},
-              ${AppConstants.fieldCountryRevenueServiceName},
-              ${AppConstants.fieldCountryIsActive},
-              ${AppConstants.fieldCountryIsGlobal},
-              ${AppConstants.fieldCreatedAt},
-              ${AppConstants.fieldUpdatedAt}
+            ${AppConstants.fieldProfileRoleAuthorityId},
+            ${AppConstants.tableAuthorities}!inner(
+              ${AppConstants.fieldAuthorityCountryId},
+              ${AppConstants.tableCountries}!inner(
+                ${AppConstants.fieldId},
+                ${AppConstants.fieldCountryName},
+                ${AppConstants.fieldCountryCode},
+                ${AppConstants.fieldCountryIsActive},
+                ${AppConstants.fieldCountryIsGlobal},
+                ${AppConstants.fieldCreatedAt},
+                ${AppConstants.fieldUpdatedAt}
+              )
             ),
             ${AppConstants.tableRoles}!inner(
               ${AppConstants.fieldRoleName}
             )
           ''')
           .eq(AppConstants.fieldProfileRoleProfileId, currentUser.id)
-          .eq('${AppConstants.tableRoles}.${AppConstants.fieldRoleName}', AppConstants.roleCountryAdmin)
+          .eq('${AppConstants.tableRoles}.${AppConstants.fieldRoleName}',
+              AppConstants.roleCountryAdmin)
           .eq(AppConstants.fieldProfileRoleIsActive, true)
-          .eq('${AppConstants.tableCountries}.${AppConstants.fieldCountryIsActive}', true);
+          .eq('${AppConstants.tableAuthorities}.${AppConstants.fieldAuthorityIsActive}', true)
+          .eq('${AppConstants.tableAuthorities}.${AppConstants.tableCountries}.${AppConstants.fieldCountryIsActive}',
+              true);
 
       debugPrint('✅ Retrieved ${response.length} country admin assignments');
 
       return response.map<Map<String, dynamic>>((item) {
-        final country = item[AppConstants.tableCountries];
+        final authority = item[AppConstants.tableAuthorities];
+        final country = authority[AppConstants.tableCountries];
         return {
           AppConstants.fieldId: country[AppConstants.fieldId],
           AppConstants.fieldCountryName: country[AppConstants.fieldCountryName],
           AppConstants.fieldCountryCode: country[AppConstants.fieldCountryCode],
-          AppConstants.fieldCountryRevenueServiceName: country[AppConstants.fieldCountryRevenueServiceName],
-          AppConstants.fieldCountryIsActive: country[AppConstants.fieldCountryIsActive],
-          AppConstants.fieldCountryIsGlobal: country[AppConstants.fieldCountryIsGlobal],
+          AppConstants.fieldCountryIsActive:
+              country[AppConstants.fieldCountryIsActive],
+          AppConstants.fieldCountryIsGlobal:
+              country[AppConstants.fieldCountryIsGlobal],
           AppConstants.fieldCreatedAt: country[AppConstants.fieldCreatedAt],
           AppConstants.fieldUpdatedAt: country[AppConstants.fieldUpdatedAt],
         };

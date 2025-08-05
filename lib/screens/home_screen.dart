@@ -1,10 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_supabase_auth/models/role_invitation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../constants/app_constants.dart';
+import '../models/profile.dart';
+import '../services/profile_service.dart';
+import 'profile_settings_screen.dart';
+import '../models/authority.dart';
 import '../models/country.dart';
 import '../services/role_service.dart';
-import '../services/country_service.dart';
+import '../services/authority_service.dart';
 import '../services/invitation_service.dart';
+import 'authority_management_screen.dart';
+import 'authority_admin_screen.dart';
 import 'country_management_screen.dart';
 import 'profile_management_screen.dart';
 import 'border_type_management_screen.dart';
@@ -18,7 +25,6 @@ import 'vehicle_tax_rate_management_screen.dart';
 import 'pass_template_management_screen.dart';
 import 'vehicle_management_screen.dart';
 import 'pass_dashboard_screen.dart';
-import 'profile_settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -33,34 +39,63 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isCountryAdmin = false;
   bool _isCountryAuditor = false;
 
-  // Country selection state
-  List<Country> _countries = [];
-  Country? _selectedCountry;
-  bool _isLoadingCountries = false;
+  // Authority selection state
+  List<Authority> _authorities = [];
+  Authority? _selectedAuthority;
+  bool _isLoadingAuthorities = false;
 
   // Invitation state
   int _pendingInvitationsCount = 0;
   bool _isLoadingInvitations = false;
+  List<RoleInvitation> _pendingInvitations = [];
   RealtimeChannel? _invitationRealtimeChannel;
+
+  // User profile state
+  Profile? _currentProfile;
+  bool _isLoadingProfile = true;
+  bool _isAccountDisabled = false;
+  RealtimeChannel? _profileRealtimeChannel;
 
   @override
   void initState() {
     super.initState();
     _checkSuperuserStatus();
+    _loadCurrentProfile();
   }
 
   @override
   void dispose() {
     _invitationRealtimeChannel?.unsubscribe();
+    _profileRealtimeChannel?.unsubscribe();
     super.dispose();
   }
 
   Future<void> _checkSuperuserStatus() async {
     try {
+      debugPrint('🔍 Starting role check for current user...');
+
+      // Get current user info
+      final user = Supabase.instance.client.auth.currentUser;
+      debugPrint('👤 Current user ID: ${user?.id}');
+      debugPrint('📧 Current user email: ${user?.email}');
+
+      // Get all user roles for debugging
+      final allRoles = await RoleService.getCurrentUserRoles();
+      debugPrint('🎭 All user roles: $allRoles');
+
       final isSuperuser = await RoleService.isSuperuser();
       final isCountryAdmin = await RoleService.hasAdminRole();
       final isCountryAuditor =
           await RoleService.userHasRole(AppConstants.roleCountryAuditor);
+
+      // Additional debugging - check country admin countries
+      if (isCountryAdmin) {
+        final adminCountries = await RoleService.getCountryAdminCountries();
+        debugPrint('🌍 Country admin countries: ${adminCountries.length}');
+        for (final country in adminCountries) {
+          debugPrint('  - ${country['name']} (${country['country_code']})');
+        }
+      }
 
       if (mounted) {
         setState(() {
@@ -74,10 +109,15 @@ class _HomeScreenState extends State<HomeScreen> {
       debugPrint('🔑 Superuser check: $_isSuperuser');
       debugPrint('🌍 Country Admin check: $_isCountryAdmin');
       debugPrint('🔍 Country Auditor check: $_isCountryAuditor');
+      debugPrint(
+          '🎯 Should load authorities: ${isSuperuser || isCountryAdmin || isCountryAuditor}');
 
-      // Load countries if user has admin, auditor, or superuser role
+      // Load authorities if user has admin, auditor, or superuser role
       if (isSuperuser || isCountryAdmin || isCountryAuditor) {
-        await _loadCountries();
+        debugPrint('✅ Loading authorities...');
+        await _loadAuthorities();
+      } else {
+        debugPrint('❌ Not loading authorities - user has no admin roles');
       }
 
       // Load pending invitations for all users
@@ -122,108 +162,85 @@ class _HomeScreenState extends State<HomeScreen> {
         .subscribe();
   }
 
-  Future<void> _loadCountries() async {
-    if (_isLoadingCountries) return;
+  Future<void> _loadAuthorities() async {
+    debugPrint(
+        '🏛️ _loadAuthorities called - isLoading: $_isLoadingAuthorities');
+
+    if (_isLoadingAuthorities) {
+      debugPrint('⏳ Already loading authorities, skipping...');
+      return;
+    }
 
     setState(() {
-      _isLoadingCountries = true;
+      _isLoadingAuthorities = true;
     });
 
     try {
-      List<Country> countries;
+      List<Authority> authorities;
+
+      debugPrint(
+          '🔍 Loading authorities - Superuser: $_isSuperuser, Country Admin: $_isCountryAdmin, Country Auditor: $_isCountryAuditor');
 
       if (_isSuperuser) {
-        // Superusers get all active countries excluding Global
-        countries = await CountryService.getActiveCountriesExcludingGlobal();
+        // Superusers get all active authorities
+        debugPrint('🔑 Loading all authorities for superuser...');
+        authorities = await AuthorityService.getAllAuthorities();
         debugPrint(
-            '🔑 Loaded ${countries.length} active countries for superuser (excluding Global)');
+            '🔑 Loaded ${authorities.length} active authorities for superuser');
       } else {
-        // Country admins and auditors get only their assigned countries
-        final countryMaps = await RoleService.getCountryAdminCountries();
-        countries = countryMaps
-            .map((map) => Country(
-                  id: map[AppConstants.fieldId],
-                  name: map[AppConstants.fieldCountryName],
-                  countryCode: map[AppConstants.fieldCountryCode],
-                  revenueServiceName:
-                      map[AppConstants.fieldCountryRevenueServiceName] ?? '',
-                  isActive: map[AppConstants.fieldCountryIsActive] ?? true,
-                  isGlobal: map[AppConstants.fieldCountryIsGlobal] ?? false,
-                  createdAt: DateTime.tryParse(
-                          map[AppConstants.fieldCreatedAt] ?? '') ??
-                      DateTime.now(),
-                  updatedAt: DateTime.tryParse(
-                          map[AppConstants.fieldUpdatedAt] ?? '') ??
-                      DateTime.now(),
-                ))
-            .toList();
+        // Country admins and auditors get only their assigned authorities
+        debugPrint('🔍 Loading admin authorities for country admin/auditor...');
+        authorities = await AuthorityService.getAdminAuthorities();
         debugPrint(
-            '🌍 Loaded ${countries.length} assigned countries for admin/auditor');
+            '🌍 Loaded ${authorities.length} assigned authorities for admin/auditor');
+
+        // Debug: Print authority details
+        if (authorities.isEmpty) {
+          debugPrint('⚠️ No authorities returned for country admin/auditor!');
+        } else {
+          debugPrint('📋 Authority details:');
+          for (final authority in authorities) {
+            debugPrint(
+                '  - ${authority.name} (${authority.code}) - ${authority.countryName}');
+          }
+        }
       }
 
       if (mounted) {
         setState(() {
-          _countries = countries;
-          if (_countries.isNotEmpty && _selectedCountry == null) {
-            _selectedCountry = _countries.first;
+          _authorities = authorities;
+          if (_authorities.isNotEmpty && _selectedAuthority == null) {
+            _selectedAuthority = _authorities.first;
           }
-          _isLoadingCountries = false;
+          _isLoadingAuthorities = false;
         });
       }
     } catch (e) {
-      debugPrint('❌ Error loading countries: $e');
+      debugPrint('❌ Error loading authorities: $e');
       if (mounted) {
         setState(() {
-          _countries = [];
-          _selectedCountry = null;
-          _isLoadingCountries = false;
+          _authorities = [];
+          _selectedAuthority = null;
+          _isLoadingAuthorities = false;
         });
       }
     }
   }
 
-  void _showCountrySelectionDialog() {
+  void _showAuthoritySelectionDialog() {
     showDialog(
       context: context,
       builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Select Country'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: _countries.length,
-              itemBuilder: (context, index) {
-                final country = _countries[index];
-                final isSelected = _selectedCountry?.id == country.id;
-                return ListTile(
-                  leading: Icon(
-                    Icons.public,
-                    color: Colors.orange.shade700,
-                  ),
-                  title: Text(country.name),
-                  subtitle: Text(country.countryCode),
-                  trailing: isSelected
-                      ? const Icon(Icons.check, color: Colors.green)
-                      : null,
-                  selected: isSelected,
-                  onTap: () {
-                    setState(() {
-                      _selectedCountry = country;
-                    });
-                    debugPrint('🌍 Selected country: ${country.name}');
-                    Navigator.of(context).pop();
-                  },
-                );
-              },
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
-            ),
-          ],
+        return _AuthoritySelectionDialog(
+          authorities: _authorities,
+          selectedAuthority: _selectedAuthority,
+          onAuthoritySelected: (authority) {
+            setState(() {
+              _selectedAuthority = authority;
+            });
+            debugPrint(
+                '🏛️ Selected authority: ${authority.name} (${authority.countryName})');
+          },
         );
       },
     );
@@ -241,6 +258,7 @@ class _HomeScreenState extends State<HomeScreen> {
           await InvitationService.getPendingInvitationsForUser();
       if (mounted) {
         setState(() {
+          _pendingInvitations = invitations;
           _pendingInvitationsCount = invitations.length;
           _isLoadingInvitations = false;
         });
@@ -250,11 +268,131 @@ class _HomeScreenState extends State<HomeScreen> {
       debugPrint('❌ Error loading pending invitations: $e');
       if (mounted) {
         setState(() {
+          _pendingInvitations = [];
           _pendingInvitationsCount = 0;
           _isLoadingInvitations = false;
         });
       }
     }
+  }
+
+  /// Load current user profile and set up real-time subscription
+  Future<void> _loadCurrentProfile() async {
+    try {
+      setState(() {
+        _isLoadingProfile = true;
+      });
+
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user?.email == null) {
+        debugPrint('❌ No user email found');
+        return;
+      }
+
+      // Get current profile
+      final profile = await ProfileService.getProfileByEmail(user!.email!);
+
+      setState(() {
+        _currentProfile = profile;
+        _isAccountDisabled = profile?.isActive == false;
+        _isLoadingProfile = false;
+      });
+
+      // Set up real-time subscription for profile changes
+      _setupProfileRealtimeSubscription();
+
+      debugPrint('✅ Loaded profile: ${profile?.fullName ?? profile?.email}');
+
+      // Show account disabled message if needed
+      if (_isAccountDisabled && mounted) {
+        _showAccountDisabledDialog();
+      }
+    } catch (e) {
+      debugPrint('❌ Error loading profile: $e');
+      setState(() {
+        _isLoadingProfile = false;
+      });
+    }
+  }
+
+  /// Set up real-time subscription for profile changes
+  void _setupProfileRealtimeSubscription() {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user?.id == null) return;
+
+    _profileRealtimeChannel = Supabase.instance.client
+        .channel('profile_changes_${user!.id}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'profiles',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'id',
+            value: user.id,
+          ),
+          callback: (payload) {
+            debugPrint(
+                '🔄 Real-time profile change detected: ${payload.eventType}');
+            _handleProfileChange(payload.newRecord);
+          },
+        )
+        .subscribe();
+  }
+
+  /// Handle real-time profile changes
+  void _handleProfileChange(Map<String, dynamic>? newRecord) {
+    if (newRecord == null) return;
+
+    try {
+      final updatedProfile = Profile.fromJson(newRecord);
+      final wasDisabled = _isAccountDisabled;
+
+      setState(() {
+        _currentProfile = updatedProfile;
+        _isAccountDisabled = !updatedProfile.isActive;
+      });
+
+      // Show account disabled dialog if account was just disabled
+      if (!wasDisabled && _isAccountDisabled && mounted) {
+        _showAccountDisabledDialog();
+      }
+
+      debugPrint(
+          '✅ Profile updated: ${updatedProfile.fullName ?? updatedProfile.email}');
+    } catch (e) {
+      debugPrint('❌ Error handling profile change: $e');
+    }
+  }
+
+  /// Show account disabled dialog
+  void _showAccountDisabledDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.warning, color: Colors.red.shade600),
+            const SizedBox(width: 8),
+            const Text('Account Disabled'),
+          ],
+        ),
+        content: const Text(
+          'Your account has been disabled by an administrator. '
+          'Please contact support for assistance.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _signOut(context);
+            },
+            child: const Text('Sign Out'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _signOut(BuildContext context) async {
@@ -270,362 +408,671 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildDrawer() {
-    return SafeArea(
-      child: Drawer(
-        child: ListView(
-        padding: EdgeInsets.zero,
-        children: [
-          DrawerHeader(
-            decoration: BoxDecoration(
-              color: Colors.blue.shade700,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Admin Panel',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                if (_isSuperuser)
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.red.shade100,
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: Colors.red.shade300),
-                    ),
-                    child: Text(
-                      AppConstants.superuserBadge,
-                      style: TextStyle(
-                        color: Colors.red.shade700,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                      ),
-                    ),
-                  )
-                else if (_isCountryAdmin)
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.shade100,
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: Colors.orange.shade300),
-                    ),
-                    child: Text(
-                      'COUNTRY ADMIN',
-                      style: TextStyle(
-                        color: Colors.orange.shade700,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                      ),
-                    ),
-                  )
-                else if (_isCountryAuditor)
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.purple.shade100,
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: Colors.purple.shade300),
-                    ),
-                    child: Text(
-                      'COUNTRY AUDITOR',
-                      style: TextStyle(
-                        color: Colors.purple.shade700,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
+    // Debug logging for authority selection visibility
+    debugPrint(
+        '🎯 Drawer build - Superuser: $_isSuperuser, Country Admin: $_isCountryAdmin, Country Auditor: $_isCountryAuditor');
+    debugPrint('🎯 Authorities count: ${_authorities.length}');
+    debugPrint(
+        '🎯 Should show authority selection: ${(_isSuperuser || _isCountryAdmin || _isCountryAuditor) && _authorities.isNotEmpty}');
 
-          // Superuser functions
-          if (_isSuperuser) ...[
-            ListTile(
-              leading: const Icon(Icons.public, color: Colors.red),
-              title: const Text('Manage Countries'),
-              subtitle: const Text('Add, edit, or remove countries'),
-              onTap: () {
-                Navigator.of(context).pop();
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => const CountryManagementScreen(),
-                  ),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.people, color: Colors.red),
-              title: const Text('Manage Users'),
-              subtitle: const Text('Search and manage user profiles'),
-              onTap: () {
-                Navigator.of(context).pop();
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => ProfileManagementScreen(
-                      selectedCountry: _selectedCountry,
+    return SafeArea(
+        child: Drawer(
+            child: ListView(padding: EdgeInsets.zero, children: [
+      DrawerHeader(
+        decoration: BoxDecoration(
+          color: Colors.blue.shade700,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // User information
+            if (_isLoadingProfile)
+              const Row(
+                children: [
+                  SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                     ),
                   ),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.border_all, color: Colors.red),
-              title: const Text('Manage Border Types'),
-              subtitle: const Text('Configure border crossing types'),
-              onTap: () {
-                Navigator.of(context).pop();
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => const BorderTypeManagementScreen(),
+                  SizedBox(width: 8),
+                  Text(
+                    'Loading user...',
+                    style: TextStyle(color: Colors.white70, fontSize: 12),
                   ),
-                );
-              },
-            ),
-            const Divider(),
-          ],
-          // Country Selection (for Superusers, Country Admins and Auditors)
-          if ((_isSuperuser || _isCountryAdmin || _isCountryAuditor) &&
-              _countries.isNotEmpty) ...[
-            Container(
-              color: Colors.orange.shade100,
-              child: ListTile(
-                leading: Icon(
-                  Icons.public,
-                  color: Colors.orange.shade800,
+                ],
+              )
+            else if (_currentProfile != null)
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _currentProfile!.fullName ??
+                        _currentProfile!.email ??
+                        'Unknown User',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (_currentProfile!.fullName != null &&
+                      _currentProfile!.email != null)
+                    Text(
+                      _currentProfile!.email!,
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 12,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  if (_isAccountDisabled)
+                    Container(
+                      margin: const EdgeInsets.only(top: 4),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade600,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text(
+                        'ACCOUNT DISABLED',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                ],
+              )
+            else
+              const Text(
+                'No user information',
+                style: TextStyle(color: Colors.white70, fontSize: 12),
+              ),
+            const SizedBox(height: 8),
+            if (_isSuperuser)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade100,
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: Colors.red.shade300),
                 ),
-                title: Text(
-                  'Select Country',
+                child: Text(
+                  AppConstants.superuserBadge,
                   style: TextStyle(
-                    color: Colors.orange.shade800,
-                    fontWeight: FontWeight.w500,
+                    color: Colors.red.shade700,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
                   ),
                 ),
-                subtitle: Text(
-                  _selectedCountry != null
-                      ? '${_selectedCountry!.name} (${_selectedCountry!.countryCode})'
-                      : 'Choose working country',
+              )
+            else if (_isCountryAdmin)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade100,
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: Colors.orange.shade300),
+                ),
+                child: Text(
+                  'COUNTRY ADMIN',
                   style: TextStyle(
                     color: Colors.orange.shade700,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
                   ),
                 ),
-                trailing: Icon(
-                  Icons.arrow_drop_down,
-                  color: Colors.orange.shade800,
+              )
+            else if (_isCountryAuditor)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.purple.shade100,
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: Colors.purple.shade300),
                 ),
-                onTap: () {
-                  _showCountrySelectionDialog();
-                },
+                child: Text(
+                  'COUNTRY AUDITOR',
+                  style: TextStyle(
+                    color: Colors.purple.shade700,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
               ),
-            ),
-            const Divider(),
           ],
-          // Country Admin functions
-          if (_isCountryAdmin) ...[
-            ListTile(
-              leading: const Icon(Icons.mail, color: Colors.orange),
-              title: const Text('Manage Invitations'),
-              subtitle: const Text('Send and manage role invitations'),
-              onTap: () {
-                Navigator.of(context).pop();
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => InvitationManagementScreen(
-                      selectedCountry: _selectedCountry,
-                    ),
-                  ),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.people, color: Colors.orange),
-              title: const Text('Manage Users'),
-              subtitle: const Text('Manage users and roles in your country'),
-              onTap: () {
-                Navigator.of(context).pop();
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => CountryUserManagementScreen(
-                      selectedCountry: _selectedCountry!.toJson(),
-                    ),
-                  ),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.history, color: Colors.orange),
-              title: const Text('Audit Logs'),
-              subtitle: const Text('View audit trail and activity logs'),
-              onTap: () {
-                Navigator.of(context).pop();
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => AuditManagementScreen(
-                      selectedCountry: _selectedCountry?.toJson(),
-                    ),
-                  ),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.location_on, color: Colors.orange),
-              title: const Text('Manage Borders'),
-              subtitle: const Text('Create and manage border crossings'),
-              onTap: () {
-                Navigator.of(context).pop();
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => BorderManagementScreen(
-                      selectedCountry: _selectedCountry?.toJson(),
-                    ),
-                  ),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.security, color: Colors.orange),
-              title: const Text('Border Officials'),
-              subtitle: const Text('Assign border officials to borders'),
-              onTap: () {
-                Navigator.of(context).pop();
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => BorderOfficialManagementScreen(
-                      selectedCountry: _selectedCountry?.toJson() ?? {},
-                    ),
-                  ),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.local_taxi, color: Colors.orange),
-              title: const Text('Vehicle Tax Rates'),
-              subtitle: const Text('Manage tax rates for vehicles'),
-              onTap: () {
-                Navigator.of(context).pop();
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => VehicleTaxRateManagementScreen(
-                      selectedCountry: _selectedCountry?.toJson() ?? {},
-                    ),
-                  ),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.receipt_long, color: Colors.orange),
-              title: const Text('Pass Templates'),
-              subtitle: const Text('Create and manage pass templates'),
-              onTap: () {
-                Navigator.of(context).pop();
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => PassTemplateManagementScreen(
-                      country: _selectedCountry?.toJson() ?? {},
-                    ),
-                  ),
-                );
-              },
-            ),
-          ],
-          // User functions (available to all authenticated users)
-          const Divider(),
-          Container(
-            color: Colors.blue.shade50,
-            child: ListTile(
-              leading: Icon(
-                Icons.person,
-                color: Colors.blue.shade700,
-              ),
-              title: Text(
-                'My Account',
-                style: TextStyle(
-                  color: Colors.blue.shade700,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              subtitle: Text(
-                'Manage your personal information',
-                style: TextStyle(
-                  color: Colors.blue.shade600,
-                ),
-              ),
-            ),
-          ),
-          ListTile(
-            leading: const Icon(Icons.directions_car, color: Colors.blue),
-            title: const Text('My Vehicles'),
-            subtitle: const Text('Register and manage your vehicles'),
-            onTap: () {
-              Navigator.of(context).pop();
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => const VehicleManagementScreen(),
-                ),
-              );
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.receipt_long, color: Colors.blue),
-            title: const Text('My Passes'),
-            subtitle: const Text('Purchase and manage border passes'),
-            onTap: () {
-              Navigator.of(context).pop();
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => const PassDashboardScreen(),
-                ),
-              );
-            },
-          ),
-          const Divider(),
-          // Country Auditor functions (for auditors who are not admins)
-          if (_isCountryAuditor && !_isCountryAdmin) ...[
-            ListTile(
-              leading: const Icon(Icons.history, color: Colors.purple),
-              title: const Text('Audit Logs'),
-              subtitle: const Text('View audit trail and activity logs'),
-              onTap: () {
-                Navigator.of(context).pop();
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => AuditManagementScreen(
-                      selectedCountry: _selectedCountry?.toJson(),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ],
-        ],
-        
-        // User functions (for all users)
-        const Divider(),
+        ),
+      ),
+
+      // Superuser functions
+      if (_isSuperuser) ...[
         ListTile(
-          leading: const Icon(Icons.person_outline, color: Colors.blue),
-          title: const Text('Profile Settings'),
-          subtitle: const Text('Manage identity, payment & preferences'),
+          leading: const Icon(Icons.business, color: Colors.red),
+          title: const Text('Manage Authorities'),
+          subtitle: const Text('Manage revenue services and authorities'),
           onTap: () {
             Navigator.of(context).pop();
             Navigator.of(context).push(
               MaterialPageRoute(
-                builder: (context) => const ProfileSettingsScreen(),
+                builder: (context) => const AuthorityManagementScreen(),
               ),
             );
           },
         ),
+        ListTile(
+          leading: const Icon(Icons.public, color: Colors.red),
+          title: const Text('Manage Countries'),
+          subtitle: const Text('Add, edit, or remove countries'),
+          onTap: () {
+            Navigator.of(context).pop();
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => const CountryManagementScreen(),
+              ),
+            );
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.people, color: Colors.red),
+          title: const Text('Manage Users'),
+          subtitle: const Text('Search and manage user profiles'),
+          onTap: () {
+            Navigator.of(context).pop();
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => const ProfileManagementScreen(),
+              ),
+            );
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.border_all, color: Colors.red),
+          title: const Text('Manage Border Types'),
+          subtitle: const Text('Configure border crossing types'),
+          onTap: () {
+            Navigator.of(context).pop();
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => const BorderTypeManagementScreen(),
+              ),
+            );
+          },
+        ),
+        const Divider(),
+      ],
+
+      // DEBUG: Manual authority loading button
+      Container(
+        color: Colors.purple.shade50,
+        child: ListTile(
+          leading:
+              Icon(Icons.admin_panel_settings, color: Colors.purple.shade700),
+          title: Text(
+            'System Status & Refresh',
+            style: TextStyle(
+              color: Colors.purple.shade800,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Superuser: ${_isSuperuser ? "Yes" : "No"} • '
+                'Country Admin: ${_isCountryAdmin ? "Yes" : "No"} • '
+                'Country Auditor: ${_isCountryAuditor ? "Yes" : "No"}',
+                style: TextStyle(
+                  color: Colors.purple.shade600,
+                  fontSize: 11,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                '${_authorities.length} ${_authorities.length == 1 ? "authority" : "authorities"} loaded',
+                style: TextStyle(
+                  color: Colors.purple.shade600,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+          trailing: _isLoadingAuthorities
+              ? SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor:
+                        AlwaysStoppedAnimation<Color>(Colors.purple.shade600),
+                  ),
+                )
+              : Icon(Icons.refresh, color: Colors.purple.shade600),
+          onTap: _isLoadingAuthorities
+              ? null
+              : () async {
+                  debugPrint('🔄 Manual authority refresh requested...');
+                  await _loadAuthorities();
+                  setState(() {}); // Force rebuild to update subtitle
+                },
+        ),
       ),
-    );
+      const Divider(),
+
+      // Authority Selection (for Superusers, Country Admins and Auditors)
+      if ((_isSuperuser || _isCountryAdmin || _isCountryAuditor) &&
+          _authorities.isNotEmpty) ...[
+        Container(
+          color: Colors.orange.shade100,
+          child: ListTile(
+            leading: Icon(
+              Icons.public,
+              color: Colors.orange.shade800,
+            ),
+            title: Text(
+              _authorities.length == 1
+                  ? 'Select Authority'
+                  : 'Select Authority',
+              style: TextStyle(
+                color: Colors.orange.shade800,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            subtitle: Text(
+              _selectedAuthority != null
+                  ? '${_selectedAuthority!.name} - ${_selectedAuthority!.countryName ?? "Unknown"}'
+                  : _authorities.length == 1
+                      ? 'Choose your authority'
+                      : 'Choose from ${_authorities.length} authorities',
+              style: TextStyle(
+                color: Colors.orange.shade700,
+              ),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 2,
+            ),
+            trailing: Icon(
+              Icons.arrow_drop_down,
+              color: Colors.orange.shade800,
+            ),
+            onTap: () {
+              _showAuthoritySelectionDialog();
+            },
+          ),
+        ),
+        const Divider(),
+      ],
+      // Country Admin functions
+      if (_isCountryAdmin) ...[
+        ListTile(
+          leading: const Icon(Icons.mail, color: Colors.orange),
+          title: const Text('Manage Invitations'),
+          subtitle: Text(_selectedAuthority != null
+              ? 'Send invitations for ${_selectedAuthority!.name}'
+              : 'Send and manage role invitations'),
+          onTap: () {
+            if (_selectedAuthority == null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Please select an authority first'),
+                  backgroundColor: Colors.orange,
+                ),
+              );
+              return;
+            }
+            Navigator.of(context).pop();
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => InvitationManagementScreen(
+                  selectedCountry: Country(
+                    id: _selectedAuthority!.countryId,
+                    name: _selectedAuthority!
+                        .name, // Use authority name instead of country name
+                    countryCode: _selectedAuthority!.countryCode ?? '',
+                    isActive: true, // Assume active since authority is active
+                    isGlobal: false, // Country-specific authority
+                    createdAt: DateTime.now(), // Placeholder timestamp
+                    updatedAt: DateTime.now(), // Placeholder timestamp
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.admin_panel_settings, color: Colors.orange),
+          title: const Text('Manage Authorities'),
+          subtitle: Text(_selectedAuthority != null
+              ? 'Manage authorities for ${_selectedAuthority!.countryName ?? "Unknown"}'
+              : 'Manage authorities in your country'),
+          onTap: () {
+            if (_selectedAuthority == null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Please select an authority first'),
+                  backgroundColor: Colors.orange,
+                ),
+              );
+              return;
+            }
+            Navigator.of(context).pop();
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => AuthorityAdminScreen(
+                  selectedCountry: {
+                    'id': _selectedAuthority!.countryId,
+                    'name': _selectedAuthority!.countryName ?? 'Unknown',
+                    'country_code': _selectedAuthority!.countryCode ?? '',
+                    'authority_id': _selectedAuthority!.id,  // CORRECTED LINE
+                    'authority_name': _selectedAuthority!.name,
+                  },
+                  isSuperuser: _isSuperuser,
+                ),
+              ),
+            );
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.people, color: Colors.orange),
+          title: const Text('Manage Users'),
+          subtitle: Text(_selectedAuthority != null
+              ? 'Manage users for ${_selectedAuthority!.name}'
+              : 'Manage users and roles in your authority'),
+          onTap: () {
+            if (_selectedAuthority == null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Please select an authority first'),
+                  backgroundColor: Colors.orange,
+                ),
+              );
+              return;
+            }
+            Navigator.of(context).pop();
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => CountryUserManagementScreen(
+                  selectedCountry: {
+                    'id': _selectedAuthority!.countryId,
+                    'name': _selectedAuthority!.countryName ?? 'Unknown',
+                    'country_code': _selectedAuthority!.countryCode ?? '',
+                    'authority_id': _selectedAuthority!.id,
+                    'authority_name': _selectedAuthority!.name,
+                  },
+                ),
+              ),
+            );
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.history, color: Colors.orange),
+          title: const Text('Audit Logs'),
+          subtitle: Text(_selectedAuthority != null
+              ? 'View logs for ${_selectedAuthority!.name}'
+              : 'View audit trail and activity logs'),
+          onTap: () {
+            if (_selectedAuthority == null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Please select an authority first'),
+                  backgroundColor: Colors.orange,
+                ),
+              );
+              return;
+            }
+            Navigator.of(context).pop();
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => AuditManagementScreen(
+                  selectedCountry: {
+                    'id': _selectedAuthority!.countryId,
+                    'name': _selectedAuthority!.countryName ?? 'Unknown',
+                    'country_code': _selectedAuthority!.countryCode ?? '',
+                    'authority_id': _selectedAuthority!.id,
+                    'authority_name': _selectedAuthority!.name,
+                  },
+                ),
+              ),
+            );
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.location_on, color: Colors.orange),
+          title: const Text('Manage Borders'),
+          subtitle: Text(_selectedAuthority != null
+              ? 'Manage borders for ${_selectedAuthority!.name}'
+              : 'Create and manage border crossings'),
+          onTap: () {
+            if (_selectedAuthority == null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Please select an authority first'),
+                  backgroundColor: Colors.orange,
+                ),
+              );
+              return;
+            }
+            Navigator.of(context).pop();
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => BorderManagementScreen(
+                  selectedCountry: {
+                    'id': _selectedAuthority!.countryId,
+                    'name': _selectedAuthority!.countryName ?? 'Unknown',
+                    'country_code': _selectedAuthority!.countryCode ?? '',
+                    'authority_id': _selectedAuthority!.id,
+                    'authority_name': _selectedAuthority!.name,
+                  },
+                ),
+              ),
+            );
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.security, color: Colors.orange),
+          title: const Text('Border Officials'),
+          subtitle: Text(_selectedAuthority != null
+              ? 'Assign officials for ${_selectedAuthority!.name}'
+              : 'Assign border officials to borders'),
+          onTap: () {
+            if (_selectedAuthority == null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Please select an authority first'),
+                  backgroundColor: Colors.orange,
+                ),
+              );
+              return;
+            }
+            Navigator.of(context).pop();
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => BorderOfficialManagementScreen(
+                  selectedCountry: {
+                    'id': _selectedAuthority!.countryId,
+                    'name': _selectedAuthority!.countryName ?? 'Unknown',
+                    'country_code': _selectedAuthority!.countryCode ?? '',
+                    'authority_id': _selectedAuthority!.id,
+                    'authority_name': _selectedAuthority!.name,
+                  },
+                ),
+              ),
+            );
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.local_taxi, color: Colors.orange),
+          title: const Text('Vehicle Tax Rates'),
+          subtitle: Text(_selectedAuthority != null
+              ? 'Manage rates for ${_selectedAuthority!.name}'
+              : 'Manage tax rates for vehicles'),
+          onTap: () {
+            if (_selectedAuthority == null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Please select an authority first'),
+                  backgroundColor: Colors.orange,
+                ),
+              );
+              return;
+            }
+            Navigator.of(context).pop();
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => VehicleTaxRateManagementScreen(
+                  selectedCountry: {
+                    'id': _selectedAuthority!.countryId,
+                    'name': _selectedAuthority!.countryName ?? 'Unknown',
+                    'country_code': _selectedAuthority!.countryCode ?? '',
+                    'authority_id': _selectedAuthority!.id,
+                    'authority_name': _selectedAuthority!.name,
+                  },
+                ),
+              ),
+            );
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.receipt_long, color: Colors.orange),
+          title: const Text('Pass Templates'),
+          subtitle: Text(_selectedAuthority != null
+              ? 'Manage templates for ${_selectedAuthority!.name}'
+              : 'Create and manage pass templates'),
+          onTap: () {
+            if (_selectedAuthority == null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Please select an authority first'),
+                  backgroundColor: Colors.orange,
+                ),
+              );
+              return;
+            }
+            Navigator.of(context).pop();
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => PassTemplateManagementScreen(
+                  country: {
+                    'id': _selectedAuthority!.countryId,
+                    'name': _selectedAuthority!.countryName ?? 'Unknown',
+                    'country_code': _selectedAuthority!.countryCode ?? '',
+                    'authority_id': _selectedAuthority!.id,
+                    'authority_name': _selectedAuthority!.name,
+                  },
+                ),
+              ),
+            );
+          },
+        ),
+      ],
+      // User functions (available to all authenticated users)
+      const Divider(),
+      Container(
+        color: Colors.blue.shade50,
+        child: ListTile(
+          leading: Icon(
+            Icons.person,
+            color: Colors.blue.shade700,
+          ),
+          title: Text(
+            'My Account',
+            style: TextStyle(
+              color: Colors.blue.shade700,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          subtitle: Text(
+            'Manage your personal information',
+            style: TextStyle(
+              color: Colors.blue.shade600,
+            ),
+          ),
+        ),
+      ),
+      ListTile(
+        leading: const Icon(Icons.directions_car, color: Colors.blue),
+        title: const Text('My Vehicles'),
+        subtitle: const Text('Register and manage your vehicles'),
+        onTap: () {
+          Navigator.of(context).pop();
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => const VehicleManagementScreen(),
+            ),
+          );
+        },
+      ),
+      ListTile(
+        leading: const Icon(Icons.receipt_long, color: Colors.blue),
+        title: const Text('My Passes'),
+        subtitle: const Text('Purchase and manage border passes'),
+        onTap: () {
+          Navigator.of(context).pop();
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => const PassDashboardScreen(),
+            ),
+          );
+        },
+      ),
+      ListTile(
+        leading: const Icon(Icons.person_outline, color: Colors.blue),
+        title: const Text('Profile Settings'),
+        subtitle:
+            const Text('Manage identity, payment & preferences'),
+        onTap: () {
+          Navigator.of(context).pop();
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => const ProfileSettingsScreen(),
+            ),
+          );
+        },
+      ),
+
+      // Country Auditor functions (for auditors who are not admins)
+      if (_isCountryAuditor && !_isCountryAdmin) ...[
+        ListTile(
+          leading: const Icon(Icons.history, color: Colors.purple),
+          title: const Text('Audit Logs'),
+          subtitle: Text(_selectedAuthority != null
+              ? 'View logs for ${_selectedAuthority!.name}'
+              : 'View audit trail and activity logs'),
+          onTap: () {
+            if (_selectedAuthority == null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Please select an authority first'),
+                  backgroundColor: Colors.purple,
+                ),
+              );
+              return;
+            }
+            Navigator.of(context).pop();
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => AuditManagementScreen(
+                  selectedCountry: {
+                    'id': _selectedAuthority!.countryId,
+                    'name': _selectedAuthority!.countryName ?? 'Unknown',
+                    'country_code': _selectedAuthority!.countryCode ?? '',
+                    'authority_id': _selectedAuthority!.id,
+                    'authority_name': _selectedAuthority!.name,
+                  },
+                ),
+              ),
+            );
+          },
+        ),
+      ],
+    ])));
   }
 
   @override
@@ -636,6 +1083,77 @@ class _HomeScreenState extends State<HomeScreen> {
       return const Scaffold(
         body: Center(
           child: Text('No user found'),
+        ),
+      );
+    }
+
+    // Show profile setup screen if profile is incomplete
+    if (!_isLoadingProfile &&
+        _currentProfile != null &&
+        _currentProfile!.needsSetup) {
+      return _buildProfileSetupScreen();
+    }
+
+    // Show account disabled screen if account is disabled
+    if (_isAccountDisabled && !_isLoadingProfile) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Account Disabled'),
+          backgroundColor: Colors.red.shade700,
+          foregroundColor: Colors.white,
+          actions: [
+            IconButton(
+              onPressed: () => _signOut(context),
+              icon: const Icon(Icons.logout),
+              tooltip: 'Sign Out',
+            ),
+          ],
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.warning_rounded,
+                  size: 80,
+                  color: Colors.red.shade600,
+                ),
+                const SizedBox(height: 24),
+                Text(
+                  'Account Disabled',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.red.shade700,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Your account has been disabled by an administrator. '
+                  'Please contact support for assistance.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.grey,
+                  ),
+                ),
+                const SizedBox(height: 32),
+                ElevatedButton.icon(
+                  onPressed: () => _signOut(context),
+                  icon: const Icon(Icons.logout),
+                  label: const Text('Sign Out'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red.shade600,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 12),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       );
     }
@@ -655,75 +1173,314 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       drawer: !_isLoadingRoles ? _buildDrawer() : null,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            children: [
-              // Invitation Dashboard Card
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(children: [
+              // Loading progress bar
+              if (_isLoadingRoles ||
+                  _isLoadingInvitations ||
+                  _isLoadingAuthorities) ...[
+                _buildLoadingProgress(),
+                const SizedBox(height: 24),
+              ],
+
+              // Horizontal Invitation Cards
               if (_pendingInvitationsCount > 0 && !_isLoadingInvitations) ...[
-                Card(
-                  elevation: 4,
-                  color: Colors.blue.shade50,
-                  child: InkWell(
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) =>
-                              const InvitationDashboardScreen(),
-                        ),
-                      );
-                    },
-                    child: Padding(
-                      padding: const EdgeInsets.all(20),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: Row(
                         children: [
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.blue.shade100,
-                              borderRadius: BorderRadius.circular(50),
-                            ),
-                            child: Icon(
-                              Icons.mail,
-                              color: Colors.blue.shade700,
-                              size: 32,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'You have $_pendingInvitationsCount pending invitation${_pendingInvitationsCount == 1 ? '' : 's'}',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.blue.shade800,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Tap to review and respond to role invitations',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.blue.shade600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
                           Icon(
-                            Icons.arrow_forward_ios,
-                            color: Colors.blue.shade600,
-                            size: 20,
+                            Icons.mail,
+                            color: Colors.blue.shade700,
+                            size: 24,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Role Invitations',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue.shade800,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.red,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              '$_pendingInvitationsCount',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          const Spacer(),
+                          TextButton(
+                            onPressed: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      const InvitationDashboardScreen(),
+                                ),
+                              );
+                            },
+                            child: Text(
+                              'View All',
+                              style: TextStyle(
+                                color: Colors.blue.shade600,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                           ),
                         ],
                       ),
                     ),
-                  ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      height: 160,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        itemCount: _pendingInvitations.length,
+                        itemBuilder: (context, index) {
+                          final invitation = _pendingInvitations[index];
+                          return Container(
+                            width: 280,
+                            margin: const EdgeInsets.only(right: 12),
+                            child: Card(
+                              elevation: 4,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Container(
+                                constraints: const BoxConstraints(
+                                  minHeight: 180,
+                                  maxHeight: 200,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.shade50,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: Colors.blue.shade200,
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(16),
+                                  child: SingleChildScrollView(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Container(
+                                              padding: const EdgeInsets.all(8),
+                                              decoration: BoxDecoration(
+                                                color: Colors.blue.shade200,
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                              ),
+                                              child: Icon(
+                                                Icons.business,
+                                                color: Colors.blue.shade800,
+                                                size: 20,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: Text(
+                                                invitation.formattedRoleName,
+                                                style: TextStyle(
+                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.blue.shade800,
+                                                ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          invitation.formattedAuthority,
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            color: Colors.blue.shade600,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          'Invited by ${invitation.inviterName ?? "Unknown"}',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.blue.shade500,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          invitation.timeSinceInvited,
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.grey.shade600,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        const SizedBox(height: 12),
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: ElevatedButton(
+                                                onPressed: () async {
+                                                  try {
+                                                    await InvitationService
+                                                        .acceptInvitation(
+                                                            invitation.id);
+                                                    if (mounted) {
+                                                      ScaffoldMessenger.of(
+                                                              context)
+                                                          .showSnackBar(
+                                                        const SnackBar(
+                                                          content: Text(
+                                                              'Invitation accepted successfully!'),
+                                                          backgroundColor:
+                                                              Colors.green,
+                                                        ),
+                                                      );
+                                                      _loadPendingInvitations();
+                                                    }
+                                                  } catch (e) {
+                                                    if (mounted) {
+                                                      ScaffoldMessenger.of(
+                                                              context)
+                                                          .showSnackBar(
+                                                        SnackBar(
+                                                          content: Text(
+                                                              'Error accepting invitation: $e'),
+                                                          backgroundColor:
+                                                              Colors.red,
+                                                        ),
+                                                      );
+                                                    }
+                                                  }
+                                                },
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor: Colors.green,
+                                                  foregroundColor: Colors.white,
+                                                  padding: const EdgeInsets
+                                                      .symmetric(vertical: 4),
+                                                  minimumSize:
+                                                      const Size(0, 32),
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            8),
+                                                  ),
+                                                ),
+                                                child: const Text(
+                                                  'Accept',
+                                                  style: TextStyle(
+                                                      fontSize: 12,
+                                                      fontWeight:
+                                                          FontWeight.bold),
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: OutlinedButton(
+                                                onPressed: () async {
+                                                  try {
+                                                    await InvitationService
+                                                        .declineInvitation(
+                                                            invitation.id);
+                                                    if (mounted) {
+                                                      ScaffoldMessenger.of(
+                                                              context)
+                                                          .showSnackBar(
+                                                        const SnackBar(
+                                                          content: Text(
+                                                              'Invitation declined'),
+                                                          backgroundColor:
+                                                              Colors.orange,
+                                                        ),
+                                                      );
+                                                      _loadPendingInvitations();
+                                                    }
+                                                  } catch (e) {
+                                                    if (mounted) {
+                                                      ScaffoldMessenger.of(
+                                                              context)
+                                                          .showSnackBar(
+                                                        SnackBar(
+                                                          content: Text(
+                                                              'Error declining invitation: $e'),
+                                                          backgroundColor:
+                                                              Colors.red,
+                                                        ),
+                                                      );
+                                                    }
+                                                  }
+                                                },
+                                                style: OutlinedButton.styleFrom(
+                                                  foregroundColor: Colors.red,
+                                                  side: const BorderSide(
+                                                      color: Colors.red),
+                                                  padding: const EdgeInsets
+                                                      .symmetric(vertical: 4),
+                                                  minimumSize:
+                                                      const Size(0, 32),
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            8),
+                                                  ),
+                                                ),
+                                                child: const Text(
+                                                  'Decline',
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
                 ),
-                const SizedBox(height: 16),
               ],
               // Main user features (for all users)
               if (!_isLoadingRoles) ...[
@@ -937,7 +1694,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                    subtitle: const Text('Manage identity, payment & preferences'),
+                    subtitle:
+                        const Text('Manage identity, payment & preferences'),
                     trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                     onTap: () {
                       Navigator.of(context).push(
@@ -950,8 +1708,549 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const SizedBox(height: 24),
               ],
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Build profile setup screen for first-time users
+  Widget _buildProfileSetupScreen() {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Complete Your Profile'),
+        backgroundColor: Colors.blue.shade700,
+        foregroundColor: Colors.white,
+        automaticallyImplyLeading: false, // Prevent back navigation
+        actions: [
+          IconButton(
+            onPressed: () => _signOut(context),
+            icon: const Icon(Icons.logout),
+            tooltip: 'Sign Out',
+          ),
+        ],
+      ),
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Welcome icon
+              Container(
+                width: 120,
+                height: 120,
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade100,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.person_add_rounded,
+                  size: 60,
+                  color: Colors.blue.shade700,
+                ),
+              ),
+              const SizedBox(height: 32),
+
+              // Welcome message
+              Text(
+                'Welcome to Border Tax!',
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blue.shade800,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+
+              Text(
+                'To get started, please complete your profile setup. This information is required for border crossing verification and system access.',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.grey.shade700,
+                  height: 1.5,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 32),
+
+              // Required information card
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.orange.shade200),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          color: Colors.orange.shade700,
+                          size: 24,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Required Information',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.orange.shade800,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    _buildRequirementItem('Full Name',
+                        'Your legal name as it appears on documents'),
+                    _buildRequirementItem('Identity Documents',
+                        'National ID and passport information'),
+                    _buildRequirementItem(
+                        'Country of Origin', 'Your citizenship country'),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 32),
+
+              // Action buttons
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.of(context)
+                        .push(
+                      MaterialPageRoute(
+                        builder: (context) => const ProfileSettingsScreen(),
+                      ),
+                    )
+                        .then((_) {
+                      // Refresh profile data when returning from settings
+                      _loadCurrentProfile();
+                    });
+                  },
+                  icon: const Icon(Icons.arrow_forward),
+                  label: const Text('Complete Profile Setup'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue.shade600,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Skip option (if needed for testing)
+              TextButton(
+                onPressed: () {
+                  showDialog(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('Skip Profile Setup?'),
+                      content: const Text(
+                        'You can skip this step, but some features may not be available until you complete your profile. You can always complete it later from the drawer menu.',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          child: const Text('Cancel'),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                            // Force refresh to bypass the setup screen
+                            setState(() {
+                              _isLoadingProfile = true;
+                            });
+                            Future.delayed(const Duration(milliseconds: 500),
+                                () {
+                              setState(() {
+                                _isLoadingProfile = false;
+                              });
+                            });
+                          },
+                          child: const Text('Skip for Now'),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+                child: Text(
+                  'Skip for now',
+                  style: TextStyle(color: Colors.grey.shade600),
+                ),
+              ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  /// Build requirement item for profile setup
+  Widget _buildRequirementItem(String title, String description) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            margin: const EdgeInsets.only(top: 6),
+            decoration: BoxDecoration(
+              color: Colors.orange.shade600,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: Colors.orange.shade800,
+                  ),
+                ),
+                Text(
+                  description,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.orange.shade700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Build loading progress indicator
+  Widget _buildLoadingProgress() {
+    String loadingText = 'Loading...';
+    Color progressColor = Colors.blue;
+
+    if (_isLoadingRoles) {
+      loadingText = 'Loading dashboard...';
+      progressColor = Colors.blue;
+    } else if (_isLoadingInvitations) {
+      loadingText = 'Loading invitations...';
+      progressColor = Colors.blue.shade600;
+    } else if (_isLoadingAuthorities) {
+      loadingText = 'Loading authorities...';
+      progressColor = Colors.orange.shade600;
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(progressColor),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  loadingText,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.grey.shade700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          LinearProgressIndicator(
+            backgroundColor: Colors.grey.shade200,
+            valueColor: AlwaysStoppedAnimation<Color>(progressColor),
+            minHeight: 4,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Authority Selection Dialog Widget
+class _AuthoritySelectionDialog extends StatefulWidget {
+  final List<Authority> authorities;
+  final Authority? selectedAuthority;
+  final Function(Authority) onAuthoritySelected;
+
+  const _AuthoritySelectionDialog({
+    required this.authorities,
+    required this.selectedAuthority,
+    required this.onAuthoritySelected,
+  });
+
+  @override
+  State<_AuthoritySelectionDialog> createState() =>
+      _AuthoritySelectionDialogState();
+}
+
+class _AuthoritySelectionDialogState extends State<_AuthoritySelectionDialog> {
+  late TextEditingController _searchController;
+  List<Authority> _filteredAuthorities = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController = TextEditingController();
+    _filteredAuthorities = widget.authorities;
+    _searchController.addListener(_filterAuthorities);
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _filterAuthorities() {
+    final query = _searchController.text.toLowerCase();
+    setState(() {
+      _filteredAuthorities = widget.authorities.where((authority) {
+        return authority.name.toLowerCase().contains(query) ||
+            (authority.countryName?.toLowerCase().contains(query) ?? false) ||
+            authority.code.toLowerCase().contains(query) ||
+            (authority.countryCode?.toLowerCase().contains(query) ?? false);
+      }).toList();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Container(
+        width: MediaQuery.of(context).size.width * 0.9,
+        height: MediaQuery.of(context).size.height * 0.7,
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            // Header
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    widget.authorities.length == 1
+                        ? 'Select Authority'
+                        : 'Select Authority',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.orange.shade800,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.close),
+                  color: Colors.grey.shade600,
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            // Search Field
+            TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Search authorities or countries...',
+                prefixIcon: Icon(Icons.search, color: Colors.orange.shade600),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.orange.shade300),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide:
+                      BorderSide(color: Colors.orange.shade600, width: 2),
+                ),
+                filled: true,
+                fillColor: Colors.orange.shade50,
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Authority List
+            Expanded(
+              child: _filteredAuthorities.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.search_off,
+                            size: 64,
+                            color: Colors.grey.shade400,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'No authorities found',
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Try adjusting your search terms',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey.shade500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      itemCount: _filteredAuthorities.length,
+                      itemBuilder: (context, index) {
+                        final authority = _filteredAuthorities[index];
+                        final isSelected =
+                            widget.selectedAuthority?.id == authority.id;
+
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          elevation: isSelected ? 4 : 1,
+                          color: isSelected ? Colors.orange.shade50 : null,
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.all(12),
+                            title: Text(
+                              '${authority.name} - ${authority.countryName ?? "Unknown"}',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color:
+                                    isSelected ? Colors.orange.shade800 : null,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 2,
+                            ),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.orange.shade200,
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Text(
+                                        authority.code,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w500,
+                                          color: Colors.orange.shade800,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        authority.authorityTypeDisplay,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.grey.shade600,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                if (authority.countryCode != null) ...[
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'Country: ${authority.countryCode}',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.grey.shade500,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ],
+                            ),
+                            trailing: isSelected
+                                ? Icon(
+                                    Icons.check_circle,
+                                    color: Colors.green.shade600,
+                                    size: 24,
+                                  )
+                                : Icon(
+                                    Icons.arrow_forward_ios,
+                                    color: Colors.grey.shade400,
+                                    size: 16,
+                                  ),
+                            onTap: () {
+                              widget.onAuthoritySelected(authority);
+                              Navigator.of(context).pop();
+                            },
+                          ),
+                        );
+                      },
+                    ),
+            ),
+
+            // Footer
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '${_filteredAuthorities.length} ${_filteredAuthorities.length == 1 ? "authority" : "authorities"} found',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: Text(
+                    'Cancel',
+                    style: TextStyle(
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );

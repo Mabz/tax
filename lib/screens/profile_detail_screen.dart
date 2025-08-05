@@ -471,7 +471,6 @@ class _AssignRoleDialogState extends State<_AssignRoleDialog> {
         id: '',
         name: '',
         countryCode: '',
-        revenueServiceName: '',
         isActive: false,
         isGlobal: false,
         createdAt: DateTime.now(),

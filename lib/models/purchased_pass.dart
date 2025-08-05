@@ -12,6 +12,9 @@ class PurchasedPass {
   final double amount;
   final String? qrCode;
   final String? shortCode;
+  final String? authorityId;
+  final String? authorityName;
+  final String? countryName;
 
   PurchasedPass({
     required this.passId,
@@ -27,6 +30,9 @@ class PurchasedPass {
     required this.amount,
     this.qrCode,
     this.shortCode,
+    this.authorityId,
+    this.authorityName,
+    this.countryName,
   });
 
   factory PurchasedPass.fromJson(Map<String, dynamic> json) {
@@ -53,6 +59,9 @@ class PurchasedPass {
       amount: (json['amount'] as num?)?.toDouble() ?? 0.0,
       qrCode: qrCodeString,
       shortCode: json['short_code']?.toString(),
+      authorityId: json['authority_id']?.toString(),
+      authorityName: json['authority_name']?.toString(),
+      countryName: json['country_name']?.toString(),
     );
   }
 
@@ -71,6 +80,9 @@ class PurchasedPass {
       'amount': amount,
       'qr_code': qrCode,
       'short_code': shortCode,
+      'authority_id': authorityId,
+      'authority_name': authorityName,
+      'country_name': countryName,
     };
   }
 
@@ -118,7 +130,10 @@ class PurchasedPass {
         other.currency == currency &&
         other.amount == amount &&
         other.qrCode == qrCode &&
-        other.shortCode == shortCode;
+        other.shortCode == shortCode &&
+        other.authorityId == authorityId &&
+        other.authorityName == authorityName &&
+        other.countryName == countryName;
   }
 
   @override
@@ -137,6 +152,9 @@ class PurchasedPass {
       amount,
       qrCode,
       shortCode,
+      authorityId,
+      authorityName,
+      countryName,
     );
   }
 

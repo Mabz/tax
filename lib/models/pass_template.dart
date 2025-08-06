@@ -8,6 +8,7 @@ class PassTemplate {
   final String description;
   final int entryLimit;
   final int expirationDays;
+  final int passAdvanceDays;
   final double taxAmount;
   final String currencyCode;
   final bool isActive;
@@ -29,6 +30,7 @@ class PassTemplate {
     required this.description,
     required this.entryLimit,
     required this.expirationDays,
+    required this.passAdvanceDays,
     required this.taxAmount,
     required this.currencyCode,
     required this.isActive,
@@ -50,6 +52,7 @@ class PassTemplate {
       description: json['description']?.toString() ?? '',
       entryLimit: (json['entry_limit'] as num?)?.toInt() ?? 0,
       expirationDays: (json['expiration_days'] as num?)?.toInt() ?? 0,
+      passAdvanceDays: (json['pass_advance_days'] as num?)?.toInt() ?? 0,
       taxAmount: (json['tax_amount'] as num?)?.toDouble() ?? 0.0,
       currencyCode: json['currency_code']?.toString() ?? '',
       isActive: json['is_active'] == true,
@@ -74,6 +77,7 @@ class PassTemplate {
       'description': description,
       'entry_limit': entryLimit,
       'expiration_days': expirationDays,
+      'pass_advance_days': passAdvanceDays,
       'tax_amount': taxAmount,
       'currency_code': currencyCode,
       'is_active': isActive,
@@ -95,6 +99,7 @@ class PassTemplate {
     String? description,
     int? entryLimit,
     int? expirationDays,
+    int? passAdvanceDays,
     double? taxAmount,
     String? currencyCode,
     bool? isActive,
@@ -114,6 +119,7 @@ class PassTemplate {
       description: description ?? this.description,
       entryLimit: entryLimit ?? this.entryLimit,
       expirationDays: expirationDays ?? this.expirationDays,
+      passAdvanceDays: passAdvanceDays ?? this.passAdvanceDays,
       taxAmount: taxAmount ?? this.taxAmount,
       currencyCode: currencyCode ?? this.currencyCode,
       isActive: isActive ?? this.isActive,

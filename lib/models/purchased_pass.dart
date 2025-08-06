@@ -6,6 +6,7 @@ class PurchasedPass {
   final int entryLimit;
   final int entriesRemaining;
   final DateTime issuedAt;
+  final DateTime activationDate;
   final DateTime expiresAt;
   final String status;
   final String currency;
@@ -24,6 +25,7 @@ class PurchasedPass {
     required this.entryLimit,
     required this.entriesRemaining,
     required this.issuedAt,
+    required this.activationDate,
     required this.expiresAt,
     required this.status,
     required this.currency,
@@ -38,13 +40,13 @@ class PurchasedPass {
   factory PurchasedPass.fromJson(Map<String, dynamic> json) {
     // Extract QR data from JSONB field or create from existing data
     final qrData = json['qr_data'] as Map<String, dynamic>?;
-    
+
     // Generate QR code string from JSONB data or fallback to legacy format
     String? qrCodeString;
     if (qrData != null) {
       qrCodeString = qrData.entries.map((e) => '${e.key}:${e.value}').join('|');
     }
-    
+
     return PurchasedPass(
       passId: json['pass_id']?.toString() ?? json['id']?.toString() ?? '',
       vehicleDescription: json['vehicle_desc']?.toString() ?? '',
@@ -52,8 +54,12 @@ class PurchasedPass {
       borderName: json['border_name']?.toString(),
       entryLimit: (json['entry_limit'] as num?)?.toInt() ?? 0,
       entriesRemaining: (json['entries_remaining'] as num?)?.toInt() ?? 0,
-      issuedAt: DateTime.parse(json['issued_at']?.toString() ?? DateTime.now().toIso8601String()),
-      expiresAt: DateTime.parse(json['expires_at']?.toString() ?? DateTime.now().toIso8601String()),
+      issuedAt: DateTime.parse(
+          json['issued_at']?.toString() ?? DateTime.now().toIso8601String()),
+      activationDate: DateTime.parse(json['activation_date']?.toString() ??
+          DateTime.now().toIso8601String()),
+      expiresAt: DateTime.parse(
+          json['expires_at']?.toString() ?? DateTime.now().toIso8601String()),
       status: json['status']?.toString() ?? 'active',
       currency: json['currency']?.toString() ?? '',
       amount: (json['amount'] as num?)?.toDouble() ?? 0.0,
@@ -74,6 +80,7 @@ class PurchasedPass {
       'entry_limit': entryLimit,
       'entries_remaining': entriesRemaining,
       'issued_at': issuedAt.toIso8601String(),
+      'activation_date': activationDate.toIso8601String(),
       'expires_at': expiresAt.toIso8601String(),
       'status': status,
       'currency': currency,
@@ -87,12 +94,18 @@ class PurchasedPass {
   }
 
   bool get isExpired => DateTime.now().isAfter(expiresAt);
-  bool get isActive => status == 'active' && !isExpired;
+  bool get isActivated =>
+      DateTime.now().isAfter(activationDate) ||
+      DateTime.now().isAtSameMomentAs(activationDate);
+  bool get isActive => status == 'active' && !isExpired && isActivated;
   bool get hasEntriesRemaining => entriesRemaining > 0;
 
   String get statusDisplay {
     if (isExpired) return 'Expired';
-    if (status == 'active') return 'Active';
+    if (status == 'active') {
+      if (!isActivated) return 'Pending Activation';
+      return 'Active';
+    }
     return status.toUpperCase();
   }
 
@@ -100,11 +113,11 @@ class PurchasedPass {
   static String generateShortCode(String passId) {
     // Create a hash from the pass ID
     var hash = passId.hashCode.abs();
-    
+
     // Convert to base36 (0-9, A-Z) and ensure 8 characters
     var code = hash.toRadixString(36).toUpperCase();
     code = code.padLeft(8, '0').substring(0, 8);
-    
+
     // Format as XXXX-XXXX for readability
     return '${code.substring(0, 4)}-${code.substring(4, 8)}';
   }
@@ -125,6 +138,7 @@ class PurchasedPass {
         other.entryLimit == entryLimit &&
         other.entriesRemaining == entriesRemaining &&
         other.issuedAt == issuedAt &&
+        other.activationDate == activationDate &&
         other.expiresAt == expiresAt &&
         other.status == status &&
         other.currency == currency &&
@@ -146,6 +160,7 @@ class PurchasedPass {
       entryLimit,
       entriesRemaining,
       issuedAt,
+      activationDate,
       expiresAt,
       status,
       currency,

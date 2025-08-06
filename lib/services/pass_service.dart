@@ -116,6 +116,7 @@ class PassService {
                       entryLimit: 0,
                       entriesRemaining: 0,
                       issuedAt: DateTime.now(),
+                      activationDate: DateTime.now(),
                       expiresAt: DateTime.now(),
                       status: 'deleted',
                       currency: '',
@@ -157,6 +158,7 @@ class PassService {
   static Future<void> issuePassFromTemplate({
     String? vehicleId,
     required String passTemplateId,
+    required DateTime activationDate,
   }) async {
     final user = _supabase.auth.currentUser;
     if (user == null) {
@@ -184,6 +186,7 @@ class PassService {
       'target_profile_id': user.id,
       'target_vehicle_id': vehicleId,
       'pass_template_id': passTemplateId,
+      'activation_date': activationDate.toIso8601String(),
       'pass_hash': passHash,
       'short_code': shortCode,
       'qr_data': qrData,
@@ -219,6 +222,7 @@ class PassService {
         .select('*, countries!inner(*)')
         .eq('is_active', true)
         .eq('countries.is_active', true)
+        .eq('countries.is_global', false) // Exclude global countries
         .order('name');
 
     final List<dynamic> data = response as List<dynamic>;
@@ -253,24 +257,24 @@ class PassService {
   /// This converts authorities back to country format for existing UI
   static Future<List<Map<String, dynamic>>> getActiveCountries() async {
     final authorities = await PassService.getActiveAuthorities();
-    
+
     // Group authorities by country and return unique countries
     final Map<String, Map<String, dynamic>> countryMap = {};
-    
+
     for (final authority in authorities) {
       // Skip authorities without proper country data
       if (authority.countryName == null || authority.countryName!.isEmpty) {
         continue;
       }
-      
+
       countryMap[authority.countryId] = {
-          'id': authority.countryId,
-          'name': authority.countryName,
-          'country_code': authority.countryCode ?? '',
-          'is_active': true,
-        };
+        'id': authority.countryId,
+        'name': authority.countryName,
+        'country_code': authority.countryCode ?? '',
+        'is_active': true,
+      };
     }
-    
+
     return countryMap.values.toList();
   }
 
@@ -280,17 +284,17 @@ class PassService {
       String countryId) async {
     // Get all authorities for this country
     final authorities = await PassService.getActiveAuthorities();
-    final countryAuthorities = authorities
-        .where((auth) => auth.countryId == countryId)
-        .toList();
-    
+    final countryAuthorities =
+        authorities.where((auth) => auth.countryId == countryId).toList();
+
     // Get templates from all authorities in this country
     final List<PassTemplate> allTemplates = [];
     for (final authority in countryAuthorities) {
-      final templates = await PassService.getPassTemplatesForAuthority(authority.id);
+      final templates =
+          await PassService.getPassTemplatesForAuthority(authority.id);
       allTemplates.addAll(templates);
     }
-    
+
     return allTemplates;
   }
 }

@@ -1,16 +1,18 @@
-/// Authority Management Screen for superusers
-/// Allows creation, editing, and management of revenue services and other authorities
+/// Simplified Authority Management Screen
+/// Allows country administrators to edit the selected authority's details
 library;
 
 import 'package:flutter/material.dart';
 import '../models/authority.dart';
-import '../models/country.dart';
 import '../services/authority_service.dart';
-import '../services/country_service.dart';
-import '../services/role_service.dart';
 
 class AuthorityManagementScreen extends StatefulWidget {
-  const AuthorityManagementScreen({super.key});
+  final Authority selectedAuthority;
+
+  const AuthorityManagementScreen({
+    super.key,
+    required this.selectedAuthority,
+  });
 
   @override
   State<AuthorityManagementScreen> createState() =>
@@ -18,342 +20,52 @@ class AuthorityManagementScreen extends StatefulWidget {
 }
 
 class _AuthorityManagementScreenState extends State<AuthorityManagementScreen> {
-  List<Authority> _authorities = [];
-  List<Country> _countries = [];
-  bool _isLoading = true;
-  String? _errorMessage;
-
-  @override
-  void initState() {
-    super.initState();
-    _checkPermissionsAndLoadData();
-  }
-
-  Future<void> _checkPermissionsAndLoadData() async {
-    try {
-      final isSuperuser = await RoleService.isSuperuser();
-      if (!isSuperuser) {
-        setState(() {
-          _errorMessage = 'Access denied. Superuser role required.';
-          _isLoading = false;
-        });
-        return;
-      }
-
-      await _loadData();
-    } catch (e) {
-      setState(() {
-        _errorMessage = 'Error checking permissions: $e';
-        _isLoading = false;
-      });
-    }
-  }
-
-  Future<void> _loadData() async {
-    try {
-      setState(() {
-        _isLoading = true;
-        _errorMessage = null;
-      });
-
-      final authorities = await AuthorityService.getAllAuthorities();
-      final countries = await CountryService.getAllCountries();
-
-      setState(() {
-        _authorities = authorities;
-        _countries = countries;
-        _isLoading = false;
-      });
-    } catch (e) {
-      setState(() {
-        _errorMessage = 'Error loading data: $e';
-        _isLoading = false;
-      });
-    }
-  }
-
-  void _showCreateAuthorityDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => _AuthorityDialog(
-        countries: _countries,
-        onSaved: () {
-          Navigator.of(context).pop();
-          _loadData();
-        },
-      ),
-    );
-  }
-
-  void _showEditAuthorityDialog(Authority authority) {
-    showDialog(
-      context: context,
-      builder: (context) => _AuthorityDialog(
-        authority: authority,
-        countries: _countries,
-        onSaved: () {
-          Navigator.of(context).pop();
-          _loadData();
-        },
-      ),
-    );
-  }
-
-  void _showDeleteConfirmation(Authority authority) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Authority'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Are you sure you want to delete this authority?'),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Authority: ${authority.name}',
-                      style: const TextStyle(fontWeight: FontWeight.bold)),
-                  Text('Code: ${authority.code}'),
-                  Text('Type: ${authority.authorityTypeDisplay}'),
-                  Text('Country: ${authority.countryName ?? 'Unknown'}'),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'This action cannot be undone and will be audited for compliance purposes.',
-              style: TextStyle(color: Colors.red, fontSize: 12),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              try {
-                await AuthorityService.deleteAuthority(authority.id);
-                if (mounted) {
-                  Navigator.of(context).pop();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Authority deleted successfully'),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                  _loadData();
-                }
-              } catch (e) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Error deleting authority: $e'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                }
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Manage Authorities'),
-        backgroundColor: Colors.red.shade600,
-        foregroundColor: Colors.white,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadData,
-          ),
-        ],
-      ),
-      body: _buildBody(),
-      floatingActionButton: _errorMessage == null
-          ? FloatingActionButton(
-              onPressed: _showCreateAuthorityDialog,
-              backgroundColor: Colors.red.shade600,
-              child: const Icon(Icons.add, color: Colors.white),
-            )
-          : null,
-    );
-  }
-
-  Widget _buildBody() {
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (_errorMessage != null) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.error, size: 64, color: Colors.red.shade400),
-            const SizedBox(height: 16),
-            Text(
-              _errorMessage!,
-              style: TextStyle(color: Colors.red.shade600, fontSize: 16),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _checkPermissionsAndLoadData,
-              child: const Text('Retry'),
-            ),
-          ],
-        ),
-      );
-    }
-
-    if (_authorities.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.business, size: 64, color: Colors.grey.shade400),
-            const SizedBox(height: 16),
-            Text(
-              'No authorities found',
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 18),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Create your first authority to get started',
-              style: TextStyle(color: Colors.grey.shade500),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return RefreshIndicator(
-      onRefresh: _loadData,
-      child: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: _authorities.length,
-        itemBuilder: (context, index) {
-          final authority = _authorities[index];
-          return Card(
-            margin: const EdgeInsets.only(bottom: 12),
-            child: ListTile(
-              leading: CircleAvatar(
-                backgroundColor:
-                    authority.isActive ? Colors.green : Colors.grey,
-                child: const Icon(
-                  Icons.business,
-                  color: Colors.white,
-                ),
-              ),
-              title: Text(
-                authority.name,
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              subtitle: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Code: ${authority.code}'),
-                  Text('Type: ${authority.authorityTypeDisplay}'),
-                  Text('Country: ${authority.countryName ?? 'Unknown'}'),
-                  Text(
-                    'Status: ${authority.statusDisplay}',
-                    style: TextStyle(
-                      color: authority.isActive ? Colors.green : Colors.red,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-              trailing: PopupMenuButton<String>(
-                onSelected: (value) {
-                  switch (value) {
-                    case 'edit':
-                      _showEditAuthorityDialog(authority);
-                      break;
-                    case 'delete':
-                      _showDeleteConfirmation(authority);
-                      break;
-                  }
-                },
-                itemBuilder: (context) => [
-                  const PopupMenuItem(
-                    value: 'edit',
-                    child: Row(
-                      children: [
-                        Icon(Icons.edit, size: 20),
-                        SizedBox(width: 8),
-                        Text('Edit'),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'delete',
-                    child: Row(
-                      children: [
-                        Icon(Icons.delete, size: 20, color: Colors.red),
-                        SizedBox(width: 8),
-                        Text('Delete', style: TextStyle(color: Colors.red)),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _AuthorityDialog extends StatefulWidget {
-  final Authority? authority;
-  final List<Country> countries;
-  final VoidCallback onSaved;
-
-  const _AuthorityDialog({
-    this.authority,
-    required this.countries,
-    required this.onSaved,
-  });
-
-  @override
-  State<_AuthorityDialog> createState() => _AuthorityDialogState();
-}
-
-class _AuthorityDialogState extends State<_AuthorityDialog> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _codeController = TextEditingController();
   final _descriptionController = TextEditingController();
-  final _passAdvanceDaysController = TextEditingController();
-  final _defaultCurrencyController = TextEditingController();
+  final _advanceDaysController = TextEditingController();
 
-  Country? _selectedCountry;
   String _selectedAuthorityType = 'revenue_service';
-  bool _isActive = true;
+  String _selectedCurrency = 'USD';
   bool _isLoading = false;
+  bool _hasChanges = false;
+  bool _wasUpdated = false; // Track if authority was updated
+
+  // Keep track of the current authority state for change detection
+  late Authority _currentAuthority;
+
+  final List<String> _currencies = [
+    'USD',
+    'EUR',
+    'GBP',
+    'JPY',
+    'AUD',
+    'CAD',
+    'CHF',
+    'CNY',
+    'SEK',
+    'NZD',
+    'ZAR',
+    'KES',
+    'UGX',
+    'TZS',
+    'RWF',
+    'ETB',
+    'NGN',
+    'GHS',
+    'XOF',
+    'XAF',
+    'MAD',
+    'EGP',
+    'TND',
+    'DZD',
+    'BWP',
+    'NAD',
+    'ZMW',
+    'MUR',
+    'SCR',
+  ];
 
   @override
   void initState() {
@@ -361,295 +73,458 @@ class _AuthorityDialogState extends State<_AuthorityDialog> {
     _initializeForm();
   }
 
-  void _initializeForm() {
-    if (widget.authority != null) {
-      final authority = widget.authority!;
-      _nameController.text = authority.name;
-      _codeController.text = authority.code;
-      _descriptionController.text = authority.description ?? '';
-      _selectedAuthorityType = authority.authorityType;
-      _isActive = authority.isActive;
-      _passAdvanceDaysController.text = '30'; // Default value
-      _defaultCurrencyController.text = ''; // Default empty
-
-      // Find the selected country
-      _selectedCountry = widget.countries.firstWhere(
-        (country) => country.id == authority.countryId,
-        orElse: () => widget.countries.first,
-      );
-    } else {
-      _passAdvanceDaysController.text = '30';
-      _selectedCountry =
-          widget.countries.isNotEmpty ? widget.countries.first : null;
-    }
-  }
-
   @override
   void dispose() {
     _nameController.dispose();
     _codeController.dispose();
     _descriptionController.dispose();
-    _passAdvanceDaysController.dispose();
-    _defaultCurrencyController.dispose();
+    _advanceDaysController.dispose();
     super.dispose();
   }
 
-  Future<void> _saveAuthority() async {
-    if (!_formKey.currentState!.validate() || _selectedCountry == null) {
-      return;
-    }
+  void _initializeForm() {
+    _currentAuthority = widget.selectedAuthority;
 
-    setState(() {
-      _isLoading = true;
-    });
+    _nameController.text = _currentAuthority.name;
+    _codeController.text = _currentAuthority.code;
+    _descriptionController.text = _currentAuthority.description ?? '';
+    _advanceDaysController.text =
+        (_currentAuthority.defaultPassAdvanceDays ?? 30).toString();
+    _selectedAuthorityType = _currentAuthority.authorityType;
+    _selectedCurrency = _currentAuthority.defaultCurrencyCode ?? 'USD';
+
+    // Add listeners to detect changes
+    _nameController.addListener(_onFieldChanged);
+    _codeController.addListener(_onFieldChanged);
+    _descriptionController.addListener(_onFieldChanged);
+    _advanceDaysController.addListener(_onFieldChanged);
+  }
+
+  void _onFieldChanged() {
+    final hasChanges = _nameController.text != _currentAuthority.name ||
+        _codeController.text != _currentAuthority.code ||
+        _descriptionController.text != (_currentAuthority.description ?? '') ||
+        _advanceDaysController.text !=
+            (_currentAuthority.defaultPassAdvanceDays ?? 30).toString() ||
+        _selectedAuthorityType != _currentAuthority.authorityType ||
+        _selectedCurrency != (_currentAuthority.defaultCurrencyCode ?? 'USD');
+
+    if (hasChanges != _hasChanges) {
+      setState(() {
+        _hasChanges = hasChanges;
+      });
+    }
+  }
+
+  Future<void> _showSaveConfirmation() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Confirm Changes'),
+        content: const Text(
+            'Are you sure you want to save these changes to the authority?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange.shade700,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Save Changes'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await _saveChanges();
+    }
+  }
+
+  Future<void> _saveChanges() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _isLoading = true);
 
     try {
-      final passAdvanceDays =
-          int.tryParse(_passAdvanceDaysController.text) ?? 30;
-      final defaultCurrency = _defaultCurrencyController.text.trim().isEmpty
-          ? null
-          : _defaultCurrencyController.text.trim();
-
-      if (widget.authority != null) {
-        // Update existing authority
-        await AuthorityService.updateAuthority(
-          authorityId: widget.authority!.id,
-          name: _nameController.text.trim(),
-          code: _codeController.text.trim().toUpperCase(),
-          authorityType: _selectedAuthorityType,
-          description: _descriptionController.text.trim().isEmpty
-              ? null
-              : _descriptionController.text.trim(),
-          passAdvanceDays: passAdvanceDays,
-          defaultCurrencyCode: defaultCurrency,
-          isActive: _isActive,
-        );
-      } else {
-        // Create new authority
-        await AuthorityService.createAuthority(
-          countryId: _selectedCountry!.id,
-          name: _nameController.text.trim(),
-          code: _codeController.text.trim().toUpperCase(),
-          authorityType: _selectedAuthorityType,
-          description: _descriptionController.text.trim().isEmpty
-              ? null
-              : _descriptionController.text.trim(),
-          passAdvanceDays: passAdvanceDays,
-          defaultCurrencyCode: defaultCurrency,
-          isActive: _isActive,
-        );
-      }
+      await AuthorityService.updateAuthority(
+        authorityId: widget.selectedAuthority.id,
+        name: _nameController.text.trim(),
+        code: _codeController.text.trim().toUpperCase(),
+        authorityType: _selectedAuthorityType,
+        description: _descriptionController.text.trim().isEmpty
+            ? null
+            : _descriptionController.text.trim(),
+        defaultPassAdvanceDays: int.parse(_advanceDaysController.text),
+        defaultCurrencyCode: _selectedCurrency,
+        isActive:
+            widget.selectedAuthority.isActive, // Keep current active status
+      );
 
       if (mounted) {
+        // Update the current authority state with the new values
+        _currentAuthority = _currentAuthority.copyWith(
+          name: _nameController.text.trim(),
+          code: _codeController.text.trim().toUpperCase(),
+          authorityType: _selectedAuthorityType,
+          description: _descriptionController.text.trim().isEmpty
+              ? null
+              : _descriptionController.text.trim(),
+          passAdvanceDays: int.parse(_advanceDaysController.text),
+          defaultCurrencyCode: _selectedCurrency,
+          updatedAt: DateTime.now(),
+        );
+
+        setState(() {
+          _hasChanges = false;
+          _isLoading = false;
+          _wasUpdated = true; // Mark as updated
+        });
+
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(widget.authority != null
-                ? 'Authority updated successfully'
-                : 'Authority created successfully'),
+          const SnackBar(
+            content: Text('Authority updated successfully!'),
             backgroundColor: Colors.green,
           ),
         );
-        widget.onSaved();
       }
     } catch (e) {
+      setState(() => _isLoading = false);
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error saving authority: $e'),
+            content: Text('Error updating authority: $e'),
             backgroundColor: Colors.red,
           ),
         );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text(
-          widget.authority != null ? 'Edit Authority' : 'Create Authority'),
-      content: SizedBox(
-        width: MediaQuery.of(context).size.width * 0.9,
-        height: MediaQuery.of(context).size.height * 0.7,
-        child: SingleChildScrollView(
-          child: Form(
-            key: _formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Country Dropdown
-                DropdownButtonFormField<Country>(
-                  value: _selectedCountry,
-                  decoration: const InputDecoration(
-                    labelText: 'Country *',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: widget.countries.map((country) {
-                    return DropdownMenuItem(
-                      value: country,
-                      child: Text('${country.name} (${country.countryCode})'),
-                    );
-                  }).toList(),
-                  onChanged: widget.authority == null
-                      ? (country) => setState(() => _selectedCountry = country)
-                      : null, // Disable for editing
-                  validator: (value) =>
-                      value == null ? 'Please select a country' : null,
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Manage Authority'),
+        backgroundColor: Colors.orange.shade700,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            Navigator.of(context).pop(_wasUpdated);
+          },
+        ),
+        actions: [
+          if (_hasChanges && !_isLoading)
+            TextButton(
+              onPressed: _showSaveConfirmation,
+              child: const Text(
+                'SAVE',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
                 ),
-                const SizedBox(height: 16),
-
-                // Authority Name
-                TextFormField(
-                  controller: _nameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Authority Name *',
-                    border: OutlineInputBorder(),
-                    hintText: 'e.g., South African Revenue Service',
-                  ),
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Please enter authority name';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-
-                // Authority Code
-                TextFormField(
-                  controller: _codeController,
-                  decoration: const InputDecoration(
-                    labelText: 'Authority Code *',
-                    border: OutlineInputBorder(),
-                    hintText: 'e.g., SARS',
-                  ),
-                  textCapitalization: TextCapitalization.characters,
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Please enter authority code';
-                    }
-                    if (value.trim().length < 2) {
-                      return 'Code must be at least 2 characters';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-
-                // Authority Type
-                DropdownButtonFormField<String>(
-                  value: _selectedAuthorityType,
-                  decoration: const InputDecoration(
-                    labelText: 'Authority Type *',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: AuthorityService.getAuthorityTypes().map((type) {
-                    return DropdownMenuItem(
-                      value: type['value'],
-                      child: Text(type['label']!),
-                    );
-                  }).toList(),
-                  onChanged: (value) =>
-                      setState(() => _selectedAuthorityType = value!),
-                ),
-                const SizedBox(height: 16),
-
-                // Description
-                TextFormField(
-                  controller: _descriptionController,
-                  decoration: const InputDecoration(
-                    labelText: 'Description',
-                    border: OutlineInputBorder(),
-                    hintText: 'Optional description of the authority',
-                  ),
-                  maxLines: 3,
-                ),
-                const SizedBox(height: 16),
-
-                // Pass Advance Days
-                TextFormField(
-                  controller: _passAdvanceDaysController,
-                  decoration: const InputDecoration(
-                    labelText: 'Pass Advance Days',
-                    border: OutlineInputBorder(),
-                    hintText: '30',
-                  ),
-                  keyboardType: TextInputType.number,
-                  validator: (value) {
-                    if (value != null && value.isNotEmpty) {
-                      final days = int.tryParse(value);
-                      if (days == null || days < 1 || days > 365) {
-                        return 'Enter a valid number between 1 and 365';
-                      }
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-
-                // Default Currency
-                TextFormField(
-                  controller: _defaultCurrencyController,
-                  decoration: const InputDecoration(
-                    labelText: 'Default Currency Code',
-                    border: OutlineInputBorder(),
-                    hintText: 'e.g., ZAR, USD',
-                  ),
-                  textCapitalization: TextCapitalization.characters,
-                  validator: (value) {
-                    if (value != null &&
-                        value.isNotEmpty &&
-                        value.length != 3) {
-                      return 'Currency code must be 3 characters';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-
-                // Active Status
-                if (widget.authority != null)
-                  SwitchListTile(
-                    title: const Text('Active Status'),
-                    subtitle: Text(_isActive
-                        ? 'Authority is active'
-                        : 'Authority is inactive'),
-                    value: _isActive,
-                    onChanged: (value) => setState(() => _isActive = value),
-                    activeColor: Colors.green,
-                  ),
-              ],
+              ),
             ),
+        ],
+      ),
+      body: Column(
+        children: [
+          _buildHeader(),
+          Expanded(
+            child: _buildForm(),
           ),
+        ],
+      ),
+      floatingActionButton: _hasChanges && !_isLoading
+          ? FloatingActionButton.extended(
+              onPressed: _showSaveConfirmation,
+              backgroundColor: Colors.orange.shade700,
+              foregroundColor: Colors.white,
+              icon: const Icon(Icons.save),
+              label: const Text('Save Changes'),
+            )
+          : null,
+    );
+  }
+
+  Widget _buildHeader() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.orange.shade700,
+            Colors.orange.shade600,
+          ],
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: _isLoading ? null : () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        ElevatedButton(
-          onPressed: _isLoading ? null : _saveAuthority,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.red.shade600,
-            foregroundColor: Colors.white,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.business,
+                  color: Colors.white,
+                  size: 32,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Authority Management',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Edit details for ${_currentAuthority.name}',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.9),
+                        fontSize: 16,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          child: _isLoading
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                      strokeWidth: 2, color: Colors.white),
-                )
-              : Text(widget.authority != null ? 'Update' : 'Create'),
-        ),
-      ],
+        ],
+      ),
     );
+  }
+
+  Widget _buildForm() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Authority Name
+            TextFormField(
+              controller: _nameController,
+              decoration: const InputDecoration(
+                labelText: 'Authority Name *',
+                hintText: 'e.g., Kenya Revenue Authority',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.business),
+              ),
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return 'Authority name is required';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 20),
+
+            // Authority Code
+            TextFormField(
+              controller: _codeController,
+              decoration: const InputDecoration(
+                labelText: 'Authority Code *',
+                hintText: 'e.g., KRA',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.code),
+              ),
+              textCapitalization: TextCapitalization.characters,
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return 'Authority code is required';
+                }
+                if (value.trim().length < 2) {
+                  return 'Code must be at least 2 characters';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 20),
+
+            // Authority Type
+            DropdownButtonFormField<String>(
+              value: _selectedAuthorityType,
+              decoration: const InputDecoration(
+                labelText: 'Authority Type *',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.category),
+              ),
+              items: AuthorityService.getAuthorityTypes().map((type) {
+                return DropdownMenuItem(
+                  value: type['value'],
+                  child: Text(type['label']!),
+                );
+              }).toList(),
+              onChanged: (value) {
+                setState(() {
+                  _selectedAuthorityType = value!;
+                });
+                _onFieldChanged();
+              },
+            ),
+            const SizedBox(height: 20),
+
+            // Description
+            TextFormField(
+              controller: _descriptionController,
+              decoration: const InputDecoration(
+                labelText: 'Description',
+                hintText: 'Brief description of the authority',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.description),
+              ),
+              maxLines: 3,
+            ),
+            const SizedBox(height: 20),
+
+            // Default Currency and Advance Days Row
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    value: _selectedCurrency,
+                    decoration: const InputDecoration(
+                      labelText: 'Default Currency *',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.monetization_on),
+                    ),
+                    items: _currencies.map((currency) {
+                      return DropdownMenuItem(
+                        value: currency,
+                        child: Text(currency),
+                      );
+                    }).toList(),
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedCurrency = value!;
+                      });
+                      _onFieldChanged();
+                    },
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: TextFormField(
+                    controller: _advanceDaysController,
+                    decoration: const InputDecoration(
+                      labelText: 'Advance Days *',
+                      hintText: '30',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.schedule),
+                    ),
+                    keyboardType: TextInputType.number,
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return 'Required';
+                      }
+                      final days = int.tryParse(value);
+                      if (days == null || days < 1 || days > 365) {
+                        return 'Must be 1-365 days';
+                      }
+                      return null;
+                    },
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 32),
+
+            // Current Status Info (Read-only)
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.info,
+                          color: Colors.blue.shade600,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Authority Information',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blue.shade600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    _buildInfoRow(
+                        'Country', _currentAuthority.countryName ?? 'Unknown'),
+                    _buildInfoRow('Status', _currentAuthority.statusDisplay),
+                    _buildInfoRow(
+                        'Created', _formatDate(_currentAuthority.createdAt)),
+                    _buildInfoRow('Last Updated',
+                        _formatDate(_currentAuthority.updatedAt)),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              '$label:',
+              style: TextStyle(
+                fontWeight: FontWeight.w500,
+                color: Colors.grey.shade600,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontWeight: FontWeight.w400,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.day}/${date.month}/${date.year}';
   }
 }

@@ -74,6 +74,8 @@ class _VehicleTaxRateManagementScreenState
         vehicleTypes: _vehicleTypes,
         borders: _borders,
         currencies: _currencies,
+        defaultCurrencyCode:
+            widget.selectedCountry['default_currency_code'] as String?,
         onSaved: _loadData,
       ),
     );
@@ -363,6 +365,7 @@ class _TaxRateDialog extends StatefulWidget {
   final List<VehicleType> vehicleTypes;
   final List<border_model.Border> borders;
   final List<Currency> currencies;
+  final String? defaultCurrencyCode;
   final VoidCallback onSaved;
 
   const _TaxRateDialog({
@@ -371,6 +374,7 @@ class _TaxRateDialog extends StatefulWidget {
     required this.vehicleTypes,
     required this.borders,
     required this.currencies,
+    this.defaultCurrencyCode,
     required this.onSaved,
   });
 
@@ -424,14 +428,33 @@ class _TaxRateDialogState extends State<_TaxRateDialog> {
         );
       }
     } else {
-      // Set default currency to USD if available, otherwise first currency
-      try {
-        _selectedCurrency = widget.currencies.firstWhere(
-          (c) => c.code == 'USD',
-        );
-      } catch (e) {
-        _selectedCurrency =
-            widget.currencies.isNotEmpty ? widget.currencies.first : null;
+      // Set default currency based on authority's default currency code
+      if (widget.defaultCurrencyCode != null) {
+        try {
+          _selectedCurrency = widget.currencies.firstWhere(
+            (c) => c.code == widget.defaultCurrencyCode,
+          );
+        } catch (e) {
+          // If authority's default currency is not found, fall back to USD
+          try {
+            _selectedCurrency = widget.currencies.firstWhere(
+              (c) => c.code == 'USD',
+            );
+          } catch (e) {
+            _selectedCurrency =
+                widget.currencies.isNotEmpty ? widget.currencies.first : null;
+          }
+        }
+      } else {
+        // If no default currency code from authority, fall back to USD
+        try {
+          _selectedCurrency = widget.currencies.firstWhere(
+            (c) => c.code == 'USD',
+          );
+        } catch (e) {
+          _selectedCurrency =
+              widget.currencies.isNotEmpty ? widget.currencies.first : null;
+        }
       }
       _selectedVehicleType =
           widget.vehicleTypes.isNotEmpty ? widget.vehicleTypes.first : null;
@@ -441,65 +464,66 @@ class _TaxRateDialogState extends State<_TaxRateDialog> {
   Future<bool> _showConfirmationDialog() async {
     final BuildContext dialogContext = context;
     return await showDialog<bool>(
-      context: dialogContext,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Confirm Tax Rate Change'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Are you sure you want to proceed with this tax rate change?',
-                style: TextStyle(fontWeight: FontWeight.w500),
-              ),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.orange.shade50,
-                  border: Border.all(color: Colors.orange.shade200),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.info_outline,
-                      color: Colors.orange.shade700,
-                      size: 20,
+          context: dialogContext,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              title: const Text('Confirm Tax Rate Change'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Are you sure you want to proceed with this tax rate change?',
+                    style: TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade50,
+                      border: Border.all(color: Colors.orange.shade200),
+                      borderRadius: BorderRadius.circular(8),
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'This action will be audited and logged for compliance purposes.',
-                        style: TextStyle(
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.info_outline,
                           color: Colors.orange.shade700,
-                          fontSize: 13,
+                          size: 20,
                         ),
-                      ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'This action will be audited and logged for compliance purposes.',
+                            style: TextStyle(
+                              color: Colors.orange.shade700,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('Cancel'),
                 ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.orange.shade600,
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('Confirm'),
-            ),
-          ],
-        );
-      },
-    ) ?? false;
+                ElevatedButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange.shade600,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('Confirm'),
+                ),
+              ],
+            );
+          },
+        ) ??
+        false;
   }
 
   Future<void> _saveTaxRate() async {

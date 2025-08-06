@@ -750,6 +750,11 @@ class _PassDashboardScreenState extends State<PassDashboardScreen>
                   _formatDate(pass.issuedAt),
                 ),
                 _buildPassDetailRow(
+                  Icons.play_arrow,
+                  'Activates',
+                  _formatDate(pass.activationDate),
+                ),
+                _buildPassDetailRow(
                   Icons.event,
                   'Expires',
                   _formatDate(pass.expiresAt),
@@ -822,6 +827,7 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
   Map<String, dynamic>? _selectedCountry;
   PassTemplate? _selectedPassTemplate;
   Vehicle? _selectedVehicle;
+  DateTime? _selectedActivationDate;
 
   bool _isLoadingCountries = true;
   bool _isLoadingTemplates = false;
@@ -900,7 +906,9 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
   }
 
   Future<void> _purchasePass() async {
-    if (_selectedPassTemplate == null) return;
+    if (_selectedPassTemplate == null || _selectedActivationDate == null) {
+      return;
+    }
 
     setState(() => _isPurchasing = true);
 
@@ -908,6 +916,7 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
       await PassService.issuePassFromTemplate(
         vehicleId: _selectedVehicle?.id,
         passTemplateId: _selectedPassTemplate!.id,
+        activationDate: _selectedActivationDate!,
       );
 
       if (mounted) {
@@ -1234,6 +1243,9 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
                       'Entries', '${_selectedPassTemplate!.entryLimit}'),
                   _buildDetailRow('Valid for',
                       '${_selectedPassTemplate!.expirationDays} days'),
+                  if (_selectedPassTemplate!.passAdvanceDays > 0)
+                    _buildDetailRow('Advance Purchase',
+                        '${_selectedPassTemplate!.passAdvanceDays} days required'),
                   _buildDetailRow(
                     'Amount',
                     '${_selectedPassTemplate!.currencyCode} ${_selectedPassTemplate!.taxAmount.toStringAsFixed(2)}',
@@ -1288,7 +1300,18 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
     );
 
     if (result != null) {
-      setState(() => _selectedPassTemplate = result);
+      setState(() {
+        _selectedPassTemplate = result;
+        // Set activation date based on template's advance days requirement
+        if (result.passAdvanceDays > 0) {
+          // If template requires advance purchase, set activation date to now + advance days
+          _selectedActivationDate =
+              DateTime.now().add(Duration(days: result.passAdvanceDays));
+        } else {
+          // If no advance days required, set to now (immediate activation)
+          _selectedActivationDate = DateTime.now();
+        }
+      });
     }
   }
 
@@ -1398,6 +1421,74 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
             ),
           );
         }).toList()),
+
+        // Activation Date Selection
+        const SizedBox(height: 24),
+        Text(
+          'Activation Date:',
+          style: TextStyle(
+            fontSize: 12,
+            color: Colors.grey.shade600,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.grey.shade300),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: InkWell(
+            onTap: () => _selectActivationDate(),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Icon(Icons.calendar_today, color: Colors.blue.shade600),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _selectedActivationDate != null
+                              ? _formatDate(_selectedActivationDate!)
+                              : 'Select activation date',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 16,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          _selectedActivationDate != null
+                              ? _selectedPassTemplate != null &&
+                                      _selectedPassTemplate!.passAdvanceDays > 0
+                                  ? 'Pass will be active from ${_formatTime(_selectedActivationDate!)} (Required ${_selectedPassTemplate!.passAdvanceDays} days advance)'
+                                  : 'Pass will be active from ${_formatTime(_selectedActivationDate!)}'
+                              : _selectedPassTemplate != null &&
+                                      _selectedPassTemplate!.passAdvanceDays > 0
+                                  ? 'This pass requires ${_selectedPassTemplate!.passAdvanceDays} days advance purchase'
+                                  : 'When should the pass become active?',
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    Icons.arrow_drop_down,
+                    color: Colors.grey.shade600,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+
         if (_selectedPassTemplate != null) ...[
           const SizedBox(height: 24),
           const Divider(),
@@ -1416,6 +1507,16 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
               'Entries', '${_selectedPassTemplate?.entryLimit ?? 0}'),
           _buildSummaryRow('Valid for',
               '${_selectedPassTemplate?.expirationDays ?? 0} days'),
+          if (_selectedPassTemplate?.passAdvanceDays != null &&
+              _selectedPassTemplate!.passAdvanceDays > 0)
+            _buildSummaryRow('Advance Purchase',
+                '${_selectedPassTemplate!.passAdvanceDays} days required'),
+          if (_selectedActivationDate != null) ...[
+            _buildSummaryRow(
+                'Activation Date', _formatDate(_selectedActivationDate!)),
+            _buildSummaryRow(
+                'Expiration Date', _formatDate(_calculateExpirationDate())),
+          ],
           const SizedBox(height: 8),
           Container(
             padding: const EdgeInsets.all(12),
@@ -1511,7 +1612,86 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
   bool _canPurchase() {
     return _selectedCountry != null &&
         _selectedPassTemplate != null &&
+        _selectedActivationDate != null &&
         !_isPurchasing;
+  }
+
+  Future<void> _selectActivationDate() async {
+    if (_selectedPassTemplate == null) return;
+
+    final now = DateTime.now();
+    final templateAdvanceDays = _selectedPassTemplate!.passAdvanceDays;
+
+    // Determine the minimum and maximum dates based on template requirements
+    final DateTime minDate;
+    final DateTime maxDate;
+
+    if (templateAdvanceDays > 0) {
+      // Template requires advance purchase - minimum date is now + advance days
+      minDate = now.add(Duration(days: templateAdvanceDays));
+      // Maximum date allows some flexibility beyond the required advance days
+      maxDate = now
+          .add(Duration(days: templateAdvanceDays + 30)); // Allow 30 extra days
+    } else {
+      // No advance requirement - can start from now
+      minDate = now;
+      maxDate =
+          now.add(const Duration(days: 30)); // Allow up to 30 days in advance
+    }
+
+    final selectedDate = await showDatePicker(
+      context: context,
+      initialDate: _selectedActivationDate ?? minDate,
+      firstDate: minDate,
+      lastDate: maxDate,
+      helpText: templateAdvanceDays > 0
+          ? 'Select Activation Date (Min: $templateAdvanceDays days from now)'
+          : 'Select Activation Date',
+      confirmText: 'SELECT',
+      cancelText: 'CANCEL',
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: Colors.blue.shade600,
+              onPrimary: Colors.white,
+              surface: Colors.white,
+              onSurface: Colors.black,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (selectedDate != null) {
+      setState(() {
+        // Set activation date to start of day (00:00:00)
+        _selectedActivationDate = DateTime(
+            selectedDate.year, selectedDate.month, selectedDate.day, 0, 0, 0);
+      });
+    }
+  }
+
+  String _formatTime(DateTime date) {
+    return '00:00 (start of day)';
+  }
+
+  DateTime _calculateExpirationDate() {
+    if (_selectedActivationDate == null || _selectedPassTemplate == null) {
+      return DateTime.now();
+    }
+
+    // Calculate expiration date: activation date + expiration days, end of day (23:59:59)
+    final expirationDate = _selectedActivationDate!
+        .add(Duration(days: _selectedPassTemplate!.expirationDays));
+
+    return DateTime(expirationDate.year, expirationDate.month,
+        expirationDate.day, 23, 59, 59);
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.day}/${date.month}/${date.year}';
   }
 }
 

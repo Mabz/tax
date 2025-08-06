@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/pass_template.dart';
 import '../models/vehicle_tax_rate.dart';
@@ -16,6 +17,7 @@ class PassTemplateService {
     required String description,
     required int entryLimit,
     required int expirationDays,
+    required int passAdvanceDays,
     required double taxAmount,
     required String currencyCode,
     String? borderId,
@@ -28,6 +30,7 @@ class PassTemplateService {
         'description': description,
         'entry_limit': entryLimit,
         'expiration_days': expirationDays,
+        'pass_advance_days': passAdvanceDays,
         'tax_amount': taxAmount,
         'currency_code': currencyCode,
         'target_border_id': borderId,
@@ -43,6 +46,7 @@ class PassTemplateService {
     required String description,
     required int entryLimit,
     required int expirationDays,
+    required int passAdvanceDays,
     required double taxAmount,
     required String currencyCode,
     required bool isActive,
@@ -53,6 +57,7 @@ class PassTemplateService {
         'new_description': description,
         'new_entry_limit': entryLimit,
         'new_expiration_days': expirationDays,
+        'new_pass_advance_days': passAdvanceDays,
         'new_tax_amount': taxAmount,
         'new_currency_code': currencyCode,
         'new_is_active': isActive,
@@ -84,28 +89,35 @@ class PassTemplateService {
 
       if (response == null) return [];
 
-      return (response as List)
-          .map((item) => PassTemplate.fromJson({
-                'id': item['id'],
-                'authority_id': authorityId,
-                'border_id': null, // Will be handled by border_name
-                'created_by_profile_id': '', // Not returned by function
-                'vehicle_type_id': '', // Will be handled by vehicle_type
-                'description': item['description'],
-                'entry_limit': item['entry_limit'],
-                'expiration_days': item['expiration_days'],
-                'tax_amount': item['tax_amount'],
-                'currency_code': item['currency_code'],
-                'is_active': item['is_active'],
-                'created_at': DateTime.now()
-                    .toIso8601String(), // Not returned by function
-                'updated_at': DateTime.now()
-                    .toIso8601String(), // Not returned by function
-                'border_name': item['border_name'],
-                'vehicle_type': item['vehicle_type'],
-              }))
-          .toList();
+      return (response as List).map((item) {
+        // Debug: Print the item structure to help identify issues
+        debugPrint('Pass template item from DB: $item');
+
+        return PassTemplate.fromJson({
+          'id': item['id'],
+          'authority_id': authorityId,
+          'country_id': '', // Not returned by function but required
+          'border_id': null, // Will be handled by border_name
+          'created_by_profile_id': '', // Not returned by function
+          'vehicle_type_id': '', // Will be handled by vehicle_type
+          'description': item['description'],
+          'entry_limit': item['entry_limit'],
+          'expiration_days': item['expiration_days'],
+          'pass_advance_days':
+              item['pass_advance_days'] ?? 0, // Default to 0 if missing
+          'tax_amount': item['tax_amount'],
+          'currency_code': item['currency_code'],
+          'is_active': item['is_active'],
+          'created_at':
+              DateTime.now().toIso8601String(), // Not returned by function
+          'updated_at':
+              DateTime.now().toIso8601String(), // Not returned by function
+          'border_name': item['border_name'],
+          'vehicle_type': item['vehicle_type'],
+        });
+      }).toList();
     } catch (e) {
+      debugPrint('Error in getPassTemplatesForAuthority: $e');
       throw Exception('Failed to get pass templates: $e');
     }
   }

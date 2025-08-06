@@ -15,8 +15,9 @@ class AuthorityService {
 
       final response = await _supabase.rpc('get_all_authorities');
 
-      final authorities = (response as List).map((json) => Authority.fromJson(json)).toList();
-      
+      final authorities =
+          (response as List).map((json) => Authority.fromJson(json)).toList();
+
       debugPrint('✅ Fetched ${authorities.length} authorities');
       return authorities;
     } catch (e) {
@@ -26,16 +27,19 @@ class AuthorityService {
   }
 
   /// Get authorities for a specific country
-  static Future<List<Authority>> getAuthoritiesForCountry(String countryId) async {
+  static Future<List<Authority>> getAuthoritiesForCountry(
+      String countryId) async {
     try {
       debugPrint('🔍 Fetching authorities for country: $countryId');
 
-      final response = await _supabase.rpc('get_authorities_for_country', params: {
+      final response =
+          await _supabase.rpc('get_authorities_for_country', params: {
         'target_country_id': countryId,
       });
 
-      final authorities = (response as List).map((json) => Authority.fromJson(json)).toList();
-      
+      final authorities =
+          (response as List).map((json) => Authority.fromJson(json)).toList();
+
       debugPrint('✅ Fetched ${authorities.length} authorities for country');
       return authorities;
     } catch (e) {
@@ -51,8 +55,9 @@ class AuthorityService {
 
       final response = await _supabase.rpc('get_admin_authorities');
 
-      final authorities = (response as List).map((json) => Authority.fromJson(json)).toList();
-      
+      final authorities =
+          (response as List).map((json) => Authority.fromJson(json)).toList();
+
       debugPrint('✅ Fetched ${authorities.length} admin authorities');
       return authorities;
     } catch (e) {
@@ -70,12 +75,23 @@ class AuthorityService {
         'target_authority_id': authorityId,
       });
 
-      if (response == null) {
+      if (response == null || (response is List && response.isEmpty)) {
         debugPrint('❌ Authority not found: $authorityId');
         return null;
       }
 
-      final authority = Authority.fromJson(response);
+      // Handle both JSON object and table row responses
+      Map<String, dynamic> authorityData;
+      if (response is List && response.isNotEmpty) {
+        authorityData = response.first as Map<String, dynamic>;
+      } else if (response is Map<String, dynamic>) {
+        authorityData = response;
+      } else {
+        debugPrint('❌ Unexpected response format for authority: $authorityId');
+        return null;
+      }
+
+      final authority = Authority.fromJson(authorityData);
       debugPrint('✅ Fetched authority: ${authority.name}');
       return authority;
     } catch (e) {
@@ -91,7 +107,7 @@ class AuthorityService {
     required String code,
     required String authorityType,
     String? description,
-    int passAdvanceDays = 30,
+    int defaultPassAdvanceDays = 30,
     String? defaultCurrencyCode,
     bool isActive = true,
   }) async {
@@ -104,7 +120,7 @@ class AuthorityService {
         'authority_code': code,
         'authority_type': authorityType,
         'authority_description': description,
-        'authority_pass_advance_days': passAdvanceDays,
+        'authority_default_pass_advance_days': defaultPassAdvanceDays,
         'authority_default_currency_code': defaultCurrencyCode,
         'authority_is_active': isActive,
       });
@@ -125,7 +141,7 @@ class AuthorityService {
     required String code,
     required String authorityType,
     String? description,
-    int passAdvanceDays = 30,
+    int defaultPassAdvanceDays = 30,
     String? defaultCurrencyCode,
     required bool isActive,
   }) async {
@@ -138,7 +154,7 @@ class AuthorityService {
         'new_code': code,
         'new_authority_type': authorityType,
         'new_description': description,
-        'new_pass_advance_days': passAdvanceDays,
+        'new_default_pass_advance_days': defaultPassAdvanceDays,
         'new_default_currency_code': defaultCurrencyCode,
         'new_is_active': isActive,
       });
@@ -167,7 +183,8 @@ class AuthorityService {
   }
 
   /// Check if authority code exists (for validation)
-  static Future<bool> authorityCodeExists(String countryId, String code, {String? excludeId}) async {
+  static Future<bool> authorityCodeExists(String countryId, String code,
+      {String? excludeId}) async {
     try {
       debugPrint('🔍 Checking if authority code exists: $code');
 
@@ -197,7 +214,8 @@ class AuthorityService {
   }
 
   /// Get authority statistics
-  static Future<Map<String, dynamic>> getAuthorityStats(String authorityId) async {
+  static Future<Map<String, dynamic>> getAuthorityStats(
+      String authorityId) async {
     try {
       debugPrint('🔍 Fetching authority statistics: $authorityId');
 
@@ -220,8 +238,10 @@ class AuthorityService {
 
       final response = await _supabase.rpc('get_all_countries');
 
-      final countries = (response as List).map((json) => json as Map<String, dynamic>).toList();
-      
+      final countries = (response as List)
+          .map((json) => json as Map<String, dynamic>)
+          .toList();
+
       debugPrint('✅ Fetched ${countries.length} countries');
       return countries;
     } catch (e) {

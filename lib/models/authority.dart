@@ -12,11 +12,11 @@ class Authority {
   final bool isActive;
   final DateTime createdAt;
   final DateTime updatedAt;
-  
+
   // Authority configuration fields
-  final int? passAdvanceDays;
+  final int? defaultPassAdvanceDays;
   final String? defaultCurrencyCode;
-  
+
   // Additional fields from JOINs
   final String? countryName;
   final String? countryCode;
@@ -31,7 +31,7 @@ class Authority {
     required this.isActive,
     required this.createdAt,
     required this.updatedAt,
-    this.passAdvanceDays,
+    this.defaultPassAdvanceDays,
     this.defaultCurrencyCode,
     this.countryName,
     this.countryCode,
@@ -41,7 +41,7 @@ class Authority {
   factory Authority.fromJson(Map<String, dynamic> json) {
     // Extract country data from nested countries object if present
     final countryData = json['countries'] as Map<String, dynamic>?;
-    
+
     return Authority(
       id: json['id']?.toString() ?? '',
       countryId: json['country_id']?.toString() ?? '',
@@ -50,17 +50,20 @@ class Authority {
       authorityType: json['authority_type']?.toString() ?? 'revenue_service',
       description: json['description']?.toString(),
       isActive: json['is_active'] as bool? ?? true,
-      createdAt: json['created_at'] != null 
+      createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'].toString())
           : DateTime.now(),
       updatedAt: json['updated_at'] != null
           ? DateTime.parse(json['updated_at'].toString())
           : DateTime.now(),
-      passAdvanceDays: (json['pass_advance_days'] as num?)?.toInt(),
+      defaultPassAdvanceDays:
+          (json['default_pass_advance_days'] as num?)?.toInt(),
       defaultCurrencyCode: json['default_currency_code']?.toString(),
       // Try nested countries data first, then fall back to direct fields
-      countryName: countryData?['name']?.toString() ?? json['country_name']?.toString(),
-      countryCode: countryData?['country_code']?.toString() ?? json['country_code']?.toString(),
+      countryName:
+          countryData?['name']?.toString() ?? json['country_name']?.toString(),
+      countryCode: countryData?['country_code']?.toString() ??
+          json['country_code']?.toString(),
     );
   }
 
@@ -76,7 +79,7 @@ class Authority {
       'is_active': isActive,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
-      'pass_advance_days': passAdvanceDays,
+      'default_pass_advance_days': defaultPassAdvanceDays,
       'default_currency_code': defaultCurrencyCode,
       'country_name': countryName,
       'country_code': countryCode,
@@ -109,7 +112,7 @@ class Authority {
       isActive: isActive ?? this.isActive,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
-      passAdvanceDays: passAdvanceDays ?? this.passAdvanceDays,
+      defaultPassAdvanceDays: passAdvanceDays ?? defaultPassAdvanceDays,
       defaultCurrencyCode: defaultCurrencyCode ?? this.defaultCurrencyCode,
       countryName: countryName ?? this.countryName,
       countryCode: countryCode ?? this.countryCode,
@@ -128,7 +131,9 @@ class Authority {
       case 'global':
         return 'Global Authority';
       default:
-        return authorityType.replaceAll('_', ' ').split(' ')
+        return authorityType
+            .replaceAll('_', ' ')
+            .split(' ')
             .map((word) => word[0].toUpperCase() + word.substring(1))
             .join(' ');
     }

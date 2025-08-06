@@ -11,7 +11,6 @@ import '../services/role_service.dart';
 import '../services/authority_service.dart';
 import '../services/invitation_service.dart';
 import 'authority_management_screen.dart';
-import 'authority_admin_screen.dart';
 import 'country_management_screen.dart';
 import 'profile_management_screen.dart';
 import 'border_type_management_screen.dart';
@@ -555,19 +554,6 @@ class _HomeScreenState extends State<HomeScreen> {
       // Superuser functions
       if (_isSuperuser) ...[
         ListTile(
-          leading: const Icon(Icons.business, color: Colors.red),
-          title: const Text('Manage Authorities'),
-          subtitle: const Text('Manage revenue services and authorities'),
-          onTap: () {
-            Navigator.of(context).pop();
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (context) => const AuthorityManagementScreen(),
-              ),
-            );
-          },
-        ),
-        ListTile(
           leading: const Icon(Icons.public, color: Colors.red),
           title: const Text('Manage Countries'),
           subtitle: const Text('Add, edit, or remove countries'),
@@ -748,11 +734,11 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         ListTile(
           leading: const Icon(Icons.admin_panel_settings, color: Colors.orange),
-          title: const Text('Manage Authorities'),
+          title: const Text('Manage Authority'),
           subtitle: Text(_selectedAuthority != null
-              ? 'Manage authorities for ${_selectedAuthority!.countryName ?? "Unknown"}'
-              : 'Manage authorities in your country'),
-          onTap: () {
+              ? 'Edit details for ${_selectedAuthority!.name}'
+              : 'Edit authority details'),
+          onTap: () async {
             if (_selectedAuthority == null) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
@@ -763,20 +749,18 @@ class _HomeScreenState extends State<HomeScreen> {
               return;
             }
             Navigator.of(context).pop();
-            Navigator.of(context).push(
+            final result = await Navigator.of(context).push(
               MaterialPageRoute(
-                builder: (context) => AuthorityAdminScreen(
-                  selectedCountry: {
-                    'id': _selectedAuthority!.countryId,
-                    'name': _selectedAuthority!.countryName ?? 'Unknown',
-                    'country_code': _selectedAuthority!.countryCode ?? '',
-                    'authority_id': _selectedAuthority!.id,  // CORRECTED LINE
-                    'authority_name': _selectedAuthority!.name,
-                  },
-                  isSuperuser: _isSuperuser,
+                builder: (context) => AuthorityManagementScreen(
+                  selectedAuthority: _selectedAuthority!,
                 ),
               ),
             );
+
+            // Refresh authorities if the authority was updated
+            if (result == true) {
+              await _loadAuthorities();
+            }
           },
         ),
         ListTile(
@@ -933,6 +917,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     'country_code': _selectedAuthority!.countryCode ?? '',
                     'authority_id': _selectedAuthority!.id,
                     'authority_name': _selectedAuthority!.name,
+                    'default_currency_code':
+                        _selectedAuthority!.defaultCurrencyCode,
                   },
                 ),
               ),
@@ -956,6 +942,8 @@ class _HomeScreenState extends State<HomeScreen> {
               return;
             }
             Navigator.of(context).pop();
+            debugPrint(
+                '🔍 Selected authority defaultPassAdvanceDays: ${_selectedAuthority!.defaultPassAdvanceDays}');
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (context) => PassTemplateManagementScreen(
@@ -965,6 +953,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     'country_code': _selectedAuthority!.countryCode ?? '',
                     'authority_id': _selectedAuthority!.id,
                     'authority_name': _selectedAuthority!.name,
+                    'default_pass_advance_days':
+                        _selectedAuthority!.defaultPassAdvanceDays,
                   },
                 ),
               ),
@@ -1025,8 +1015,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ListTile(
         leading: const Icon(Icons.person_outline, color: Colors.blue),
         title: const Text('Profile Settings'),
-        subtitle:
-            const Text('Manage identity, payment & preferences'),
+        subtitle: const Text('Manage identity, payment & preferences'),
         onTap: () {
           Navigator.of(context).pop();
           Navigator.of(context).push(

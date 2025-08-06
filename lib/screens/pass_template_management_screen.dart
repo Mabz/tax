@@ -100,6 +100,11 @@ class _PassTemplateManagementScreenState
   }
 
   void _showPassTemplateDialog({PassTemplate? template}) {
+    final defaultAdvanceDays =
+        widget.country['default_pass_advance_days'] as int?;
+    debugPrint(
+        '🔍 PassTemplateManagementScreen - defaultPassAdvanceDays: $defaultAdvanceDays');
+
     showDialog(
       context: context,
       builder: (context) => _PassTemplateDialog(
@@ -110,6 +115,7 @@ class _PassTemplateManagementScreenState
         vehicleTypes: _vehicleTypes,
         borders: _borders,
         currencies: _currencies,
+        defaultPassAdvanceDays: defaultAdvanceDays,
         onSaved: _loadData,
       ),
     );
@@ -326,6 +332,8 @@ class _PassTemplateManagementScreenState
                                             'Tax: ${template.taxAmount} ${template.currencyCode}'),
                                         Text(
                                             'Entries: ${template.entryLimit} | Expires: ${template.expirationDays} days'),
+                                        Text(
+                                            'Advance: ${template.passAdvanceDays} days'),
                                       ],
                                     ),
                                     trailing: Row(
@@ -373,6 +381,7 @@ class _PassTemplateDialog extends StatefulWidget {
   final List<VehicleType> vehicleTypes;
   final List<border_model.Border> borders;
   final List<Currency> currencies;
+  final int? defaultPassAdvanceDays;
   final VoidCallback onSaved;
 
   const _PassTemplateDialog({
@@ -383,6 +392,7 @@ class _PassTemplateDialog extends StatefulWidget {
     required this.vehicleTypes,
     required this.borders,
     required this.currencies,
+    this.defaultPassAdvanceDays,
     required this.onSaved,
   });
 
@@ -395,6 +405,7 @@ class _PassTemplateDialogState extends State<_PassTemplateDialog> {
   final _descriptionController = TextEditingController();
   final _entryLimitController = TextEditingController();
   final _expirationDaysController = TextEditingController();
+  final _passAdvanceDaysController = TextEditingController();
   final _taxAmountController = TextEditingController();
 
   VehicleTaxRate? _selectedTaxRate;
@@ -412,6 +423,7 @@ class _PassTemplateDialogState extends State<_PassTemplateDialog> {
     // Add listeners to auto-generate description
     _entryLimitController.addListener(_generateDescription);
     _expirationDaysController.addListener(_generateDescription);
+    _passAdvanceDaysController.addListener(_generateDescription);
     _taxAmountController.addListener(_generateDescription);
   }
 
@@ -421,6 +433,7 @@ class _PassTemplateDialogState extends State<_PassTemplateDialog> {
       _descriptionController.text = template.description;
       _entryLimitController.text = template.entryLimit.toString();
       _expirationDaysController.text = template.expirationDays.toString();
+      _passAdvanceDaysController.text = template.passAdvanceDays.toString();
       _taxAmountController.text = template.taxAmount.toString();
       _isActive = template.isActive;
 
@@ -445,8 +458,12 @@ class _PassTemplateDialogState extends State<_PassTemplateDialog> {
       );
     } else {
       // Default values for new template
+      // Use authority's default, or fall back to 30 days if not set
+      final defaultAdvanceDays = widget.defaultPassAdvanceDays ?? 30;
+
       _entryLimitController.text = '1';
       _expirationDaysController.text = '30';
+      _passAdvanceDaysController.text = defaultAdvanceDays.toString();
       _taxAmountController.text = '0.00';
 
       if (widget.vehicleTypes.isNotEmpty) {
@@ -514,9 +531,16 @@ class _PassTemplateDialogState extends State<_PassTemplateDialog> {
     final expirationDays = _expirationDaysController.text.isNotEmpty
         ? _expirationDaysController.text
         : '30';
+    final passAdvanceDays = _passAdvanceDaysController.text.isNotEmpty
+        ? _passAdvanceDaysController.text
+        : '0';
+
+    final advanceText = passAdvanceDays == '0'
+        ? 'starts immediately'
+        : 'starts in $passAdvanceDays days';
 
     final description =
-        '$vehicleType pass for $border - $currency $taxAmount per entry, $entryLimit entries allowed, valid for $expirationDays days';
+        '$vehicleType pass for $border - $currency $taxAmount per entry, $entryLimit entries allowed, valid for $expirationDays days, $advanceText';
 
     // Update the description field
     _descriptionController.text = description;
@@ -557,6 +581,7 @@ class _PassTemplateDialogState extends State<_PassTemplateDialog> {
           description: _descriptionController.text.trim(),
           entryLimit: int.parse(_entryLimitController.text),
           expirationDays: int.parse(_expirationDaysController.text),
+          passAdvanceDays: int.parse(_passAdvanceDaysController.text),
           taxAmount: double.parse(_taxAmountController.text),
           currencyCode: _selectedCurrency!.code,
           borderId: _selectedBorder?.id,
@@ -568,6 +593,7 @@ class _PassTemplateDialogState extends State<_PassTemplateDialog> {
           description: _descriptionController.text.trim(),
           entryLimit: int.parse(_entryLimitController.text),
           expirationDays: int.parse(_expirationDaysController.text),
+          passAdvanceDays: int.parse(_passAdvanceDaysController.text),
           taxAmount: double.parse(_taxAmountController.text),
           currencyCode: _selectedCurrency!.code,
           isActive: _isActive,
@@ -649,6 +675,9 @@ class _PassTemplateDialogState extends State<_PassTemplateDialog> {
                       _buildDetailRow('Valid for:',
                           '${_expirationDaysController.text} days'),
                       const SizedBox(height: 8),
+                      _buildDetailRow('Advance Days:',
+                          '${_passAdvanceDaysController.text} days'),
+                      const SizedBox(height: 8),
                       _buildDetailRow(
                           'Status:', _isActive ? 'Active' : 'Inactive'),
                     ],
@@ -713,6 +742,7 @@ class _PassTemplateDialogState extends State<_PassTemplateDialog> {
     _descriptionController.dispose();
     _entryLimitController.dispose();
     _expirationDaysController.dispose();
+    _passAdvanceDaysController.dispose();
     _taxAmountController.dispose();
     super.dispose();
   }
@@ -763,8 +793,9 @@ class _PassTemplateDialogState extends State<_PassTemplateDialog> {
                       const SizedBox(height: 12),
                       DropdownButtonFormField<VehicleTaxRate>(
                         value: _selectedTaxRate,
+                        isExpanded: true,
                         decoration: const InputDecoration(
-                          labelText: 'Select Template (Optional)',
+                          labelText: 'Select Template',
                           border: OutlineInputBorder(),
                           filled: true,
                           fillColor: Colors.white,
@@ -774,43 +805,44 @@ class _PassTemplateDialogState extends State<_PassTemplateDialog> {
                         items: [
                           const DropdownMenuItem<VehicleTaxRate>(
                             value: null,
-                            child: Text('None - Create from scratch'),
+                            child: Text('None'),
                           ),
                           if (widget.taxRates.isNotEmpty)
-                            ...widget.taxRates.map((taxRate) =>
-                                DropdownMenuItem<VehicleTaxRate>(
-                                  value: taxRate,
-                                  child: Container(
-                                    width: double.maxFinite,
-                                    padding: const EdgeInsets.symmetric(
-                                        vertical: 6, horizontal: 4),
-                                    child: Text.rich(
-                                      TextSpan(
-                                        children: [
-                                          TextSpan(
-                                            text: '${taxRate.vehicleType}\n',
-                                            style: const TextStyle(
-                                              fontSize: 13,
-                                              fontWeight: FontWeight.w500,
-                                              height: 1.2,
+                            ...widget.taxRates.map(
+                                (taxRate) => DropdownMenuItem<VehicleTaxRate>(
+                                      value: taxRate,
+                                      child: Padding(
+                                        padding: const EdgeInsets.only(
+                                            left: 4, right: 4),
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Text(
+                                              taxRate.vehicleType,
+                                              style: const TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w500,
+                                                height: 1.0,
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
+                                              maxLines: 1,
                                             ),
-                                          ),
-                                          TextSpan(
-                                            text:
-                                                '${taxRate.borderName ?? 'All borders'} • ${taxRate.taxAmount} ${taxRate.currency}',
-                                            style: TextStyle(
-                                              fontSize: 11,
-                                              color: Colors.grey[600],
-                                              height: 1.2,
+                                            Text(
+                                              '${taxRate.borderName ?? 'All borders'} • ${taxRate.taxAmount} ${taxRate.currency}',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                color: Colors.grey[600],
+                                                height: 1.0,
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
+                                              maxLines: 1,
                                             ),
-                                          ),
-                                        ],
+                                          ],
+                                        ),
                                       ),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                )),
+                                    )),
                         ],
                         onChanged: _onTaxRateSelected,
                       ),
@@ -952,6 +984,34 @@ class _PassTemplateDialogState extends State<_PassTemplateDialog> {
                     final number = int.tryParse(value);
                     if (number == null || number <= 0) {
                       return 'Please enter a valid number';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+
+                // Pass Advance Days
+                TextFormField(
+                  controller: _passAdvanceDaysController,
+                  decoration: InputDecoration(
+                    labelText: 'Pass Advance Days *',
+                    hintText: widget.defaultPassAdvanceDays != null &&
+                            widget.defaultPassAdvanceDays! > 0
+                        ? 'Authority default: ${widget.defaultPassAdvanceDays} days (0 = immediate)'
+                        : 'Days before pass becomes active (0 = immediate, 30 = default)',
+                    border: const OutlineInputBorder(),
+                    prefixIcon:
+                        const Icon(Icons.schedule, color: Colors.orange),
+                  ),
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Please enter advance days';
+                    }
+                    final number = int.tryParse(value);
+                    if (number == null || number < 0) {
+                      return 'Please enter a valid number (0 or greater)';
                     }
                     return null;
                   },

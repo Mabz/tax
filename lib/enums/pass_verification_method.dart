@@ -1,19 +1,40 @@
 enum PassVerificationMethod {
-  none(
-    label: 'No Verification',
-    description: 'Passes are processed immediately upon scan without additional verification.',
-  ),
-  staticPin(
-    label: 'Personal PIN',
-    description: 'A memorable 3-digit PIN that can be used offline for verification.',
-  ),
-  dynamicCode(
-    label: 'Secure Code',
-    description: 'A one-time dynamic code sent to your device for highest security.',
-  );
+  none, // Direct deduction without verification
+  pin, // Personal PIN verification
+  secureCode, // Dynamic secure code verification
+}
 
-  final String label;
-  final String description;
+extension PassVerificationMethodExtension on PassVerificationMethod {
+  String get displayName {
+    switch (this) {
+      case PassVerificationMethod.none:
+        return 'No Verification';
+      case PassVerificationMethod.pin:
+        return 'Personal PIN';
+      case PassVerificationMethod.secureCode:
+        return 'Secure Code';
+    }
+  }
 
-  const PassVerificationMethod({required this.label, required this.description});
+  String get label {
+    switch (this) {
+      case PassVerificationMethod.none:
+        return 'No Verification';
+      case PassVerificationMethod.pin:
+        return 'Personal PIN';
+      case PassVerificationMethod.secureCode:
+        return 'Secure Code';
+    }
+  }
+
+  String get description {
+    switch (this) {
+      case PassVerificationMethod.none:
+        return 'Direct deduction without verification';
+      case PassVerificationMethod.pin:
+        return 'Requires personal PIN from pass owner';
+      case PassVerificationMethod.secureCode:
+        return 'Requires dynamic secure code from pass owner';
+    }
+  }
 }

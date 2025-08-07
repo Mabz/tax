@@ -1,196 +1,199 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../models/purchased_pass.dart';
+import '../enums/pass_verification_method.dart';
+import '../enums/authority_type.dart';
 
-/// Service for verifying passes using hash codes or short codes
-/// Used by border control systems and verification apps
 class PassVerificationService {
-  static final _supabase = Supabase.instance.client;
+  static final SupabaseClient _supabase = Supabase.instance.client;
 
-  /// Verify a pass using its UUID (primary method for QR scanning)
-  static Future<PassVerificationResult?> verifyPassByUuid(String passUuid) async {
+  /// Verify a pass by QR code or backup code
+  static Future<PurchasedPass?> verifyPass({
+    required String code,
+    required bool isQrCode,
+  }) async {
     try {
-      final response = await _supabase.rpc('verify_pass_by_uuid', params: {
-        'input_uuid': passUuid,
+      debugPrint('🔍 Verifying pass with ${isQrCode ? 'QR' : 'backup'} code');
+
+      final response = await _supabase.rpc('verify_pass', params: {
+        'verification_code': code,
+        'is_qr_code': isQrCode,
       });
 
-      if (response != null && response.isNotEmpty) {
-        final data = response[0] as Map<String, dynamic>;
-        return PassVerificationResult.fromJson(data);
+      if (response == null || (response is List && response.isEmpty)) {
+        debugPrint('❌ Pass not found or invalid');
+        return null;
       }
-      return null;
+
+      Map<String, dynamic> passData;
+      if (response is List && response.isNotEmpty) {
+        passData = response.first as Map<String, dynamic>;
+      } else if (response is Map<String, dynamic>) {
+        passData = response;
+      } else {
+        debugPrint('❌ Unexpected response format');
+        return null;
+      }
+
+      final pass = PurchasedPass.fromJson(passData);
+      debugPrint('✅ Pass verified: ${pass.passId}');
+      return pass;
     } catch (e) {
-      throw Exception('Failed to verify pass by UUID: $e');
+      debugPrint('❌ Error verifying pass: $e');
+      return null;
     }
   }
 
-  /// Verify a pass using its hash code (legacy method for existing passes)
-  static Future<PassVerificationResult?> verifyPassByHash(String passHash) async {
+  /// Get pass verification preferences
+  static Future<PassVerificationMethod> getPassVerificationMethod(
+      String passId) async {
     try {
-      final response = await _supabase.rpc('verify_pass_by_hash', params: {
-        'input_hash': passHash,
+      debugPrint('🔍 Getting verification method for pass: $passId');
+
+      final response =
+          await _supabase.rpc('get_pass_verification_method', params: {
+        'target_pass_id': passId,
       });
 
-      if (response != null && response.isNotEmpty) {
-        final data = response[0] as Map<String, dynamic>;
-        return PassVerificationResult.fromJson(data);
+      final method = response as String?;
+      switch (method) {
+        case 'pin':
+          return PassVerificationMethod.pin;
+        case 'secure_code':
+          return PassVerificationMethod.secureCode;
+        default:
+          return PassVerificationMethod.none;
       }
-      return null;
     } catch (e) {
-      throw Exception('Failed to verify pass by hash: $e');
+      debugPrint('❌ Error getting verification method: $e');
+      return PassVerificationMethod.none;
     }
   }
 
-  /// Verify a pass using its short code (manual entry)
-  static Future<PassVerificationResult?> verifyPassByShortCode(String shortCode) async {
+  /// Generate a dynamic secure code for pass verification
+  static Future<String?> generateSecureCode(String passId) async {
     try {
-      final response = await _supabase.rpc('verify_pass_by_short_code', params: {
-        'input_code': shortCode,
+      debugPrint('🔍 Generating secure code for pass: $passId');
+
+      final response = await _supabase.rpc('generate_secure_code', params: {
+        'target_pass_id': passId,
       });
 
-      if (response != null && response.isNotEmpty) {
-        final data = response[0] as Map<String, dynamic>;
-        return PassVerificationResult.fromJson(data);
-      }
-      return null;
+      final secureCode = response as String?;
+      debugPrint('✅ Secure code generated');
+      return secureCode;
     } catch (e) {
-      throw Exception('Failed to verify pass by short code: $e');
+      debugPrint('❌ Error generating secure code: $e');
+      return null;
     }
   }
 
-  /// Parse QR code data and extract UUID for verification (primary method)
-  static String? extractUuidFromQrCode(String qrCodeData) {
+  /// Verify PIN for pass deduction
+  static Future<bool> verifyPin({
+    required String passId,
+    required String pin,
+  }) async {
     try {
-      // Parse pipe-separated key:value pairs
-      final pairs = qrCodeData.split('|');
-      for (final pair in pairs) {
-        final parts = pair.split(':');
-        if (parts.length == 2 && (parts[0] == 'uuid' || parts[0] == 'passUuid' || parts[0] == 'id')) {
-          return parts[1];
-        }
-      }
-      return null;
+      debugPrint('🔍 Verifying PIN for pass: $passId');
+
+      final response = await _supabase.rpc('verify_pass_pin', params: {
+        'target_pass_id': passId,
+        'provided_pin': pin,
+      });
+
+      final isValid = response as bool;
+      debugPrint('✅ PIN verification result: $isValid');
+      return isValid;
     } catch (e) {
-      return null;
+      debugPrint('❌ Error verifying PIN: $e');
+      return false;
     }
   }
 
-  /// Parse QR code data and extract hash for verification (legacy method)
-  static String? extractHashFromQrCode(String qrCodeData) {
+  /// Verify secure code for pass deduction
+  static Future<bool> verifySecureCode({
+    required String passId,
+    required String secureCode,
+  }) async {
     try {
-      // Parse pipe-separated key:value pairs
-      final pairs = qrCodeData.split('|');
-      for (final pair in pairs) {
-        final parts = pair.split(':');
-        if (parts.length == 2 && parts[0] == 'hash') {
-          return parts[1];
-        }
-      }
-      return null;
+      debugPrint('🔍 Verifying secure code for pass: $passId');
+
+      final response = await _supabase.rpc('verify_secure_code', params: {
+        'target_pass_id': passId,
+        'provided_code': secureCode,
+      });
+
+      final isValid = response as bool;
+      debugPrint('✅ Secure code verification result: $isValid');
+      return isValid;
     } catch (e) {
+      debugPrint('❌ Error verifying secure code: $e');
+      return false;
+    }
+  }
+
+  /// Deduct entry from pass
+  static Future<PurchasedPass?> deductPassEntry({
+    required String passId,
+    required AuthorityType authorityType,
+    String? verificationData,
+  }) async {
+    try {
+      debugPrint('🔍 Deducting entry from pass: $passId');
+
+      final response = await _supabase.rpc('deduct_pass_entry', params: {
+        'target_pass_id': passId,
+        'authority_type': authorityType.name,
+        'verification_data': verificationData,
+      });
+
+      if (response == null || (response is List && response.isEmpty)) {
+        debugPrint('❌ Failed to deduct entry');
+        return null;
+      }
+
+      Map<String, dynamic> passData;
+      if (response is List && response.isNotEmpty) {
+        passData = response.first as Map<String, dynamic>;
+      } else if (response is Map<String, dynamic>) {
+        passData = response;
+      } else {
+        debugPrint('❌ Unexpected response format');
+        return null;
+      }
+
+      final updatedPass = PurchasedPass.fromJson(passData);
+      debugPrint(
+          '✅ Entry deducted. Remaining: ${updatedPass.entriesRemaining}');
+      return updatedPass;
+    } catch (e) {
+      debugPrint('❌ Error deducting entry: $e');
       return null;
     }
   }
 
-  /// Unified verification method that tries UUID first, then falls back to hash
-  static Future<PassVerificationResult?> verifyPassFromQrCode(String qrCodeData) async {
-    // Try UUID verification first (for new passes)
-    final uuid = extractUuidFromQrCode(qrCodeData);
-    if (uuid != null) {
-      try {
-        final result = await verifyPassByUuid(uuid);
-        if (result != null) return result;
-      } catch (e) {
-        // Continue to hash verification if UUID fails
-      }
+  /// Log pass validation activity
+  static Future<void> logValidationActivity({
+    required String passId,
+    required AuthorityType authorityType,
+    required String action,
+    bool success = true,
+    String? notes,
+  }) async {
+    try {
+      debugPrint('🔍 Logging validation activity for pass: $passId');
+
+      await _supabase.rpc('log_validation_activity', params: {
+        'target_pass_id': passId,
+        'authority_type': authorityType.name,
+        'action_type': action,
+        'success': success,
+        'notes': notes,
+      });
+
+      debugPrint('✅ Validation activity logged');
+    } catch (e) {
+      debugPrint('❌ Error logging validation activity: $e');
     }
-
-    // Fall back to hash verification (for existing passes)
-    final hash = extractHashFromQrCode(qrCodeData);
-    if (hash != null) {
-      try {
-        return await verifyPassByHash(hash);
-      } catch (e) {
-        // Hash verification failed
-      }
-    }
-
-    return null;
-  }
-
-  /// Format short code for display (add dashes if needed)
-  static String formatShortCode(String shortCode) {
-    // Remove any existing dashes
-    final clean = shortCode.replaceAll('-', '').toUpperCase();
-    
-    // Add dash in the middle if 8 characters
-    if (clean.length == 8) {
-      return '${clean.substring(0, 4)}-${clean.substring(4, 8)}';
-    }
-    
-    return clean;
-  }
-}
-
-/// Result of pass verification
-class PassVerificationResult {
-  final Map<String, dynamic> passData;
-  final bool isValid;
-  final String? passId;
-  final String? passTemplate;
-  final String? vehicle;
-  final DateTime? issuedAt;
-  final DateTime? expiresAt;
-  final String? status;
-
-  PassVerificationResult({
-    required this.passData,
-    required this.isValid,
-    this.passId,
-    this.passTemplate,
-    this.vehicle,
-    this.issuedAt,
-    this.expiresAt,
-    this.status,
-  });
-
-  factory PassVerificationResult.fromJson(Map<String, dynamic> json) {
-    final passData = json['pass_data'] as Map<String, dynamic>? ?? {};
-    final isValid = json['is_valid'] as bool? ?? false;
-
-    return PassVerificationResult(
-      passData: passData,
-      isValid: isValid,
-      passId: passData['passId']?.toString(),
-      passTemplate: passData['passTemplate']?.toString(),
-      vehicle: passData['vehicle']?.toString(),
-      issuedAt: passData['issuedAt'] != null 
-          ? DateTime.tryParse(passData['issuedAt'].toString())
-          : null,
-      status: json['status']?.toString(),
-    );
-  }
-
-  /// Get a human-readable verification status
-  String get statusMessage {
-    if (!isValid) {
-      return 'Invalid or expired pass';
-    }
-    return 'Valid pass';
-  }
-
-  /// Check if pass is currently active
-  bool get isActive {
-    return isValid && status == 'active';
-  }
-
-  /// Get formatted pass information for display
-  Map<String, String> get displayInfo {
-    return {
-      'Status': statusMessage,
-      'Pass ID': passId ?? 'Unknown',
-      'Template': passTemplate ?? 'Unknown',
-      'Vehicle': vehicle ?? 'Not specified',
-      'Issued': issuedAt?.toString() ?? 'Unknown',
-      'Valid': isValid ? 'Yes' : 'No',
-    };
   }
 }

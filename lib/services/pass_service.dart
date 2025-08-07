@@ -165,35 +165,99 @@ class PassService {
       throw Exception('User not authenticated');
     }
 
-    // Generate pass verification data
-    final passId = DateTime.now().millisecondsSinceEpoch.toString();
-    final passHash =
-        PurchasedPass.generateShortCode(passId).replaceAll('-', '');
-    final shortCode = PurchasedPass.generateShortCode(passId);
+    try {
+      // First, get the pass template details with a simple query
+      final templateResponse = await _supabase
+          .from('pass_templates')
+          .select('*')
+          .eq('id', passTemplateId)
+          .eq('is_active', true)
+          .single();
 
-    // Create initial QR data JSONB (UUID will be added by database function)
-    final qrData = {
-      'passId': passId,
-      'passTemplate': passTemplateId,
-      'vehicle': vehicleId,
-      'issuedAt': DateTime.now().toIso8601String(),
-      'hash': passHash, // Keep for backward compatibility
-      'shortCode': shortCode,
-    };
+      if (templateResponse == null) {
+        throw Exception('Pass template not found or inactive');
+      }
 
-    // Call the database function which now returns the UUID and updates QR data
-    await _supabase.rpc('issue_pass_from_template', params: {
-      'target_profile_id': user.id,
-      'target_vehicle_id': vehicleId,
-      'pass_template_id': passTemplateId,
-      'activation_date': activationDate.toIso8601String(),
-      'pass_hash': passHash,
-      'short_code': shortCode,
-      'qr_data': qrData,
-    });
+      // Generate pass verification data
+      final now = DateTime.now();
+      final passHash =
+          PurchasedPass.generateShortCode(now.millisecondsSinceEpoch.toString())
+              .replaceAll('-', '');
+      final shortCode = PurchasedPass.generateShortCode(
+          now.millisecondsSinceEpoch.toString());
 
-    // The database function now automatically adds the UUID to the QR data
-    // This ensures the QR code contains the actual database UUID for secure verification
+      // Calculate expiration date
+      final expirationDate = activationDate
+          .add(Duration(days: templateResponse['expiration_days']));
+
+      // Create QR data
+      final qrData = {
+        'passTemplate': passTemplateId,
+        'vehicle': vehicleId ?? 'general',
+        'issuedAt': DateTime(now.year, now.month, now.day).toIso8601String(),
+        'activationDate': DateTime(
+                activationDate.year, activationDate.month, activationDate.day)
+            .toIso8601String(),
+        'expirationDate': DateTime(
+                expirationDate.year, expirationDate.month, expirationDate.day)
+            .toIso8601String(),
+        'hash': passHash,
+        'shortCode': shortCode,
+      };
+
+      // Insert the purchased pass directly - matching the actual schema
+      final insertData = {
+        'profile_id': user.id,
+        'pass_template_id': passTemplateId,
+        'vehicle_id': vehicleId, // Can be null for general passes
+        'issued_at': now.toIso8601String(),
+        'activation_date': DateTime(
+                activationDate.year, activationDate.month, activationDate.day)
+            .toIso8601String(),
+        'expires_at': DateTime(
+                expirationDate.year, expirationDate.month, expirationDate.day)
+            .toIso8601String(),
+        'entry_limit': templateResponse['entry_limit'],
+        'entries_remaining': templateResponse['entry_limit'],
+        'status': 'active',
+        'currency': templateResponse['currency_code'] ?? 'USD',
+        'amount': templateResponse['tax_amount'],
+        'pass_hash': passHash,
+        'short_code': shortCode,
+        'qr_data': qrData, // Use qr_data (jsonb) instead of qr_code
+        'pass_description': templateResponse['description'] ?? 'Border Pass',
+        'authority_id': templateResponse['authority_id'],
+        'country_id': templateResponse['country_id'],
+        'border_id': templateResponse['border_id'],
+        'vehicle_desc': vehicleId != null ? null : 'General Pass - Any Vehicle',
+      };
+
+      await _supabase.from('purchased_passes').insert(insertData);
+    } catch (e) {
+      // Provide more specific error messages for common database issues
+      if (e.toString().contains('vehicle_record is not assigned') ||
+          e.toString().contains('tuple structure')) {
+        throw Exception(
+            'Database error: Unable to process pass without vehicle assignment. Please select a vehicle or contact support.');
+      } else if (e.toString().contains('qr_data is ambiguous') ||
+          e.toString().contains('column reference')) {
+        throw Exception(
+            'Database configuration error: Column reference conflict. Please contact support.');
+      } else if (e.toString().contains('could not find')) {
+        throw Exception(
+            'Database function not available. Using direct database operations.');
+      } else if (e.toString().contains('column') &&
+          e.toString().contains('does not exist')) {
+        throw Exception(
+            'Database schema error: Required table or column missing. Please contact support.');
+      } else if (e.toString().contains('qr_code') &&
+          e.toString().contains('schema cache')) {
+        throw Exception(
+            'Database schema error: QR code column structure mismatch. Using correct schema format.');
+      } else {
+        throw Exception('Failed to issue pass: ${e.toString()}');
+      }
+    }
   }
 
   /// Gets all passes for the current user
@@ -296,5 +360,160 @@ class PassService {
     }
 
     return allTemplates;
+  }
+
+  /// Validate a pass by QR code data
+  static Future<PurchasedPass?> validatePassByQRCode(String qrData) async {
+    try {
+      // Parse QR code data
+      final parts = qrData.split('|');
+      final passData = <String, String>{};
+
+      for (final part in parts) {
+        final keyValue = part.split(':');
+        if (keyValue.length == 2) {
+          passData[keyValue[0]] = keyValue[1];
+        }
+      }
+
+      final passId = passData['passId'];
+      if (passId == null) return null;
+
+      // Get pass from database
+      final response = await _supabase.from('purchased_passes').select('''
+            *,
+            pass_templates(
+              id,
+              name,
+              description,
+              entry_limit,
+              validity_days,
+              price,
+              currency_code,
+              authority_id,
+              border_id,
+              is_active
+            ),
+            authorities(
+              id,
+              name,
+              code,
+              country_id,
+              countries(name, country_code)
+            )
+          ''').eq('id', passId).single();
+
+      return PurchasedPass.fromJson(response);
+    } catch (e) {
+      print('Error validating pass by QR code: $e');
+      return null;
+    }
+  }
+
+  /// Validate a pass by backup code
+  static Future<PurchasedPass?> validatePassByBackupCode(
+      String backupCode) async {
+    try {
+      // Search for pass with matching backup code
+      final response = await _supabase.from('purchased_passes').select('''
+            *,
+            pass_templates(
+              id,
+              name,
+              description,
+              entry_limit,
+              validity_days,
+              price,
+              currency_code,
+              authority_id,
+              border_id,
+              is_active
+            ),
+            authorities(
+              id,
+              name,
+              code,
+              country_id,
+              countries(name, country_code)
+            )
+          ''').eq('short_code', backupCode).maybeSingle();
+
+      if (response == null) return null;
+      return PurchasedPass.fromJson(response);
+    } catch (e) {
+      print('Error validating pass by backup code: $e');
+      return null;
+    }
+  }
+
+  /// Deduct an entry from a pass
+  static Future<bool> deductEntry(String passId) async {
+    try {
+      // Get current pass
+      final currentPass = await _supabase
+          .from('purchased_passes')
+          .select('entries_remaining')
+          .eq('id', passId)
+          .single();
+
+      final currentEntries = currentPass['entries_remaining'] as int;
+
+      if (currentEntries <= 0) {
+        throw Exception('No entries remaining');
+      }
+
+      // Deduct one entry
+      await _supabase.from('purchased_passes').update({
+        'entries_remaining': currentEntries - 1,
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('id', passId);
+
+      // Log the entry deduction (optional)
+      await _supabase.from('pass_usage_logs').insert({
+        'pass_id': passId,
+        'action': 'entry_deducted',
+        'performed_by': _supabase.auth.currentUser?.id,
+        'performed_at': DateTime.now().toIso8601String(),
+        'details': {'entries_remaining': currentEntries - 1},
+      });
+
+      return true;
+    } catch (e) {
+      print('Error deducting entry: $e');
+      return false;
+    }
+  }
+
+  /// Get pass by ID for validation
+  static Future<PurchasedPass?> getPassById(String passId) async {
+    try {
+      final response = await _supabase.from('purchased_passes').select('''
+            *,
+            pass_templates(
+              id,
+              name,
+              description,
+              entry_limit,
+              validity_days,
+              price,
+              currency_code,
+              authority_id,
+              border_id,
+              is_active
+            ),
+            authorities(
+              id,
+              name,
+              code,
+              country_id,
+              countries(name, country_code)
+            )
+          ''').eq('id', passId).single();
+
+      return PurchasedPass.fromJson(response);
+    } catch (e) {
+      print('Error getting pass by ID: $e');
+      return null;
+    }
   }
 }

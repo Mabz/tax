@@ -151,22 +151,6 @@ class _PassDashboardScreenState extends State<PassDashboardScreen>
           ],
         ),
       ),
-      floatingActionButton: AnimatedBuilder(
-        animation: _tabController,
-        builder: (context, child) {
-          // Only show FAB on the "My Passes" tab (index 1)
-          if (_tabController.index == 1) {
-            return FloatingActionButton.extended(
-              onPressed: _showPurchaseDialog,
-              backgroundColor: Colors.blue.shade600,
-              foregroundColor: Colors.white,
-              icon: const Icon(Icons.add),
-              label: const Text('Purchase Pass'),
-            );
-          }
-          return const SizedBox.shrink();
-        },
-      ),
     );
   }
 
@@ -413,8 +397,12 @@ class _PassDashboardScreenState extends State<PassDashboardScreen>
       'passDescription': pass.passDescription,
       'vehicleDescription': pass.vehicleDescription,
       'borderName': pass.borderName ?? 'Any',
-      'issuedAt': pass.issuedAt.toIso8601String(),
-      'expiresAt': pass.expiresAt.toIso8601String(),
+      'issuedAt':
+          DateTime(pass.issuedAt.year, pass.issuedAt.month, pass.issuedAt.day)
+              .toIso8601String(),
+      'expiresAt': DateTime(
+              pass.expiresAt.year, pass.expiresAt.month, pass.expiresAt.day)
+          .toIso8601String(),
       'amount': pass.amount,
       'currency': pass.currency,
       'status': pass.status,
@@ -543,13 +531,16 @@ class _PassDashboardScreenState extends State<PassDashboardScreen>
   }
 
   Widget _buildFullWidthPassCard(PurchasedPass pass) {
-    final isExpired = pass.isExpired;
-    final isActive = !isExpired && pass.hasEntriesRemaining;
+    final isActive = pass.isActive;
+    final statusDisplay = pass.statusDisplay;
+
     Color statusColor = Colors.green;
-    if (isExpired) {
+    if (statusDisplay == 'Expired') {
       statusColor = Colors.red;
-    } else if (!pass.hasEntriesRemaining) {
+    } else if (statusDisplay == 'Pending Activation') {
       statusColor = Colors.orange;
+    } else if (statusDisplay == 'Active') {
+      statusColor = Colors.green;
     }
 
     return SingleChildScrollView(
@@ -661,7 +652,9 @@ class _PassDashboardScreenState extends State<PassDashboardScreen>
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: Text(
-                            isExpired ? 'EXPIRED' : 'NO ENTRIES',
+                            statusDisplay == 'Expired'
+                                ? 'EXPIRED'
+                                : 'NO ENTRIES',
                             style: const TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
@@ -723,11 +716,7 @@ class _PassDashboardScreenState extends State<PassDashboardScreen>
                 ),
                 const SizedBox(height: 16),
                 // Vehicle Info
-                _buildPassDetailRow(
-                  Icons.directions_car,
-                  'Vehicle',
-                  pass.vehicleDescription,
-                ),
+                _buildVehicleDetailRow(pass),
                 if (pass.borderName != null)
                   _buildPassDetailRow(
                     Icons.location_on,
@@ -737,7 +726,7 @@ class _PassDashboardScreenState extends State<PassDashboardScreen>
                 _buildPassDetailRow(
                   Icons.confirmation_number,
                   'Entries',
-                  '${pass.entriesRemaining}/${pass.entryLimit}',
+                  pass.entriesDisplay,
                 ),
                 _buildPassDetailRow(
                   Icons.attach_money,
@@ -747,17 +736,17 @@ class _PassDashboardScreenState extends State<PassDashboardScreen>
                 _buildPassDetailRow(
                   Icons.calendar_today,
                   'Issued',
-                  _formatDate(pass.issuedAt),
+                  _formatDateOnly(pass.issuedAt),
                 ),
                 _buildPassDetailRow(
                   Icons.play_arrow,
                   'Activates',
-                  _formatDate(pass.activationDate),
+                  _formatDateOnly(pass.activationDate),
                 ),
                 _buildPassDetailRow(
                   Icons.event,
                   'Expires',
-                  _formatDate(pass.expiresAt),
+                  _formatDateOnly(pass.expiresAt),
                 ),
               ],
             ),
@@ -806,8 +795,87 @@ class _PassDashboardScreenState extends State<PassDashboardScreen>
     );
   }
 
-  String _formatDate(DateTime date) {
-    return '${date.day}/${date.month}/${date.year}';
+  Widget _buildVehicleDetailRow(PurchasedPass pass) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          Icon(
+            Icons.directions_car,
+            size: 20,
+            color: Colors.blue.shade600,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            flex: 2,
+            child: Text(
+              'Vehicle',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: Colors.grey.shade600,
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 3,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                if (pass.vehicleNumberPlate != null &&
+                    pass.vehicleNumberPlate!.isNotEmpty) ...[
+                  Text(
+                    pass.vehicleNumberPlate!,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                    textAlign: TextAlign.right,
+                  ),
+                  if (pass.vehicleDescription.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      pass.vehicleDescription,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                      ),
+                      textAlign: TextAlign.right,
+                    ),
+                  ],
+                  if (pass.vehicleVin != null &&
+                      pass.vehicleVin!.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      'VIN: ${pass.vehicleVin!}',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey.shade500,
+                        fontFamily: 'monospace',
+                      ),
+                      textAlign: TextAlign.right,
+                    ),
+                  ],
+                ] else ...[
+                  Text(
+                    pass.vehicleDescription.isNotEmpty
+                        ? pass.vehicleDescription
+                        : 'General Pass - Any Vehicle',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black87,
+                    ),
+                    textAlign: TextAlign.right,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -910,6 +978,37 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
       return;
     }
 
+    // Show confirmation dialog if no vehicle is selected
+    if (_selectedVehicle == null) {
+      final shouldProceed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('No Vehicle Selected'),
+          content: const Text(
+            'You haven\'t selected a specific vehicle for this pass. \n\nAre you sure you want to continue?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Continue'),
+            ),
+          ],
+        ),
+      );
+
+      if (shouldProceed != true) {
+        return; // User cancelled, don't proceed with purchase
+      }
+    }
+
     setState(() => _isPurchasing = true);
 
     try {
@@ -931,12 +1030,42 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
     } catch (e) {
       setState(() => _isPurchasing = false);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error purchasing pass: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        // Handle specific vehicle assignment errors
+        if (e.toString().contains('vehicle assignment') ||
+            e.toString().contains('tuple structure')) {
+          // Show a more helpful error dialog for vehicle issues
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Purchase Failed'),
+              content: const Text(
+                'There was an issue processing your pass purchase. This may be due to a vehicle assignment problem.\n\nPlease try:\n1. Selecting a specific vehicle\n2. Refreshing the page\n3. Contacting support if the issue persists',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('OK'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    // Navigate back to vehicle selection step
+                    setState(() => _currentStep = 2);
+                  },
+                  child: const Text('Select Vehicle'),
+                ),
+              ],
+            ),
+          );
+        } else {
+          // Show regular error message for other errors
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error purchasing pass: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     }
   }
@@ -946,59 +1075,89 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
     return AlertDialog(
       content: SizedBox(
         width: MediaQuery.of(context).size.width * 0.9,
-        height: MediaQuery.of(context).size.height * 0.7,
-        child: Stepper(
-          physics: const ClampingScrollPhysics(),
-          currentStep: _currentStep,
-          onStepTapped: (step) {
-            if (step <= _currentStep || _canNavigateToStep(step)) {
-              setState(() => _currentStep = step);
-            }
-          },
-          controlsBuilder: (context, details) {
-            return Wrap(
-              spacing: 8,
-              children: [
-                if (details.stepIndex > 0)
-                  TextButton(
-                    onPressed: () =>
-                        setState(() => _currentStep = details.stepIndex - 1),
-                    child: const Text('Back'),
+        height: MediaQuery.of(context).size.height * 0.8,
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Stepper Section
+              Stepper(
+                physics: const NeverScrollableScrollPhysics(),
+                currentStep: _currentStep,
+                onStepTapped: (step) {
+                  if (step <= _currentStep || _canNavigateToStep(step)) {
+                    setState(() => _currentStep = step);
+                  }
+                },
+                controlsBuilder: (context, details) {
+                  return Wrap(
+                    spacing: 8,
+                    children: [
+                      if (details.stepIndex > 0)
+                        TextButton(
+                          onPressed: () => setState(
+                              () => _currentStep = details.stepIndex - 1),
+                          child: const Text('Back'),
+                        ),
+                      if (details.stepIndex < 2)
+                        ElevatedButton(
+                          onPressed: _canProceedFromStep(details.stepIndex)
+                              ? () {
+                                  if (details.stepIndex == 0 &&
+                                      _selectedCountry != null) {
+                                    _loadPassTemplates();
+                                  }
+                                  setState(() =>
+                                      _currentStep = details.stepIndex + 1);
+                                }
+                              : null,
+                          child: const Text('Next'),
+                        ),
+                    ],
+                  );
+                },
+                steps: [
+                  Step(
+                    title: const Text('Select Country'),
+                    content: _buildCountrySelection(),
+                    isActive: _currentStep >= 0,
                   ),
-                if (details.stepIndex < 2)
-                  ElevatedButton(
-                    onPressed: _canProceedFromStep(details.stepIndex)
-                        ? () {
-                            if (details.stepIndex == 0 &&
-                                _selectedCountry != null) {
-                              _loadPassTemplates();
-                            }
-                            setState(
-                                () => _currentStep = details.stepIndex + 1);
-                          }
-                        : null,
-                    child: const Text('Next'),
+                  Step(
+                    title: const Text('Select Pass'),
+                    content: _buildPassSelection(),
+                    isActive: _currentStep >= 1,
                   ),
+                  Step(
+                    title: const Text('Select Vehicle'),
+                    content: _buildVehicleSelection(),
+                    isActive: _currentStep >= 2,
+                  ),
+                ],
+              ),
+
+              // Activation Date and Purchase Summary Section (visible after step 2)
+              if (_currentStep >= 1 && _selectedPassTemplate != null) ...[
+                const SizedBox(height: 16),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.shade200),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildActivationDateSection(),
+                      const SizedBox(height: 16),
+                      _buildPurchaseSummarySection(),
+                    ],
+                  ),
+                ),
               ],
-            );
-          },
-          steps: [
-            Step(
-              title: const Text('Select Country'),
-              content: _buildCountrySelection(),
-              isActive: _currentStep >= 0,
-            ),
-            Step(
-              title: const Text('Select Pass'),
-              content: _buildPassSelection(),
-              isActive: _currentStep >= 1,
-            ),
-            Step(
-              title: const Text('Confirm Purchase'),
-              content: _buildPurchaseConfirmation(),
-              isActive: _currentStep >= 2,
-            ),
-          ],
+            ],
+          ),
         ),
       ),
       actionsPadding: EdgeInsets.zero,
@@ -1036,7 +1195,9 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
               backgroundColor: Colors.green,
               foregroundColor: Colors.white,
             ),
-            child: Text(_isPurchasing ? 'Purchasing...' : 'Purchase'),
+            child: Text(_isPurchasing
+                ? 'Purchasing...'
+                : 'Purchase ${_selectedPassTemplate?.currencyCode ?? ''} ${_selectedPassTemplate?.taxAmount.toStringAsFixed(2) ?? '0.00'}'),
           ),
         TextButton(
           onPressed:
@@ -1302,20 +1463,19 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
     if (result != null) {
       setState(() {
         _selectedPassTemplate = result;
-        // Set activation date based on template's advance days requirement
-        if (result.passAdvanceDays > 0) {
-          // If template requires advance purchase, set activation date to now + advance days
-          _selectedActivationDate =
-              DateTime.now().add(Duration(days: result.passAdvanceDays));
-        } else {
-          // If no advance days required, set to now (immediate activation)
-          _selectedActivationDate = DateTime.now();
+        // Set activation date to now by default, regardless of advance days
+        // The advance days setting controls the maximum future date allowed, not the default
+        _selectedActivationDate = DateTime.now();
+
+        // Auto-advance to step 3 (vehicle selection) when pass template is selected
+        if (_currentStep == 1) {
+          _currentStep = 2;
         }
       });
     }
   }
 
-  Widget _buildPurchaseConfirmation() {
+  Widget _buildVehicleSelection() {
     if (_isLoadingVehicles) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -1339,20 +1499,10 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Select vehicle and confirm purchase:'),
-        const SizedBox(height: 16),
-        Text(
-          'Vehicle (Optional):',
-          style: TextStyle(
-            fontSize: 12,
-            color: Colors.grey.shade600,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
         Text(
           'Tap to select, tap again to deselect',
           style: TextStyle(
-            fontSize: 11,
+            fontSize: 12,
             color: Colors.grey.shade500,
             fontStyle: FontStyle.italic,
           ),
@@ -1421,18 +1571,29 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
             ),
           );
         }).toList()),
+      ],
+    );
+  }
 
-        // Activation Date Selection
-        const SizedBox(height: 24),
-        Text(
-          'Activation Date:',
-          style: TextStyle(
-            fontSize: 12,
-            color: Colors.grey.shade600,
-            fontWeight: FontWeight.w500,
-          ),
+  Widget _buildActivationDateSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.schedule, color: Colors.blue.shade600, size: 20),
+            const SizedBox(width: 8),
+            Text(
+              'Activation Date',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.grey.shade800,
+              ),
+            ),
+          ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 12),
         Container(
           width: double.infinity,
           decoration: BoxDecoration(
@@ -1463,13 +1624,10 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
                         const SizedBox(height: 2),
                         Text(
                           _selectedActivationDate != null
-                              ? _selectedPassTemplate != null &&
-                                      _selectedPassTemplate!.passAdvanceDays > 0
-                                  ? 'Pass will be active from ${_formatTime(_selectedActivationDate!)} (Required ${_selectedPassTemplate!.passAdvanceDays} days advance)'
-                                  : 'Pass will be active from ${_formatTime(_selectedActivationDate!)}'
+                              ? 'Pass will be active from ${_formatActivationTime(_selectedActivationDate!)}'
                               : _selectedPassTemplate != null &&
                                       _selectedPassTemplate!.passAdvanceDays > 0
-                                  ? 'This pass requires ${_selectedPassTemplate!.passAdvanceDays} days advance purchase'
+                                  ? 'Select activation date (can be purchased up to ${_selectedPassTemplate!.passAdvanceDays} days in advance)'
                                   : 'When should the pass become active?',
                           style: TextStyle(
                             color: Colors.grey.shade600,
@@ -1488,67 +1646,82 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
             ),
           ),
         ),
+      ],
+    );
+  }
 
-        if (_selectedPassTemplate != null) ...[
-          const SizedBox(height: 24),
-          const Divider(),
-          const SizedBox(height: 16),
-          const Text('Purchase Summary:',
-              style: TextStyle(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          _buildSummaryRow('Country', _selectedCountry?['name'] ?? ''),
-          _buildSummaryRow(
-              'Authority', _selectedPassTemplate?.authorityName ?? ''),
-          if (_selectedPassTemplate?.borderName != null)
-            _buildSummaryRow('Border', _selectedPassTemplate!.borderName!),
-          _buildSummaryRow(
-              'Vehicle Type', _selectedPassTemplate?.vehicleType ?? ''),
-          _buildSummaryRow(
-              'Entries', '${_selectedPassTemplate?.entryLimit ?? 0}'),
-          _buildSummaryRow('Valid for',
-              '${_selectedPassTemplate?.expirationDays ?? 0} days'),
-          if (_selectedPassTemplate?.passAdvanceDays != null &&
-              _selectedPassTemplate!.passAdvanceDays > 0)
-            _buildSummaryRow('Advance Purchase',
-                '${_selectedPassTemplate!.passAdvanceDays} days required'),
-          if (_selectedActivationDate != null) ...[
-            _buildSummaryRow(
-                'Activation Date', _formatDate(_selectedActivationDate!)),
-            _buildSummaryRow(
-                'Expiration Date', _formatDate(_calculateExpirationDate())),
+  Widget _buildPurchaseSummarySection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.receipt, color: Colors.green.shade600, size: 20),
+            const SizedBox(width: 8),
+            Text(
+              'Purchase Summary',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.grey.shade800,
+              ),
+            ),
           ],
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.green.shade50,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.green.shade200),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Total Amount:',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.green.shade600,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '${_selectedPassTemplate?.currencyCode ?? ''} ${_selectedPassTemplate?.taxAmount.toStringAsFixed(2) ?? '0.00'}',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 20,
-                    color: Colors.green.shade700,
-                  ),
-                ),
-              ],
-            ),
-          ),
+        ),
+        const SizedBox(height: 12),
+        _buildSummaryRow('Country', _selectedCountry?['name'] ?? ''),
+        _buildSummaryRow(
+            'Authority', _selectedPassTemplate?.authorityName ?? ''),
+        if (_selectedPassTemplate?.borderName != null)
+          _buildSummaryRow('Border', _selectedPassTemplate!.borderName!),
+        _buildSummaryRow(
+            'Vehicle Type', _selectedPassTemplate?.vehicleType ?? ''),
+        _buildSummaryRow(
+            'Entries', '${_selectedPassTemplate?.entryLimit ?? 0}'),
+        _buildSummaryRow(
+            'Valid for', '${_selectedPassTemplate?.expirationDays ?? 0} days'),
+        if (_selectedPassTemplate?.passAdvanceDays != null &&
+            _selectedPassTemplate!.passAdvanceDays > 0)
+          _buildSummaryRow('Advance Purchase',
+              '${_selectedPassTemplate!.passAdvanceDays} days required'),
+        if (_selectedActivationDate != null) ...[
+          _buildSummaryRow(
+              'Activation Date', _formatDate(_selectedActivationDate!)),
+          _buildSummaryRow(
+              'Expiration Date', _formatDate(_calculateExpirationDate())),
         ],
+        const SizedBox(height: 12),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.green.shade50,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.green.shade200),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Total Amount:',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.green.shade600,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${_selectedPassTemplate?.currencyCode ?? ''} ${_selectedPassTemplate?.taxAmount.toStringAsFixed(2) ?? '0.00'}',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 24,
+                  color: Colors.green.shade700,
+                ),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -1603,7 +1776,7 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
       case 1:
         return _selectedPassTemplate != null;
       case 2:
-        return _canPurchase();
+        return true; // Vehicle selection is optional
       default:
         return false;
     }
@@ -1622,30 +1795,21 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
     final now = DateTime.now();
     final templateAdvanceDays = _selectedPassTemplate!.passAdvanceDays;
 
-    // Determine the minimum and maximum dates based on template requirements
-    final DateTime minDate;
-    final DateTime maxDate;
-
-    if (templateAdvanceDays > 0) {
-      // Template requires advance purchase - minimum date is now + advance days
-      minDate = now.add(Duration(days: templateAdvanceDays));
-      // Maximum date allows some flexibility beyond the required advance days
-      maxDate = now
-          .add(Duration(days: templateAdvanceDays + 30)); // Allow 30 extra days
-    } else {
-      // No advance requirement - can start from now
-      minDate = now;
-      maxDate =
-          now.add(const Duration(days: 30)); // Allow up to 30 days in advance
-    }
+    // Determine the date range: always start from now, extend up to passAdvanceDays in the future
+    final DateTime minDate = now; // Always allow activation from now
+    final DateTime maxDate = templateAdvanceDays > 0
+        ? now.add(Duration(
+            days: templateAdvanceDays)) // Allow up to advance days in future
+        : now.add(const Duration(
+            days: 1)); // If no advance days, allow only today and tomorrow
 
     final selectedDate = await showDatePicker(
       context: context,
-      initialDate: _selectedActivationDate ?? minDate,
+      initialDate: _selectedActivationDate ?? now,
       firstDate: minDate,
       lastDate: maxDate,
       helpText: templateAdvanceDays > 0
-          ? 'Select Activation Date (Min: $templateAdvanceDays days from now)'
+          ? 'Select Activation Date (Can be purchased up to $templateAdvanceDays days in advance)'
           : 'Select Activation Date',
       confirmText: 'SELECT',
       cancelText: 'CANCEL',
@@ -1673,7 +1837,7 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
     }
   }
 
-  String _formatTime(DateTime date) {
+  String _formatActivationTime(DateTime date) {
     return '00:00 (start of day)';
   }
 
@@ -1691,7 +1855,86 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
   }
 
   String _formatDate(DateTime date) {
-    return '${date.day}/${date.month}/${date.year}';
+    // Fix: use local time for now() to avoid UTC comparison issues
+    final now = DateTime.now().toLocal();
+
+    // Create date-only versions for accurate day comparison
+    final nowDate = DateTime(now.year, now.month, now.day);
+    final compareDate = DateTime(date.year, date.month, date.day);
+    final difference = nowDate.difference(compareDate);
+
+    // If it's today
+    if (difference.inDays == 0) {
+      return 'Today, ${_formatTimeForPurchaseDialog(date)}';
+    }
+
+    // If it's yesterday
+    if (difference.inDays == 1) {
+      return 'Yesterday, ${_formatTimeForPurchaseDialog(date)}';
+    }
+
+    // If it's tomorrow
+    if (difference.inDays == -1) {
+      return 'Tomorrow, ${_formatTimeForPurchaseDialog(date)}';
+    }
+
+    // If it's within this week
+    if (difference.inDays.abs() <= 7) {
+      final weekdays = [
+        'Monday',
+        'Tuesday',
+        'Wednesday',
+        'Thursday',
+        'Friday',
+        'Saturday',
+        'Sunday'
+      ];
+      return '${weekdays[date.weekday - 1]}, ${_formatTimeForPurchaseDialog(date)}';
+    }
+
+    // If it's this year
+    if (date.year == now.year) {
+      final months = [
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec'
+      ];
+      return '${date.day} ${months[date.month - 1]}, ${_formatTimeForPurchaseDialog(date)}';
+    }
+
+    // Default format for older dates
+    final months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
+    ];
+    return '${date.day} ${months[date.month - 1]} ${date.year}';
+  }
+
+  String _formatTimeForPurchaseDialog(DateTime date) {
+    final hour =
+        date.hour == 0 ? 12 : (date.hour > 12 ? date.hour - 12 : date.hour);
+    final minute = date.minute.toString().padLeft(2, '0');
+    final period = date.hour >= 12 ? 'PM' : 'AM';
+    return '$hour:$minute $period';
   }
 }
 
@@ -2129,5 +2372,68 @@ class _PassSelectionDialogState extends State<PassSelectionDialog> {
         ),
       ),
     );
+  }
+}
+
+String _formatDateOnly(DateTime date) {
+  final now = DateTime.now();
+  final nowDate = DateTime(now.year, now.month, now.day);
+  final compareDate = DateTime(date.year, date.month, date.day);
+  final difference = nowDate.difference(compareDate);
+
+  // If it's today
+  if (difference.inDays == 0) {
+    return 'Today';
+  }
+
+  // If it's yesterday
+  if (difference.inDays == 1) {
+    return 'Yesterday';
+  }
+
+  // If it's tomorrow
+  if (difference.inDays == -1) {
+    return 'Tomorrow';
+  }
+
+  // If it's within this week
+  if (difference.inDays.abs() <= 7) {
+    final weekdays = [
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+      'Sunday'
+    ];
+    return weekdays[date.weekday - 1];
+  }
+
+  // For dates beyond this week, show the actual date
+  final months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec'
+  ];
+
+  final month = months[date.month - 1];
+  final day = date.day;
+  final year = date.year;
+
+  // Show year only if it's different from current year
+  if (year != now.year) {
+    return '$month $day, $year';
+  } else {
+    return '$month $day';
   }
 }

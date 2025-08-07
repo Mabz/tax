@@ -21,12 +21,12 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
   final _passportController = TextEditingController();
   final _staticPinController =
       TextEditingController(); // New controller for static PIN
-  
+
   // Individual PIN digit controllers
   final _pinDigit1Controller = TextEditingController();
   final _pinDigit2Controller = TextEditingController();
   final _pinDigit3Controller = TextEditingController();
-  
+
   // Focus nodes for PIN digits
   final _pinDigit1Focus = FocusNode();
   final _pinDigit2Focus = FocusNode();
@@ -59,7 +59,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
     _nationalIdController.dispose();
     _passportController.dispose();
     _staticPinController.dispose(); // Dispose new controller
-    
+
     // Dispose PIN digit controllers and focus nodes
     _pinDigit1Controller.dispose();
     _pinDigit2Controller.dispose();
@@ -67,7 +67,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
     _pinDigit1Focus.dispose();
     _pinDigit2Focus.dispose();
     _pinDigit3Focus.dispose();
-    
+
     super.dispose();
   }
 
@@ -109,9 +109,10 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
           _selectedVerificationMethod = PassVerificationMethod.values
               .firstWhere((e) => e.name == confirmationTypeString,
                   orElse: () => PassVerificationMethod.none);
-          
+
           // Load existing PIN into individual digit controllers
-          final String existingPin = profileData?['static_confirmation_code']?.toString() ?? '';
+          final String existingPin =
+              profileData?['static_confirmation_code']?.toString() ?? '';
           _staticPinController.text = existingPin;
           if (existingPin.length == 3) {
             _pinDigit1Controller.text = existingPin[0];
@@ -228,9 +229,9 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
   Future<void> _updatePassConfirmationPreference(
       PassVerificationMethod method) async {
     debugPrint('Selected PassVerificationMethod: ${method.name}');
-    
-    // For staticPin, first update the UI to show the text box
-    if (method == PassVerificationMethod.staticPin) {
+
+    // For pin, first update the UI to show the text box
+    if (method == PassVerificationMethod.pin) {
       setState(() {
         _selectedVerificationMethod = method;
       });
@@ -245,7 +246,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
       }
       return; // Don't save yet, wait for PIN input
     }
-    
+
     // For other methods, proceed with saving immediately
     try {
       setState(() => _isSaving = true);
@@ -278,12 +279,11 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
 
   Future<void> _savePinPreference() async {
     // Combine the three digit controllers
-    String staticPin = _pinDigit1Controller.text + 
-                      _pinDigit2Controller.text + 
-                      _pinDigit3Controller.text;
+    String staticPin = _pinDigit1Controller.text +
+        _pinDigit2Controller.text +
+        _pinDigit3Controller.text;
 
-    if (staticPin.length != 3 ||
-        !RegExp(r'^[0-9]+$').hasMatch(staticPin)) {
+    if (staticPin.length != 3 || !RegExp(r'^[0-9]+$').hasMatch(staticPin)) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -298,7 +298,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
     try {
       setState(() => _isSaving = true);
       await ProfileManagementService.updatePassConfirmationPreference(
-          PassVerificationMethod.staticPin, staticPin);
+          PassVerificationMethod.pin, staticPin);
       if (mounted) {
         setState(() => _isSaving = false);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -537,7 +537,8 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
               border: OutlineInputBorder(),
             ),
             // Filter out 'Global' country
-            items: _countries.where((c) => c['name'] != 'Global').map((country) {
+            items:
+                _countries.where((c) => c['name'] != 'Global').map((country) {
               return DropdownMenuItem<String>(
                 value: country['id'].toString(),
                 child: Text('${country['name']} (${country['country_code']})'),
@@ -774,7 +775,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
     TextEditingController controller;
     FocusNode focusNode;
     FocusNode? nextFocusNode;
-    
+
     switch (digitIndex) {
       case 0:
         controller = _pinDigit1Controller;
@@ -794,7 +795,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
       default:
         throw ArgumentError('Invalid digit index: $digitIndex');
     }
-    
+
     return Container(
       width: 60,
       height: 60,
@@ -844,7 +845,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
       ),
     );
   }
-  
+
   void _checkAndAutoSave() {
     if (_pinDigit1Controller.text.isNotEmpty &&
         _pinDigit2Controller.text.isNotEmpty &&
@@ -891,12 +892,12 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
                     }
                   },
                 ),
-                
+
                 // Personal PIN option
                 RadioListTile<PassVerificationMethod>(
-                  title: Text(PassVerificationMethod.staticPin.label),
-                  subtitle: Text(PassVerificationMethod.staticPin.description),
-                  value: PassVerificationMethod.staticPin,
+                  title: Text(PassVerificationMethod.pin.label),
+                  subtitle: Text(PassVerificationMethod.pin.description),
+                  value: PassVerificationMethod.pin,
                   groupValue: _selectedVerificationMethod,
                   onChanged: (PassVerificationMethod? newValue) async {
                     if (newValue != null) {
@@ -904,9 +905,9 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
                     }
                   },
                 ),
-                
+
                 // PIN input boxes (appears right after Personal PIN)
-                if (_selectedVerificationMethod == PassVerificationMethod.staticPin)
+                if (_selectedVerificationMethod == PassVerificationMethod.pin)
                   Padding(
                     padding: const EdgeInsets.symmetric(
                         horizontal: 16.0, vertical: 12.0),
@@ -945,21 +946,23 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
                                     width: 20,
                                     child: CircularProgressIndicator(
                                       strokeWidth: 2,
-                                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                          Colors.white),
                                     ),
                                   )
-                                : const Text('Save PIN', style: TextStyle(fontSize: 16)),
+                                : const Text('Save PIN',
+                                    style: TextStyle(fontSize: 16)),
                           ),
                         ),
                       ],
                     ),
                   ),
-                
+
                 // Secure Code option
                 RadioListTile<PassVerificationMethod>(
-                  title: Text(PassVerificationMethod.dynamicCode.label),
-                  subtitle: Text(PassVerificationMethod.dynamicCode.description),
-                  value: PassVerificationMethod.dynamicCode,
+                  title: Text(PassVerificationMethod.secureCode.label),
+                  subtitle: Text(PassVerificationMethod.secureCode.description),
+                  value: PassVerificationMethod.secureCode,
                   groupValue: _selectedVerificationMethod,
                   onChanged: (PassVerificationMethod? newValue) async {
                     if (newValue != null) {

@@ -24,6 +24,7 @@ import 'vehicle_tax_rate_management_screen.dart';
 import 'pass_template_management_screen.dart';
 import 'vehicle_management_screen.dart';
 import 'pass_dashboard_screen.dart';
+import 'authority_validation_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -1012,6 +1013,47 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         },
       ),
+
+      // Authority Validation Options
+      const Divider(),
+      Container(
+        color: Colors.green.shade50,
+        child: Column(
+          children: [
+            ListTile(
+              leading: Icon(Icons.verified_user, color: Colors.blue.shade600),
+              title: const Text('Local Authority Validation'),
+              subtitle: const Text('Scan passes for validation only'),
+              onTap: () {
+                Navigator.of(context).pop();
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const AuthorityValidationScreen(
+                      role: AuthorityRole.localAuthority,
+                    ),
+                  ),
+                );
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.border_clear, color: Colors.green.shade600),
+              title: const Text('Border Control'),
+              subtitle: const Text('Scan passes and deduct entries'),
+              onTap: () {
+                Navigator.of(context).pop();
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const AuthorityValidationScreen(
+                      role: AuthorityRole.borderOfficial,
+                    ),
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+      const Divider(),
       ListTile(
         leading: const Icon(Icons.person_outline, color: Colors.blue),
         title: const Text('Profile Settings'),

@@ -16,6 +16,8 @@ class PurchasedPass {
   final String? authorityId;
   final String? authorityName;
   final String? countryName;
+  final String? vehicleNumberPlate;
+  final String? vehicleVin;
 
   PurchasedPass({
     required this.passId,
@@ -35,6 +37,8 @@ class PurchasedPass {
     this.authorityId,
     this.authorityName,
     this.countryName,
+    this.vehicleNumberPlate,
+    this.vehicleVin,
   });
 
   factory PurchasedPass.fromJson(Map<String, dynamic> json) {
@@ -68,6 +72,8 @@ class PurchasedPass {
       authorityId: json['authority_id']?.toString(),
       authorityName: json['authority_name']?.toString(),
       countryName: json['country_name']?.toString(),
+      vehicleNumberPlate: json['vehicle_number_plate']?.toString(),
+      vehicleVin: json['vehicle_vin']?.toString(),
     );
   }
 
@@ -90,22 +96,64 @@ class PurchasedPass {
       'authority_id': authorityId,
       'authority_name': authorityName,
       'country_name': countryName,
+      'vehicle_number_plate': vehicleNumberPlate,
+      'vehicle_vin': vehicleVin,
     };
   }
 
-  bool get isExpired => DateTime.now().isAfter(expiresAt);
-  bool get isActivated =>
-      DateTime.now().isAfter(activationDate) ||
-      DateTime.now().isAtSameMomentAs(activationDate);
-  bool get isActive => status == 'active' && !isExpired && isActivated;
+  bool get isExpired {
+    final now = DateTime.now();
+    final nowDate = DateTime(now.year, now.month, now.day);
+    final expiryDate = DateTime(expiresAt.year, expiresAt.month, expiresAt.day);
+    return nowDate.isAfter(expiryDate);
+  }
+
+  bool get isActivated {
+    final now = DateTime.now();
+    final nowDate = DateTime(now.year, now.month, now.day);
+    final activationDateOnly =
+        DateTime(activationDate.year, activationDate.month, activationDate.day);
+    return nowDate.isAfter(activationDateOnly) ||
+        nowDate.isAtSameMomentAs(activationDateOnly);
+  }
+
   bool get hasEntriesRemaining => entriesRemaining > 0;
 
+  bool get isActive =>
+      status == 'active' && !isExpired && isActivated && hasEntriesRemaining;
+
   String get statusDisplay {
-    if (isExpired) return 'Expired';
-    if (status == 'active') {
-      if (!isActivated) return 'Pending Activation';
+    final now = DateTime.now();
+    final nowDate = DateTime(now.year, now.month, now.day);
+    final expiryDate = DateTime(expiresAt.year, expiresAt.month, expiresAt.day);
+    final activationDateOnly =
+        DateTime(activationDate.year, activationDate.month, activationDate.day);
+
+    // Check if expired by date
+    if (nowDate.isAfter(expiryDate)) {
+      return 'Expired';
+    }
+
+    // Check if no entries remaining
+    if (!hasEntriesRemaining) {
+      return 'Expired';
+    }
+
+    // Check if not yet activated
+    if (nowDate.isBefore(activationDateOnly)) {
+      return 'Pending Activation';
+    }
+
+    // If we're between activation and expiration dates with entries remaining
+    if (status == 'active' &&
+        (nowDate.isAfter(activationDateOnly) ||
+            nowDate.isAtSameMomentAs(activationDateOnly)) &&
+        (nowDate.isBefore(expiryDate) ||
+            nowDate.isAtSameMomentAs(expiryDate)) &&
+        hasEntriesRemaining) {
       return 'Active';
     }
+
     return status.toUpperCase();
   }
 
@@ -125,6 +173,15 @@ class PurchasedPass {
   /// Get the short code for this pass (generate if not stored)
   String get displayShortCode {
     return shortCode ?? generateShortCode(passId);
+  }
+
+  /// Get user-friendly entries display
+  String get entriesDisplay {
+    if (entryLimit == 1) {
+      return hasEntriesRemaining ? '1 entry remaining' : 'No entries remaining';
+    } else {
+      return '$entriesRemaining out of $entryLimit entries remaining';
+    }
   }
 
   @override
@@ -147,7 +204,9 @@ class PurchasedPass {
         other.shortCode == shortCode &&
         other.authorityId == authorityId &&
         other.authorityName == authorityName &&
-        other.countryName == countryName;
+        other.countryName == countryName &&
+        other.vehicleNumberPlate == vehicleNumberPlate &&
+        other.vehicleVin == vehicleVin;
   }
 
   @override
@@ -170,6 +229,8 @@ class PurchasedPass {
       authorityId,
       authorityName,
       countryName,
+      vehicleNumberPlate,
+      vehicleVin,
     );
   }
 

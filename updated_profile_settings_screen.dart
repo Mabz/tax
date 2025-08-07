@@ -190,8 +190,8 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
   Future<void> _updatePassConfirmationPreference(bool value) async {
     try {
       await ProfileManagementService.updatePassConfirmationPreference(
-        value ? PassVerificationMethod.staticPin : PassVerificationMethod.none,
-        null, // staticPin is not collected by this UI
+        value ? PassVerificationMethod.pin : PassVerificationMethod.none,
+        null, // PIN is not collected by this UI
       );
       setState(() => _requirePassConfirmation = value);
 

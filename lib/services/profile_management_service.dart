@@ -6,7 +6,8 @@ class ProfileManagementService {
   static final _supabase = Supabase.instance.client;
 
   /// Get all countries for selection
-  static Future<List<Map<String, dynamic>>> getAllCountriesForSelection() async {
+  static Future<List<Map<String, dynamic>>>
+      getAllCountriesForSelection() async {
     try {
       final response = await _supabase.rpc('get_all_countries_for_selection');
       return List<Map<String, dynamic>>.from(response ?? []);
@@ -20,9 +21,9 @@ class ProfileManagementService {
     try {
       final user = _supabase.auth.currentUser;
       if (user == null) throw Exception('User not authenticated');
-      
+
       final data = await getIdentityDocumentsForProfile(user.id);
-      
+
       if (data != null) {
         return IdentityDocuments(
           countryOfOriginId: data['country_of_origin_id']?.toString(),
@@ -30,12 +31,12 @@ class ProfileManagementService {
           countryCode: data['country_code']?.toString(),
           nationalIdNumber: data['national_id_number']?.toString(),
           passportNumber: data['passport_number']?.toString(),
-          updatedAt: data['updated_at'] != null 
+          updatedAt: data['updated_at'] != null
               ? DateTime.parse(data['updated_at'].toString())
               : null,
         );
       }
-      
+
       return IdentityDocuments();
     } catch (e) {
       throw Exception('Failed to get identity documents: $e');
@@ -93,8 +94,22 @@ class ProfileManagementService {
   static Future<void> updatePassConfirmationPreference(
       PassVerificationMethod method, String? staticPin) async {
     try {
+      // Map to backend-expected identifiers (align with SQL: none, staticPin, dynamicCode)
+      final String backendType;
+      switch (method) {
+        case PassVerificationMethod.none:
+          backendType = 'none';
+          break;
+        case PassVerificationMethod.pin:
+          backendType = 'staticPin';
+          break;
+        case PassVerificationMethod.secureCode:
+          backendType = 'dynamicCode';
+          break;
+      }
+
       await _supabase.rpc('update_pass_confirmation_preference', params: {
-        'pass_confirmation_type': method.name,
+        'pass_confirmation_type': backendType,
         'static_confirmation_code': staticPin,
       });
     } catch (e) {
@@ -147,6 +162,7 @@ class ProfileManagementService {
             national_id_number,
             passport_number,
             require_manual_pass_confirmation,
+            pass_confirmation_type,
             card_holder_name,
             card_last4,
             card_exp_month,

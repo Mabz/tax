@@ -1,6 +1,5 @@
 class PurchasedPass {
   final String passId;
-  final String vehicleDescription;
   final String passDescription;
   final String? borderName;
   final int entryLimit;
@@ -17,12 +16,14 @@ class PurchasedPass {
   final String? authorityId;
   final String? authorityName;
   final String? countryName;
+
+  // Individual vehicle fields (replacing vehicleDescription)
+  final String? vehicleDescription;
   final String? vehicleNumberPlate;
   final String? vehicleVin;
 
   PurchasedPass({
     required this.passId,
-    required this.vehicleDescription,
     required this.passDescription,
     this.borderName,
     required this.entryLimit,
@@ -39,6 +40,7 @@ class PurchasedPass {
     this.authorityId,
     this.authorityName,
     this.countryName,
+    this.vehicleDescription,
     this.vehicleNumberPlate,
     this.vehicleVin,
   });
@@ -55,7 +57,6 @@ class PurchasedPass {
 
     return PurchasedPass(
       passId: json['pass_id']?.toString() ?? json['id']?.toString() ?? '',
-      vehicleDescription: json['vehicle_description']?.toString() ?? '',
       passDescription: json['pass_description']?.toString() ?? '',
       borderName: json['border_name']?.toString(),
       entryLimit: (json['entry_limit'] as num?)?.toInt() ?? 0,
@@ -75,6 +76,7 @@ class PurchasedPass {
       authorityId: json['authority_id']?.toString(),
       authorityName: json['authority_name']?.toString(),
       countryName: json['country_name']?.toString(),
+      vehicleDescription: json['vehicle_description']?.toString(),
       vehicleNumberPlate: json['vehicle_number_plate']?.toString(),
       vehicleVin: json['vehicle_vin']?.toString(),
     );
@@ -109,8 +111,8 @@ class PurchasedPass {
   String get displayVehicleDescription {
     final List<String> parts = [];
 
-    if (vehicleDescription != null && vehicleDescription.isNotEmpty) {
-      parts.add(vehicleDescription);
+    if (vehicleDescription != null && vehicleDescription!.isNotEmpty) {
+      parts.add(vehicleDescription!);
     }
 
     if (vehicleNumberPlate != null && vehicleNumberPlate!.isNotEmpty) {
@@ -130,7 +132,7 @@ class PurchasedPass {
 
   // Check if this pass has vehicle information
   bool get hasVehicleInfo {
-    return (vehicleDescription != null && vehicleDescription.isNotEmpty) ||
+    return (vehicleDescription != null && vehicleDescription!.isNotEmpty) ||
         (vehicleNumberPlate != null && vehicleNumberPlate!.isNotEmpty) ||
         (vehicleVin != null && vehicleVin!.isNotEmpty);
   }
@@ -223,7 +225,6 @@ class PurchasedPass {
     if (identical(this, other)) return true;
     return other is PurchasedPass &&
         other.passId == passId &&
-        other.vehicleDescription == vehicleDescription &&
         other.passDescription == passDescription &&
         other.borderName == borderName &&
         other.entryLimit == entryLimit &&
@@ -239,6 +240,7 @@ class PurchasedPass {
         other.authorityId == authorityId &&
         other.authorityName == authorityName &&
         other.countryName == countryName &&
+        other.vehicleDescription == vehicleDescription &&
         other.vehicleNumberPlate == vehicleNumberPlate &&
         other.vehicleVin == vehicleVin;
   }
@@ -247,7 +249,6 @@ class PurchasedPass {
   int get hashCode {
     return Object.hash(
       passId,
-      vehicleDescription,
       passDescription,
       borderName,
       entryLimit,
@@ -263,6 +264,7 @@ class PurchasedPass {
       authorityId,
       authorityName,
       countryName,
+      vehicleDescription,
       vehicleNumberPlate,
       vehicleVin,
     );

@@ -988,6 +988,19 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
       ListTile(
+        leading: const Icon(Icons.person_outline, color: Colors.blue),
+        title: const Text('Profile Settings'),
+        subtitle: const Text('Manage identity, payment & preferences'),
+        onTap: () {
+          Navigator.of(context).pop();
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => const ProfileSettingsScreen(),
+            ),
+          );
+        },
+      ),
+      ListTile(
         leading: const Icon(Icons.directions_car, color: Colors.blue),
         title: const Text('My Vehicles'),
         subtitle: const Text('Register and manage your vehicles'),
@@ -1052,20 +1065,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ],
         ),
-      ),
-      const Divider(),
-      ListTile(
-        leading: const Icon(Icons.person_outline, color: Colors.blue),
-        title: const Text('Profile Settings'),
-        subtitle: const Text('Manage identity, payment & preferences'),
-        onTap: () {
-          Navigator.of(context).pop();
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (context) => const ProfileSettingsScreen(),
-            ),
-          );
-        },
       ),
 
       // Country Auditor functions (for auditors who are not admins)

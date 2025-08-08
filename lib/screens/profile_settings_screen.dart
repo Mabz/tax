@@ -106,9 +106,17 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
           // Update for new pass confirmation preferences
           final String? confirmationTypeString =
               profileData?['pass_confirmation_type']?.toString();
-          _selectedVerificationMethod = PassVerificationMethod.values
-              .firstWhere((e) => e.name == confirmationTypeString,
-                  orElse: () => PassVerificationMethod.none);
+          switch (confirmationTypeString) {
+            case 'staticPin':
+              _selectedVerificationMethod = PassVerificationMethod.pin;
+              break;
+            case 'dynamicCode':
+              _selectedVerificationMethod = PassVerificationMethod.secureCode;
+              break;
+            case 'none':
+            default:
+              _selectedVerificationMethod = PassVerificationMethod.none;
+          }
 
           // Load existing PIN into individual digit controllers
           final String existingPin =

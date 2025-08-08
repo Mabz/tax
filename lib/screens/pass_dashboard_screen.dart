@@ -717,6 +717,21 @@ class _PassDashboardScreenState extends State<PassDashboardScreen>
                 const SizedBox(height: 16),
                 // Vehicle Info
                 _buildVehicleDetailRow(pass),
+                // Vehicle Number Plate (if available)
+                if (pass.vehicleNumberPlate != null &&
+                    pass.vehicleNumberPlate!.isNotEmpty)
+                  _buildPassDetailRow(
+                    Icons.confirmation_num,
+                    'Number Plate',
+                    pass.vehicleNumberPlate!,
+                  ),
+                // Vehicle VIN (if available)
+                if (pass.vehicleVin != null && pass.vehicleVin!.isNotEmpty)
+                  _buildPassDetailRow(
+                    Icons.fingerprint,
+                    'VIN',
+                    pass.vehicleVin!,
+                  ),
                 if (pass.borderName != null)
                   _buildPassDetailRow(
                     Icons.location_on,
@@ -825,7 +840,7 @@ class _PassDashboardScreenState extends State<PassDashboardScreen>
                 if (pass.vehicleNumberPlate != null &&
                     pass.vehicleNumberPlate!.isNotEmpty) ...[
                   Text(
-                    pass.vehicleNumberPlate!,
+                    pass.vehicleDescription,
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -833,30 +848,6 @@ class _PassDashboardScreenState extends State<PassDashboardScreen>
                     ),
                     textAlign: TextAlign.right,
                   ),
-                  if (pass.vehicleDescription.isNotEmpty) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      pass.vehicleDescription,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade600,
-                      ),
-                      textAlign: TextAlign.right,
-                    ),
-                  ],
-                  if (pass.vehicleVin != null &&
-                      pass.vehicleVin!.isNotEmpty) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      'VIN: ${pass.vehicleVin!}',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.grey.shade500,
-                        fontFamily: 'monospace',
-                      ),
-                      textAlign: TextAlign.right,
-                    ),
-                  ],
                 ] else ...[
                   Text(
                     pass.vehicleDescription.isNotEmpty
@@ -1621,19 +1612,6 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
                             fontSize: 16,
                           ),
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          _selectedActivationDate != null
-                              ? 'Pass will be active from ${_formatActivationTime(_selectedActivationDate!)}'
-                              : _selectedPassTemplate != null &&
-                                      _selectedPassTemplate!.passAdvanceDays > 0
-                                  ? 'Select activation date (can be purchased up to ${_selectedPassTemplate!.passAdvanceDays} days in advance)'
-                                  : 'When should the pass become active?',
-                          style: TextStyle(
-                            color: Colors.grey.shade600,
-                            fontSize: 12,
-                          ),
-                        ),
                       ],
                     ),
                   ),
@@ -1680,10 +1658,6 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
             'Entries', '${_selectedPassTemplate?.entryLimit ?? 0}'),
         _buildSummaryRow(
             'Valid for', '${_selectedPassTemplate?.expirationDays ?? 0} days'),
-        if (_selectedPassTemplate?.passAdvanceDays != null &&
-            _selectedPassTemplate!.passAdvanceDays > 0)
-          _buildSummaryRow('Advance Purchase',
-              '${_selectedPassTemplate!.passAdvanceDays} days required'),
         if (_selectedActivationDate != null) ...[
           _buildSummaryRow(
               'Activation Date', _formatDate(_selectedActivationDate!)),
@@ -1830,15 +1804,11 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
 
     if (selectedDate != null) {
       setState(() {
-        // Set activation date to start of day (00:00:00)
-        _selectedActivationDate = DateTime(
-            selectedDate.year, selectedDate.month, selectedDate.day, 0, 0, 0);
+        // Set activation date to start of day
+        _selectedActivationDate =
+            DateTime(selectedDate.year, selectedDate.month, selectedDate.day);
       });
     }
-  }
-
-  String _formatActivationTime(DateTime date) {
-    return '00:00 (start of day)';
   }
 
   DateTime _calculateExpirationDate() {
@@ -1846,36 +1816,33 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
       return DateTime.now();
     }
 
-    // Calculate expiration date: activation date + expiration days, end of day (23:59:59)
+    // Calculate expiration date: activation date + expiration days
     final expirationDate = _selectedActivationDate!
         .add(Duration(days: _selectedPassTemplate!.expirationDays));
 
-    return DateTime(expirationDate.year, expirationDate.month,
-        expirationDate.day, 23, 59, 59);
+    return DateTime(
+        expirationDate.year, expirationDate.month, expirationDate.day);
   }
 
   String _formatDate(DateTime date) {
-    // Fix: use local time for now() to avoid UTC comparison issues
-    final now = DateTime.now().toLocal();
-
-    // Create date-only versions for accurate day comparison
+    final now = DateTime.now();
     final nowDate = DateTime(now.year, now.month, now.day);
     final compareDate = DateTime(date.year, date.month, date.day);
     final difference = nowDate.difference(compareDate);
 
     // If it's today
     if (difference.inDays == 0) {
-      return 'Today, ${_formatTimeForPurchaseDialog(date)}';
+      return 'Today';
     }
 
     // If it's yesterday
     if (difference.inDays == 1) {
-      return 'Yesterday, ${_formatTimeForPurchaseDialog(date)}';
+      return 'Yesterday';
     }
 
     // If it's tomorrow
     if (difference.inDays == -1) {
-      return 'Tomorrow, ${_formatTimeForPurchaseDialog(date)}';
+      return 'Tomorrow';
     }
 
     // If it's within this week
@@ -1889,7 +1856,7 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
         'Saturday',
         'Sunday'
       ];
-      return '${weekdays[date.weekday - 1]}, ${_formatTimeForPurchaseDialog(date)}';
+      return weekdays[date.weekday - 1];
     }
 
     // If it's this year
@@ -1908,7 +1875,7 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
         'Nov',
         'Dec'
       ];
-      return '${date.day} ${months[date.month - 1]}, ${_formatTimeForPurchaseDialog(date)}';
+      return '${date.day} ${months[date.month - 1]}';
     }
 
     // Default format for older dates
@@ -1927,14 +1894,6 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
       'Dec'
     ];
     return '${date.day} ${months[date.month - 1]} ${date.year}';
-  }
-
-  String _formatTimeForPurchaseDialog(DateTime date) {
-    final hour =
-        date.hour == 0 ? 12 : (date.hour > 12 ? date.hour - 12 : date.hour);
-    final minute = date.minute.toString().padLeft(2, '0');
-    final period = date.hour >= 12 ? 'PM' : 'AM';
-    return '$hour:$minute $period';
   }
 }
 

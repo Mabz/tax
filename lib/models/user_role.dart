@@ -103,11 +103,11 @@ class UserRoleData {
 
     // Create role assignments from the view data
     final assignments = <RoleAssignment>[];
-    
+
     for (int i = 0; i < roleNames.length; i++) {
       final roleName = roleNames[i];
       final countryCode = i < countryCodes.length ? countryCodes[i] : null;
-      
+
       assignments.add(RoleAssignment(
         id: '', // Not available in view
         userId: json['user_id'] as String,

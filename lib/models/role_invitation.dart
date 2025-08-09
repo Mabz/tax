@@ -44,6 +44,22 @@ class RoleInvitation {
 
   /// Create RoleInvitation from JSON (from database)
   factory RoleInvitation.fromJson(Map<String, dynamic> json) {
+    // Support both standard field keys and dbField aliases to avoid map key collisions
+    final roleNameValue =
+        (json[AppConstants.fieldRoleName] ?? json[AppConstants.dbFieldRoleName])
+            as String?;
+    final roleDisplayNameValue =
+        (json[AppConstants.fieldRoleDisplayName] ?? roleNameValue) as String?;
+    final roleDescriptionValue = (json[AppConstants.fieldRoleDescription] ??
+            json[AppConstants.dbFieldRoleDescription])
+        as String?;
+    final countryNameValue =
+        (json[AppConstants.fieldCountryName] ?? json[AppConstants.dbFieldCountryName])
+            as String?;
+    final countryCodeValue =
+        (json[AppConstants.fieldCountryCode] ?? json[AppConstants.dbFieldCountryCode])
+            as String?;
+
     return RoleInvitation(
       id: json[AppConstants.fieldId] as String,
       email: json[AppConstants.fieldRoleInvitationEmail] as String,
@@ -60,12 +76,12 @@ class RoleInvitation {
           : null,
       createdAt: DateTime.parse(json[AppConstants.fieldCreatedAt] as String),
       updatedAt: DateTime.parse(json[AppConstants.fieldUpdatedAt] as String),
-      roleName: json[AppConstants.fieldRoleName] as String?,
-      roleDisplayName: json[AppConstants.fieldRoleDisplayName] as String?,
-      roleDescription: json[AppConstants.fieldRoleDescription] as String?,
+      roleName: roleNameValue,
+      roleDisplayName: roleDisplayNameValue,
+      roleDescription: roleDescriptionValue,
       authorityName: json['authority_name'] as String?,
-      countryName: json[AppConstants.fieldCountryName] as String?,
-      countryCode: json[AppConstants.fieldCountryCode] as String?,
+      countryName: countryNameValue,
+      countryCode: countryCodeValue,
       inviterName: json['inviter_name'] as String?,
     );
   }

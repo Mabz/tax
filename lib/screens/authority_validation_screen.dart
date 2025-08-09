@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/purchased_pass.dart';
 import '../services/pass_service.dart';
+import '../services/profile_management_service.dart';
+import '../enums/pass_verification_method.dart';
+import '../widgets/pass_card_widget.dart';
 
 enum AuthorityRole { localAuthority, borderOfficial }
 
@@ -30,9 +34,32 @@ class AuthorityValidationScreen extends StatefulWidget {
 }
 
 class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
+  final _supabase = Supabase.instance.client;
   final TextEditingController _backupCodeController = TextEditingController();
-  final TextEditingController _pinController = TextEditingController();
   final TextEditingController _secureCodeController = TextEditingController();
+
+  // Individual PIN digit controllers (3-digit PIN)
+  final _pinDigit1Controller = TextEditingController();
+  final _pinDigit2Controller = TextEditingController();
+  final _pinDigit3Controller = TextEditingController();
+
+  // Focus nodes for PIN digits
+  final _pinDigit1Focus = FocusNode();
+  final _pinDigit2Focus = FocusNode();
+  final _pinDigit3Focus = FocusNode();
+
+  // Individual Secure Code digit controllers (3-digit Secure Code)
+  final _secureDigit1Controller = TextEditingController();
+  final _secureDigit2Controller = TextEditingController();
+  final _secureDigit3Controller = TextEditingController();
+
+  // Focus nodes for Secure Code digits
+  final _secureDigit1Focus = FocusNode();
+  final _secureDigit2Focus = FocusNode();
+  final _secureDigit3Focus = FocusNode();
+
+  // Error state for secure code UI
+  bool _secureCodeHasError = false;
 
   MobileScannerController? controller;
   ValidationStep _currentStep = ValidationStep.scanning;
@@ -47,9 +74,111 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
   void dispose() {
     controller?.dispose();
     _backupCodeController.dispose();
-    _pinController.dispose();
     _secureCodeController.dispose();
+
+    // Dispose PIN digit controllers and focus nodes
+    _pinDigit1Controller.dispose();
+    _pinDigit2Controller.dispose();
+    _pinDigit3Controller.dispose();
+    _pinDigit1Focus.dispose();
+    _pinDigit2Focus.dispose();
+    _pinDigit3Focus.dispose();
+
+    // Dispose Secure Code digit controllers and focus nodes
+    _secureDigit1Controller.dispose();
+    _secureDigit2Controller.dispose();
+    _secureDigit3Controller.dispose();
+    _secureDigit1Focus.dispose();
+    _secureDigit2Focus.dispose();
+    _secureDigit3Focus.dispose();
+
     super.dispose();
+  }
+
+  // 3-box secure code input similar to PIN UI
+  Widget _buildSecureDigitBox(int digitIndex) {
+    TextEditingController controller;
+    FocusNode focusNode;
+    FocusNode? nextFocusNode;
+
+    switch (digitIndex) {
+      case 0:
+        controller = _secureDigit1Controller;
+        focusNode = _secureDigit1Focus;
+        nextFocusNode = _secureDigit2Focus;
+        break;
+      case 1:
+        controller = _secureDigit2Controller;
+        focusNode = _secureDigit2Focus;
+        nextFocusNode = _secureDigit3Focus;
+        break;
+      case 2:
+        controller = _secureDigit3Controller;
+        focusNode = _secureDigit3Focus;
+        nextFocusNode = null;
+        break;
+      default:
+        controller = _secureDigit1Controller;
+        focusNode = _secureDigit1Focus;
+        nextFocusNode = _secureDigit2Focus;
+    }
+
+    return SizedBox(
+      width: 64,
+      child: TextField(
+        controller: controller,
+        focusNode: focusNode,
+        textAlign: TextAlign.center,
+        keyboardType: TextInputType.number,
+        maxLength: 1,
+        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+        decoration: InputDecoration(
+          counterText: '',
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(
+              color: _secureCodeHasError
+                  ? Colors.red.shade400
+                  : Colors.grey.shade400,
+              width: 2,
+            ),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(
+              color: _secureCodeHasError ? Colors.red.shade600 : Colors.orange,
+              width: 2,
+            ),
+          ),
+        ),
+        style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+        onChanged: (value) {
+          if (value.length == 1) {
+            if (nextFocusNode != null) {
+              nextFocusNode.requestFocus();
+            } else {
+              // Last digit entered, unfocus
+              focusNode.unfocus();
+            }
+          } else if (value.isEmpty) {
+            // If user deletes, move to previous field
+            if (digitIndex > 0) {
+              switch (digitIndex) {
+                case 1:
+                  _secureDigit1Focus.requestFocus();
+                  break;
+                case 2:
+                  _secureDigit2Focus.requestFocus();
+                  break;
+              }
+            }
+          }
+        },
+      ),
+    );
   }
 
   @override
@@ -220,93 +349,88 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-                Icon(
-                  Icons.keyboard,
-                  size: 64,
-                  color: Colors.grey.shade400,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Enter Backup Code',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey.shade700,
+          Icon(
+            Icons.keyboard,
+            size: 64,
+            color: Colors.grey.shade400,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Enter Backup Code',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey.shade700,
+            ),
+          ),
+          const SizedBox(height: 32),
+          TextField(
+            controller: _backupCodeController,
+            decoration: InputDecoration(
+              hintText: 'XXXX-XXXX',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              prefixIcon: const Icon(Icons.confirmation_number),
+              counterText: '',
+            ),
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w900, // Extra bold for clarity
+              letterSpacing: 3, // Increased spacing
+              fontFamily: 'Courier', // More distinctive monospace font
+              height: 1.2, // Better line height
+            ),
+            textCapitalization:
+                TextCapitalization.characters, // Force uppercase
+            textAlign: TextAlign.center,
+            maxLength: 9, // 8 + 1 hyphen
+            inputFormatters: [
+              UpperCaseTextFormatter(), // Force uppercase
+              FilteringTextInputFormatter.allow(RegExp(r'[A-Z0-9-]')),
+              _BackupCodeFormatter(),
+            ],
+            onChanged: (value) {
+              // Validate when exact pattern is reached
+              if (RegExp(r'^[A-Z0-9]{4}-[A-Z0-9]{4}$').hasMatch(value)) {
+                _validateBackupCode(value);
+              } else {
+                setState(() {}); // update button enabled state
+              }
+            },
+            onSubmitted: (value) {
+              if (RegExp(r'^[A-Z0-9]{4}-[A-Z0-9]{4}$').hasMatch(value)) {
+                _validateBackupCode(value);
+              }
+            },
+          ),
+          const SizedBox(height: 24),
+          SizedBox(
+            width: double.infinity,
+            child: Builder(builder: (context) {
+              final canSubmit = RegExp(r'^[A-Z0-9]{4}-[A-Z0-9]{4}$')
+                  .hasMatch(_backupCodeController.text);
+              return ElevatedButton(
+                onPressed: canSubmit
+                    ? () => _validateBackupCode(_backupCodeController.text)
+                    : null,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: widget.role == AuthorityRole.localAuthority
+                      ? Colors.blue.shade600
+                      : Colors.green.shade600,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  'Enter the 8-character backup code (format: XXXX-XXXX)',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey.shade600,
-                  ),
-                  textAlign: TextAlign.center,
+                child: const Text(
+                  'Validate Code',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                 ),
-                const SizedBox(height: 32),
-                TextField(
-                  controller: _backupCodeController,
-                  decoration: InputDecoration(
-                    hintText: 'XXXX-XXXX',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    prefixIcon: const Icon(Icons.confirmation_number),
-                    counterText: '',
-                  ),
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 2,
-                    fontFamily: 'monospace',
-                  ),
-                  textAlign: TextAlign.center,
-                  maxLength: 9, // 8 + 1 hyphen
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'[A-Z0-9-]')),
-                    _BackupCodeFormatter(),
-                  ],
-                  onChanged: (value) {
-                    // Validate when exact pattern is reached
-                    if (RegExp(r'^[A-Z0-9]{4}-[A-Z0-9]{4}$').hasMatch(value)) {
-                      _validateBackupCode(value);
-                    } else {
-                      setState(() {}); // update button enabled state
-                    }
-                  },
-                  onSubmitted: (value) {
-                    if (RegExp(r'^[A-Z0-9]{4}-[A-Z0-9]{4}$').hasMatch(value)) {
-                      _validateBackupCode(value);
-                    }
-                  },
-                ),
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  child: Builder(builder: (context) {
-                    final canSubmit =
-                        RegExp(r'^[A-Z0-9]{4}-[A-Z0-9]{4}$').hasMatch(_backupCodeController.text);
-                    return ElevatedButton(
-                      onPressed: canSubmit
-                          ? () => _validateBackupCode(_backupCodeController.text)
-                          : null,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: widget.role == AuthorityRole.localAuthority
-                            ? Colors.blue.shade600
-                            : Colors.green.shade600,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: const Text(
-                        'Validate Code',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                      ),
-                    );
-                  }),
-                ),
+              );
+            }),
+          ),
         ],
       ),
     );
@@ -329,168 +453,84 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
 
     final pass = _scannedPass!;
     final isActive = pass.isActive;
-    final isExpired = pass.isExpired;
-    final hasEntries = pass.hasEntriesRemaining;
-    final activationDate = pass.activationDate;
-    final isPendingActivation = activationDate.isAfter(DateTime.now());
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Pass Status Card
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: isActive ? Colors.green.shade50 : Colors.red.shade50,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: isActive ? Colors.green.shade200 : Colors.red.shade200,
-                width: 2,
-              ),
-            ),
-            child: Column(
-              children: [
-                Icon(
-                  isActive ? Icons.check_circle : Icons.error,
-                  size: 48,
-                  color: isActive ? Colors.green.shade600 : Colors.red.shade600,
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  isActive ? 'Valid Pass' : 'Invalid Pass',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color:
-                        isActive ? Colors.green.shade700 : Colors.red.shade700,
+    return Column(
+      children: [
+        // Use the reusable PassCardWidget
+        Expanded(
+          child: PassCardWidget(
+            pass: pass,
+            showQrCode: false, // Don't show QR code in validation screen
+            showDetails: true,
+            isCompact: true,
+            showSecureCode: false, // Hide secure code on authority UI
+          ),
+        ),
+
+        // Action Buttons at the bottom
+        Container(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            children: [
+              if (widget.role == AuthorityRole.localAuthority) ...[
+                // Local Authority - Just validation
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () => _completeValidation(),
+                    icon: const Icon(Icons.check),
+                    label: const Text('Complete Validation'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue.shade600,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
                   ),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  pass.statusDisplay,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color:
-                        isActive ? Colors.green.shade600 : Colors.red.shade600,
+              ] else if (isActive && pass.hasEntriesRemaining) ...[
+                // Border Official - Deduction
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () => _proceedToDeduction(),
+                    icon: const Icon(Icons.remove_circle_outline),
+                    label: const Text('Proceed with Entry Deduction'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green.shade600,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
                   ),
                 ),
               ],
-            ),
-          ),
 
-          const SizedBox(height: 24),
+              const SizedBox(height: 16),
 
-          // Pass Details
-          _buildDetailCard('Pass Information', [
-            _buildDetailRow(
-                Icons.description, 'Description', pass.passDescription),
-            _buildDetailRow(
-                Icons.directions_car, 'Vehicle', pass.vehicleDescription),
-            if (pass.vehicleNumberPlate != null)
-              _buildDetailRow(
-                  Icons.pin, 'Number Plate', pass.vehicleNumberPlate!),
-            if (pass.vehicleVin != null && pass.vehicleVin!.isNotEmpty)
-              _buildDetailRow(Icons.fingerprint, 'VIN', pass.vehicleVin!),
-            if (pass.borderName != null)
-              _buildDetailRow(Icons.location_on, 'Border', pass.borderName!),
-          ]),
-
-          const SizedBox(height: 16),
-
-          _buildDetailCard('Entry Information', [
-            _buildDetailRow(
-              Icons.confirmation_number,
-              'Entries',
-              pass.entriesDisplay,
-              valueColor: hasEntries ? Colors.black87 : Colors.red,
-            ),
-            _buildDetailRow(
-              Icons.attach_money,
-              'Amount',
-              '${pass.currency} ${pass.amount.toStringAsFixed(2)}',
-            ),
-            _buildDetailRow(
-              Icons.calendar_today,
-              'Issued',
-              _formatDate(pass.issuedAt),
-            ),
-            _buildDetailRow(
-              Icons.play_arrow,
-              'Activates',
-              _formatDate(activationDate),
-              valueColor: isPendingActivation ? Colors.orange : Colors.black87,
-            ),
-            _buildDetailRow(
-              Icons.event,
-              'Expires',
-              _formatDate(pass.expiresAt),
-              valueColor: isExpired ? Colors.red : Colors.black87,
-            ),
-          ]),
-
-          const SizedBox(height: 32),
-
-          // Action Buttons
-          if (widget.role == AuthorityRole.localAuthority) ...[
-            // Local Authority - Just validation
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () => _completeValidation(),
-                icon: const Icon(Icons.check),
-                label: const Text('Complete Validation'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue.shade600,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+              // Cancel Button
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _resetScanning(),
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Scan Another Pass'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                 ),
               ),
-            ),
-          ] else if (isActive && pass.hasEntriesRemaining) ...[
-            // Border Official - Deduction
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () => _proceedToDeduction(),
-                icon: const Icon(Icons.remove_circle_outline),
-                label: const Text('Proceed with Entry Deduction'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green.shade600,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
-            ),
-          ],
-
-          const SizedBox(height: 16),
-
-          // Cancel Button
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: () => _resetScanning(),
-              icon: const Icon(Icons.refresh),
-              label: const Text('Scan Another Pass'),
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            ),
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -531,86 +571,117 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
                   const SizedBox(height: 8),
                   Text(
                     _validationPreference == ValidationPreference.pin
-                        ? 'Please ask the pass owner to enter their PIN'
-                        : 'Please ask the pass owner for the secure code: $_dynamicSecureCode',
+                        ? 'Please ask the pass owner to enter their 3-digit PIN'
+                        : 'Please ask the pass owner for the verification code sent to their device',
                     style: TextStyle(
                       fontSize: 14,
                       color: Colors.grey.shade600,
                     ),
                     textAlign: TextAlign.center,
                   ),
-                  const SizedBox(height: 32),
                   if (_validationPreference == ValidationPreference.pin) ...[
-                    TextField(
-                      controller: _pinController,
-                      decoration: InputDecoration(
-                        hintText: 'Enter PIN',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        prefixIcon: const Icon(Icons.lock),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.blue.shade200),
                       ),
-                      obscureText: true,
-                      keyboardType: TextInputType.number,
-                      maxLength: 6,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 4,
+                      child: Text(
+                        '💡 The pass owner set this PIN in their profile settings',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.blue.shade700,
+                          fontStyle: FontStyle.italic,
+                        ),
+                        textAlign: TextAlign.center,
                       ),
                     ),
-                  ] else ...[
-                    if (_dynamicSecureCode != null)
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.shade50,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.orange.shade200),
-                        ),
-                        child: Column(
-                          children: [
-                            Text(
-                              'Show this code to pass owner:',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.orange.shade700,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              _dynamicSecureCode!,
-                              style: TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.orange.shade800,
-                                letterSpacing: 4,
-                                fontFamily: 'monospace',
-                              ),
-                            ),
-                          ],
-                        ),
+                  ],
+                  const SizedBox(height: 32),
+                  if (_validationPreference == ValidationPreference.pin) ...[
+                    const Text(
+                      'Enter the 3-digit PIN:',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.orange,
                       ),
+                    ),
                     const SizedBox(height: 16),
-                    TextField(
-                      controller: _secureCodeController,
-                      decoration: InputDecoration(
-                        hintText: 'Enter secure code from pass owner',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        prefixIcon: const Icon(Icons.security),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        _buildPinDigitBox(0),
+                        _buildPinDigitBox(1),
+                        _buildPinDigitBox(2),
+                      ],
+                    ),
+                  ] else ...[
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade50,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.blue.shade200),
                       ),
-                      keyboardType: TextInputType.number,
-                      maxLength: 6,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 4,
+                      child: Column(
+                        children: [
+                          Icon(
+                            Icons.smartphone,
+                            size: 48,
+                            color: Colors.blue.shade600,
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Secure Code Sent',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue.shade800,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'A 3-digit verification code has been sent to the pass owner\'s mobile device.',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.blue.shade700,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Please ask them to check their phone and provide the code.',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.blue.shade800,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
                       ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Enter the 3-digit verification code:',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.orange,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        _buildSecureDigitBox(0),
+                        _buildSecureDigitBox(1),
+                        _buildSecureDigitBox(2),
+                      ],
                     ),
                   ],
                   const SizedBox(height: 24),
@@ -690,185 +761,164 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
 
   Widget _buildCompletedStep() {
     final isSuccess = _errorMessage == null;
+    final pass = _scannedPass;
 
-    return Center(
-      child: Padding(
+    // Determine validation result for Local Authority
+    String validationResult = '';
+    String validationDetails = '';
+    IconData resultIcon = Icons.error;
+    Color resultColor = Colors.red.shade600;
+
+    if (isSuccess && pass != null) {
+      if (widget.role == AuthorityRole.localAuthority) {
+        // Local Authority validation summary
+        if (pass.isActive) {
+          validationResult = 'Vehicle is LEGAL';
+          validationDetails =
+              'Pass is valid and active. Vehicle is authorized to be in the country.';
+          resultIcon = Icons.verified;
+          resultColor = Colors.green.shade600;
+        } else if (pass.statusDisplay == 'Consumed') {
+          validationResult = 'Pass CONSUMED';
+          validationDetails =
+              'All entries have been used. Vehicle may need a new pass.';
+          resultIcon = Icons.warning;
+          resultColor = Colors.orange.shade600;
+        } else if (pass.statusDisplay == 'Expired') {
+          validationResult = 'Pass EXPIRED';
+          validationDetails =
+              'Pass has expired. Vehicle is not authorized to be in the country.';
+          resultIcon = Icons.cancel;
+          resultColor = Colors.red.shade600;
+        } else if (pass.statusDisplay == 'Pending Activation') {
+          validationResult = 'Pass NOT YET ACTIVE';
+          validationDetails =
+              'Pass is not yet activated. Vehicle is not currently authorized.';
+          resultIcon = Icons.schedule;
+          resultColor = Colors.orange.shade600;
+        } else {
+          validationResult = 'Pass INVALID';
+          validationDetails =
+              'Pass status is invalid. Vehicle is not authorized to be in the country.';
+          resultIcon = Icons.cancel;
+          resultColor = Colors.red.shade600;
+        }
+      } else {
+        // Border Official - keep existing behavior
+        validationResult = 'Entry Deducted Successfully';
+        validationDetails =
+            'Pass entry has been deducted. Vehicle may proceed.';
+        resultIcon = Icons.check_circle;
+        resultColor = Colors.green.shade600;
+      }
+    } else {
+      validationResult = 'Validation Failed';
+      validationDetails =
+          _errorMessage ?? 'Unable to validate pass. Please try again.';
+      resultIcon = Icons.error;
+      resultColor = Colors.red.shade600;
+    }
+
+    return SingleChildScrollView(
         padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              isSuccess ? Icons.check_circle : Icons.error,
-              size: 80,
-              color: isSuccess ? Colors.green.shade600 : Colors.red.shade600,
-            ),
-            const SizedBox(height: 24),
-            Text(
-              isSuccess
-                  ? (widget.role == AuthorityRole.localAuthority
-                      ? 'Validation Complete'
-                      : 'Entry Deducted Successfully')
-                  : 'Operation Failed',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: isSuccess ? Colors.green.shade700 : Colors.red.shade700,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            minHeight: MediaQuery.of(context).size.height -
+                MediaQuery.of(context).padding.top -
+                kToolbarHeight -
+                48, // Account for app bar and padding
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                resultIcon,
+                size: 80,
+                color: resultColor,
               ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-            if (isSuccess && _scannedPass != null) ...[
+              const SizedBox(height: 24),
+              Text(
+                validationResult,
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: resultColor,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.green.shade50,
+                  color: resultColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.green.shade200),
+                  border: Border.all(color: resultColor.withValues(alpha: 0.3)),
                 ),
                 child: Column(
                   children: [
                     Text(
-                      _scannedPass!.passDescription,
-                      style: const TextStyle(
+                      validationDetails,
+                      style: TextStyle(
                         fontSize: 16,
-                        fontWeight: FontWeight.w600,
+                        color: resultColor.withValues(alpha: 0.8),
+                        fontWeight: FontWeight.w500,
                       ),
+                      textAlign: TextAlign.center,
                     ),
-                    const SizedBox(height: 8),
-                    if (widget.role == AuthorityRole.borderOfficial)
-                      Text(
-                        'Remaining entries: ${_scannedPass!.entriesRemaining - 1}/${_scannedPass!.entryLimit}',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.green.shade700,
-                        ),
-                      ),
+                    if (isSuccess && pass != null) ...[
+                      const SizedBox(height: 12),
+                      Divider(color: resultColor.withValues(alpha: 0.3)),
+                      const SizedBox(height: 8),
+                      _buildValidationSummary(pass, resultColor),
+                    ],
                   ],
                 ),
               ),
-            ] else if (!isSuccess) ...[
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.red.shade50,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.red.shade200),
-                ),
-                child: Text(
-                  _errorMessage!,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.red.shade700,
+              if (!isSuccess) ...[
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.red.shade200),
                   ),
-                  textAlign: TextAlign.center,
+                  child: Text(
+                    _errorMessage!,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.red.shade700,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
                 ),
+              ],
+              const SizedBox(height: 32),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () => _resetScanning(),
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Scan Another Pass'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: widget.role == AuthorityRole.localAuthority
+                        ? Colors.blue.shade600
+                        : Colors.green.shade600,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              OutlinedButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Exit'),
               ),
             ],
-            const SizedBox(height: 32),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () => _resetScanning(),
-                icon: const Icon(Icons.refresh),
-                label: const Text('Scan Another Pass'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: widget.role == AuthorityRole.localAuthority
-                      ? Colors.blue.shade600
-                      : Colors.green.shade600,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            OutlinedButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Exit'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDetailCard(String title, List<Widget> children) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Colors.grey.shade800,
-            ),
           ),
-          const SizedBox(height: 16),
-          ...children,
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDetailRow(
-    IconData icon,
-    String label,
-    String value, {
-    Color? valueColor,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            icon,
-            size: 20,
-            color: Colors.blue.shade600,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            flex: 2,
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: Colors.grey.shade600,
-              ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            flex: 3,
-            child: Text(
-              value,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: valueColor ?? Colors.black87,
-              ),
-              textAlign: TextAlign.right,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      ),
-    );
+        ));
   }
 
   @override
@@ -945,28 +995,78 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
     }
   }
 
-  void _proceedToDeduction() {
-    // Simulate getting validation preference from pass owner settings
-    // In real implementation, this would come from user preferences or pass settings
-    final preferences = [
-      ValidationPreference.direct,
-      ValidationPreference.pin,
-      ValidationPreference.secureCode,
-    ];
+  void _proceedToDeduction() async {
+    if (_scannedPass == null) return;
 
-    // For demo, randomly select a preference (in real app, get from user settings)
-    _validationPreference = preferences[DateTime.now().millisecond % 3];
+    setState(() {
+      _isProcessing = true;
+      _errorMessage = null;
+    });
 
-    if (_validationPreference == ValidationPreference.direct) {
-      // Direct deduction without verification
-      _performEntryDeduction();
-    } else {
-      // Require verification
-      if (_validationPreference == ValidationPreference.secureCode) {
-        _dynamicSecureCode = _generateSecureCode();
+    try {
+      debugPrint(
+          '🚀 Starting verification preference check for pass: ${_scannedPass!.passId}');
+
+      // Get the pass owner's verification preference
+      final verificationMethod =
+          await ProfileManagementService.getPassOwnerVerificationPreference(
+              _scannedPass!.passId);
+
+      debugPrint('📨 Received verification method: $verificationMethod');
+
+      // Map to internal enum
+      switch (verificationMethod) {
+        case PassVerificationMethod.none:
+          _validationPreference = ValidationPreference.direct;
+          debugPrint('✅ Set preference to: direct');
+          break;
+        case PassVerificationMethod.pin:
+          _validationPreference = ValidationPreference.pin;
+          debugPrint('✅ Set preference to: pin');
+          break;
+        case PassVerificationMethod.secureCode:
+          _validationPreference = ValidationPreference.secureCode;
+          debugPrint('✅ Set preference to: secureCode');
+          break;
       }
+
       setState(() {
-        _currentStep = ValidationStep.verification;
+        _isProcessing = false;
+      });
+
+      if (_validationPreference == ValidationPreference.direct) {
+        debugPrint('➡️ Proceeding with direct deduction (no verification)');
+        // Direct deduction without verification
+        _performEntryDeduction();
+      } else {
+        debugPrint('➡️ Requiring verification: $_validationPreference');
+        // Require verification
+        if (_validationPreference == ValidationPreference.secureCode) {
+          _dynamicSecureCode = _generateSecureCode();
+          debugPrint('🔐 Generated secure code: $_dynamicSecureCode');
+
+          // Save secure code to database with expiry (10 minutes)
+          final expiryTime = DateTime.now().add(const Duration(minutes: 10));
+          await _supabase.from('purchased_passes').update({
+            'secure_code': _dynamicSecureCode,
+            'secure_code_expires_at': expiryTime.toIso8601String(),
+          }).eq('id', _scannedPass!.passId);
+
+          debugPrint(
+              '💾 Secure code saved to database, expires at: $expiryTime');
+
+          // Send the secure code to the pass owner (realtime + future SMS)
+          await _sendSecureCodeToPassOwner(
+              _scannedPass!.passId, _dynamicSecureCode!);
+        }
+        setState(() {
+          _currentStep = ValidationStep.verification;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _isProcessing = false;
+        _errorMessage = 'Failed to get verification preferences: $e';
       });
     }
   }
@@ -981,25 +1081,140 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
     setState(() {
       _isProcessing = true;
       _errorMessage = null;
+      _secureCodeHasError = false;
     });
 
     try {
       bool isValid = false;
 
       if (_validationPreference == ValidationPreference.pin) {
-        // Verify PIN (in real app, check against stored PIN)
-        isValid = _pinController.text.length >= 4;
+        // Combine the three digit controllers to form the PIN
+        String enteredPin = _pinDigit1Controller.text +
+            _pinDigit2Controller.text +
+            _pinDigit3Controller.text;
+
+        // Verify PIN is 3 digits and numeric
+        if (enteredPin.length == 3 &&
+            RegExp(r'^[0-9]+$').hasMatch(enteredPin)) {
+          // Get the stored PIN from database and verify
+          final storedPin =
+              await ProfileManagementService.getPassOwnerStoredPin(
+                  _scannedPass!.passId);
+
+          if (storedPin != null) {
+            isValid = enteredPin == storedPin;
+            debugPrint(
+                'PIN verification: entered=$enteredPin, stored=$storedPin, valid=$isValid');
+          } else {
+            debugPrint('No stored PIN found for verification');
+            isValid = false;
+          }
+        } else {
+          debugPrint('Invalid PIN format: $enteredPin');
+          isValid = false;
+        }
       } else if (_validationPreference == ValidationPreference.secureCode) {
-        // Verify secure code
-        isValid = _secureCodeController.text == _dynamicSecureCode;
+        // Verify secure code against database using 3-digit boxes
+        final enteredCode = _secureDigit1Controller.text.trim() +
+            _secureDigit2Controller.text.trim() +
+            _secureDigit3Controller.text.trim();
+
+        if (enteredCode.length == 3 &&
+            RegExp(r'^[0-9]+$').hasMatch(enteredCode)) {
+          // Get the current pass data to check stored secure code
+          final currentPass =
+              await PassService.getPassById(_scannedPass!.passId);
+
+          if (currentPass != null &&
+              currentPass.secureCode != null &&
+              currentPass.secureCodeExpiresAt != null) {
+            final now = DateTime.now();
+            final isExpired = now.isAfter(currentPass.secureCodeExpiresAt!);
+
+            if (isExpired) {
+              debugPrint(
+                  'Secure code expired at: ${currentPass.secureCodeExpiresAt}');
+              isValid = false;
+            } else {
+              isValid = enteredCode == currentPass.secureCode;
+              debugPrint(
+                  'Secure code verification: entered=$enteredCode, stored=${currentPass.secureCode}, valid=$isValid');
+            }
+          } else {
+            debugPrint('No stored secure code found for verification');
+            isValid = false;
+          }
+        } else {
+          debugPrint('Invalid secure code format: $enteredCode');
+          isValid = false;
+        }
       }
 
       if (isValid) {
         await _performEntryDeduction();
       } else {
+        String? localError;
+        bool localSecureError = false;
+
+        if (_validationPreference == ValidationPreference.pin) {
+          String enteredPin = _pinDigit1Controller.text +
+              _pinDigit2Controller.text +
+              _pinDigit3Controller.text;
+
+          if (enteredPin.length != 3) {
+            localError = 'Please enter all 3 digits of the PIN';
+          } else if (!RegExp(r'^[0-9]+$').hasMatch(enteredPin)) {
+            localError = 'PIN must contain only numbers';
+          } else {
+            localError =
+                'Incorrect PIN entered. Please ask the pass owner to try again.';
+          }
+        } else {
+          // Secure code errors
+          final enteredCode = _secureDigit1Controller.text.trim() +
+              _secureDigit2Controller.text.trim() +
+              _secureDigit3Controller.text.trim();
+
+          if (enteredCode.length != 3) {
+            localError = 'Please enter all 3 digits of the verification code';
+            localSecureError = true;
+          } else if (!RegExp(r'^[0-9]+$').hasMatch(enteredCode)) {
+            localError = 'Verification code must contain only numbers';
+            localSecureError = true;
+          } else {
+            // Check if code is expired by fetching pass BEFORE setState
+            final currentPass =
+                await PassService.getPassById(_scannedPass!.passId);
+            if (currentPass?.secureCodeExpiresAt != null &&
+                DateTime.now().isAfter(currentPass!.secureCodeExpiresAt!)) {
+              localError =
+                  'Verification code has expired. Please ask the border official to scan the pass again.';
+              localSecureError = true;
+            } else {
+              localError =
+                  'Incorrect verification code. Please check the code on the pass owner\'s device.';
+              localSecureError = true;
+            }
+          }
+
+          // Clear secure code inputs for retry
+          _secureDigit1Controller.clear();
+          _secureDigit2Controller.clear();
+          _secureDigit3Controller.clear();
+        }
+
         setState(() {
-          _errorMessage =
-              'Invalid ${_validationPreference == ValidationPreference.pin ? 'PIN' : 'secure code'}';
+          _errorMessage = localError;
+          _secureCodeHasError = localSecureError;
+          if (_validationPreference == ValidationPreference.pin) {
+            // Clear PIN fields and refocus for retry
+            _pinDigit1Controller.clear();
+            _pinDigit2Controller.clear();
+            _pinDigit3Controller.clear();
+            _pinDigit1Focus.requestFocus();
+          } else {
+            _secureDigit1Focus.requestFocus();
+          }
           _isProcessing = false;
         });
       }
@@ -1074,19 +1289,61 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
       _errorMessage = null;
       _isProcessing = false;
       _useBackupCode = false;
+      _secureCodeHasError = false;
     });
 
     _backupCodeController.clear();
-    _pinController.clear();
     _secureCodeController.clear();
 
+    // Clear PIN digit controllers
+    _pinDigit1Controller.clear();
+    _pinDigit2Controller.clear();
+    _pinDigit3Controller.clear();
+
+    // Clear Secure Code digit controllers
+    _secureDigit1Controller.clear();
+    _secureDigit2Controller.clear();
+    _secureDigit3Controller.clear();
+
+    // Some versions of mobile_scanner don't reliably restart after stop().
+    // Recreate the controller to ensure detection resumes.
+    try {
+      controller?.dispose();
+    } catch (_) {}
+    controller = MobileScannerController();
+    // Explicitly start to be safe.
     controller?.start();
   }
 
   String _generateSecureCode() {
-    // Generate a 6-digit secure code
+    // Generate a 3-digit secure code (100-999)
     final random = DateTime.now().millisecondsSinceEpoch;
-    return (random % 900000 + 100000).toString();
+    return (random % 900 + 100).toString();
+  }
+
+  Future<void> _sendSecureCodeToPassOwner(
+      String passId, String secureCode) async {
+    try {
+      debugPrint(
+          '🔐 Sending secure code $secureCode to pass owner for pass: $passId');
+
+      // In a real implementation, this would:
+      // 1. Get the pass owner's phone number from the database
+      // 2. Send SMS with the secure code
+      // 3. Or send push notification to their mobile app
+      // 4. Store the code temporarily in database with expiration
+
+      // For now, we'll simulate this by logging
+      debugPrint(
+          '📱 SMS would be sent: "Your border crossing verification code is: $secureCode"');
+      debugPrint('⏰ Code expires in 10 minutes');
+
+      // Simulate network delay
+      await Future.delayed(const Duration(milliseconds: 500));
+    } catch (e) {
+      debugPrint('❌ Failed to send secure code: $e');
+      throw Exception('Failed to send verification code to pass owner');
+    }
   }
 
   Future<PurchasedPass?> _parseAndValidatePass(String qrData) async {
@@ -1124,23 +1381,148 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
     }
   }
 
-  String _formatDate(DateTime date) {
-    final now = DateTime.now();
-    final nowDate = DateTime(now.year, now.month, now.day);
-    final compareDate = DateTime(date.year, date.month, date.day);
-    final difference = nowDate.difference(compareDate);
+  Widget _buildPinDigitBox(int digitIndex) {
+    TextEditingController controller;
+    FocusNode focusNode;
+    FocusNode? nextFocusNode;
 
-    if (difference.inDays == 0) {
-      return 'Today';
-    } else if (difference.inDays == -1) {
-      return 'Tomorrow';
-    } else if (difference.inDays == 1) {
-      return 'Yesterday';
-    } else if (difference.inDays < -1) {
-      return '${-difference.inDays} days from now';
-    } else {
-      return '${difference.inDays} days ago';
+    switch (digitIndex) {
+      case 0:
+        controller = _pinDigit1Controller;
+        focusNode = _pinDigit1Focus;
+        nextFocusNode = _pinDigit2Focus;
+        break;
+      case 1:
+        controller = _pinDigit2Controller;
+        focusNode = _pinDigit2Focus;
+        nextFocusNode = _pinDigit3Focus;
+        break;
+      case 2:
+        controller = _pinDigit3Controller;
+        focusNode = _pinDigit3Focus;
+        nextFocusNode = null;
+        break;
+      default:
+        throw ArgumentError('Invalid digit index: $digitIndex');
     }
+
+    // Determine if there's a PIN-related error
+    final bool hasError = _errorMessage != null &&
+        _validationPreference == ValidationPreference.pin;
+
+    return Container(
+      width: 60,
+      height: 60,
+      decoration: BoxDecoration(
+        border:
+            Border.all(color: hasError ? Colors.red : Colors.orange, width: 2),
+        borderRadius: BorderRadius.circular(12),
+        color: hasError ? Colors.red.shade50 : Colors.orange.shade50,
+      ),
+      child: TextField(
+        controller: controller,
+        focusNode: focusNode,
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          fontSize: 24,
+          fontWeight: FontWeight.bold,
+          color: hasError ? Colors.red : Colors.orange,
+        ),
+        keyboardType: TextInputType.number,
+        maxLength: 1,
+        decoration: const InputDecoration(
+          border: InputBorder.none,
+          counterText: '',
+        ),
+        onChanged: (value) {
+          if (value.isNotEmpty && RegExp(r'^[0-9]$').hasMatch(value)) {
+            // Move to next field if this isn't the last one
+            if (nextFocusNode != null) {
+              nextFocusNode.requestFocus();
+            } else {
+              // Last digit entered, unfocus to hide keyboard
+              focusNode.unfocus();
+            }
+          } else if (value.isEmpty) {
+            // If user deletes, move to previous field
+            if (digitIndex > 0) {
+              switch (digitIndex) {
+                case 1:
+                  _pinDigit1Focus.requestFocus();
+                  break;
+                case 2:
+                  _pinDigit2Focus.requestFocus();
+                  break;
+              }
+            }
+          }
+        },
+      ),
+    );
+  }
+
+  Widget _buildValidationSummary(PurchasedPass pass, Color color) {
+    return Column(
+      children: [
+        _buildSummaryRow('Vehicle', pass.vehicleDescription, color),
+        if (pass.vehicleNumberPlate != null &&
+            pass.vehicleNumberPlate!.isNotEmpty)
+          _buildSummaryRow('Number Plate', pass.vehicleNumberPlate!, color),
+        if (pass.vehicleVin != null && pass.vehicleVin!.isNotEmpty)
+          _buildSummaryRow('VIN', pass.vehicleVin!, color),
+        if (pass.authorityName != null)
+          _buildSummaryRow('Authority', pass.authorityName!, color),
+        if (pass.countryName != null)
+          _buildSummaryRow('Country', pass.countryName!, color),
+        if (pass.borderName != null)
+          _buildSummaryRow('Border', pass.borderName!, color),
+        _buildSummaryRow('Status', pass.statusDisplay, color),
+        _buildSummaryRow('Entries', pass.entriesDisplay, color),
+      ],
+    );
+  }
+
+  Widget _buildSummaryRow(String label, String value, Color color) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 14,
+              color: color.withValues(alpha: 0.7),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          Flexible(
+            child: Text(
+              value,
+              style: TextStyle(
+                fontSize: 14,
+                color: color.withValues(alpha: 0.9),
+                fontWeight: FontWeight.w600,
+              ),
+              textAlign: TextAlign.right,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class UpperCaseTextFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    return TextEditingValue(
+      text: newValue.text.toUpperCase(),
+      selection: newValue.selection,
+    );
   }
 }
 

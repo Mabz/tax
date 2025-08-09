@@ -340,13 +340,14 @@ class InvitationService {
               json['invited_at'] ?? DateTime.now().toIso8601String(),
           AppConstants.fieldUpdatedAt:
               json['invited_at'] ?? DateTime.now().toIso8601String(),
-          AppConstants.fieldRoleName: json['role_name'] ?? '',
+          // Use db field aliases to avoid key collisions with generic 'name'
+          AppConstants.dbFieldRoleName: json['role_name'] ?? '',
           AppConstants.fieldRoleDisplayName:
               json['role_name'] ?? '', // Use role_name as display name
-          AppConstants.fieldRoleDescription: json['role_description'] ?? '',
+          AppConstants.dbFieldRoleDescription: json['role_description'] ?? '',
           'authority_name': json['authority_name'] ?? '',
-          AppConstants.fieldCountryName: json['country_name'] ?? '',
-          AppConstants.fieldCountryCode: json['country_code'] ?? '',
+          AppConstants.dbFieldCountryName: json['country_name'] ?? '',
+          AppConstants.dbFieldCountryCode: json['country_code'] ?? '',
           'inviter_name': json['inviter_name'] ?? '',
         };
 

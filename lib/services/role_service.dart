@@ -11,7 +11,7 @@ class RoleService {
   /// [roleName] - The role to check for (use AppConstants.role* constants)
   /// [countryCode] - Optional country code for country-specific roles
   /// [userId] - Optional user ID, defaults to current user
-  static Future<bool> userHasRole(
+  static Future<bool> profileHasRole(
     String roleName, {
     String? countryCode,
     String? userId,
@@ -30,7 +30,7 @@ class RoleService {
       }
 
       final result = await _supabase.rpc(
-        AppConstants.userHasRoleFunction,
+        AppConstants.profileHasRoleFunction,
         params: params,
       );
 
@@ -44,17 +44,17 @@ class RoleService {
 
   /// Check if current user is a superuser
   static Future<bool> isSuperuser() async {
-    return userHasRole(AppConstants.roleSuperuser);
+    return profileHasRole(AppConstants.roleSuperuser);
   }
 
   /// Check if current user is a traveller
   static Future<bool> isTraveller() async {
-    return userHasRole(AppConstants.roleTraveller);
+    return profileHasRole(AppConstants.roleTraveller);
   }
 
   /// Check if current user is a country admin for a specific country
   static Future<bool> isCountryAdmin(String countryCode) async {
-    return userHasRole(
+    return profileHasRole(
       AppConstants.roleCountryAdmin,
       countryCode: countryCode,
     );
@@ -62,7 +62,7 @@ class RoleService {
 
   /// Check if current user is a border official for a specific country
   static Future<bool> isBorderOfficial(String countryCode) async {
-    return userHasRole(
+    return profileHasRole(
       AppConstants.roleBorderOfficial,
       countryCode: countryCode,
     );
@@ -70,7 +70,7 @@ class RoleService {
 
   /// Check if current user is a local authority for a specific country
   static Future<bool> isLocalAuthority(String countryCode) async {
-    return userHasRole(
+    return profileHasRole(
       AppConstants.roleLocalAuthority,
       countryCode: countryCode,
     );
@@ -78,7 +78,7 @@ class RoleService {
 
   /// Check if current user is a country auditor for a specific country
   static Future<bool> isCountryAuditor(String countryCode) async {
-    return userHasRole(
+    return profileHasRole(
       AppConstants.roleCountryAuditor,
       countryCode: countryCode,
     );
@@ -90,7 +90,26 @@ class RoleService {
     if (isSuperuser) return true;
 
     // Check if user is country admin for any country
-    return userHasRole(AppConstants.roleCountryAdmin);
+    return profileHasRole(AppConstants.roleCountryAdmin);
+  }
+
+  /// Check if current user has border official role (without country restriction)
+  static Future<bool> hasBorderOfficialRole() async {
+    return profileHasRole(AppConstants.roleBorderOfficial);
+  }
+
+  /// Check if current user has local authority role (without country restriction)
+  static Future<bool> hasLocalAuthorityRole() async {
+    return profileHasRole(AppConstants.roleLocalAuthority);
+  }
+
+  /// Check if current user has any auditor role (country auditor or superuser)
+  static Future<bool> hasAuditorRole() async {
+    final isSuperuser = await RoleService.isSuperuser();
+    if (isSuperuser) return true;
+
+    // Check if user is country auditor for any country
+    return profileHasRole(AppConstants.roleCountryAuditor);
   }
 
   /// Get all roles for current user (for debugging/display purposes)
@@ -99,16 +118,16 @@ class RoleService {
 
     if (await isSuperuser()) roles.add(AppConstants.roleSuperuser);
     if (await isTraveller()) roles.add(AppConstants.roleTraveller);
-    if (await userHasRole(AppConstants.roleCountryAdmin)) {
+    if (await profileHasRole(AppConstants.roleCountryAdmin)) {
       roles.add(AppConstants.roleCountryAdmin);
     }
-    if (await userHasRole(AppConstants.roleCountryAuditor)) {
+    if (await profileHasRole(AppConstants.roleCountryAuditor)) {
       roles.add(AppConstants.roleCountryAuditor);
     }
-    if (await userHasRole(AppConstants.roleBorderOfficial)) {
+    if (await profileHasRole(AppConstants.roleBorderOfficial)) {
       roles.add(AppConstants.roleBorderOfficial);
     }
-    if (await userHasRole(AppConstants.roleLocalAuthority)) {
+    if (await profileHasRole(AppConstants.roleLocalAuthority)) {
       roles.add(AppConstants.roleLocalAuthority);
     }
 
@@ -151,7 +170,8 @@ class RoleService {
           .eq('${AppConstants.tableRoles}.${AppConstants.fieldRoleName}',
               AppConstants.roleCountryAdmin)
           .eq(AppConstants.fieldProfileRoleIsActive, true)
-          .eq('${AppConstants.tableAuthorities}.${AppConstants.fieldAuthorityIsActive}', true)
+          .eq('${AppConstants.tableAuthorities}.${AppConstants.fieldAuthorityIsActive}',
+              true)
           .eq('${AppConstants.tableAuthorities}.${AppConstants.tableCountries}.${AppConstants.fieldCountryIsActive}',
               true);
 

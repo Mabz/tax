@@ -38,6 +38,8 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isLoadingRoles = true;
   bool _isCountryAdmin = false;
   bool _isCountryAuditor = false;
+  bool _isBorderOfficial = false;
+  bool _isLocalAuthority = false;
 
   // Authority selection state
   List<Authority> _authorities = [];
@@ -85,8 +87,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
       final isSuperuser = await RoleService.isSuperuser();
       final isCountryAdmin = await RoleService.hasAdminRole();
-      final isCountryAuditor =
-          await RoleService.userHasRole(AppConstants.roleCountryAuditor);
+      final isCountryAuditor = await RoleService.hasAuditorRole();
+      final isBorderOfficial = await RoleService.hasBorderOfficialRole();
+      final isLocalAuthority = await RoleService.hasLocalAuthorityRole();
 
       // Additional debugging - check country admin countries
       if (isCountryAdmin) {
@@ -102,6 +105,8 @@ class _HomeScreenState extends State<HomeScreen> {
           _isSuperuser = isSuperuser;
           _isCountryAdmin = isCountryAdmin;
           _isCountryAuditor = isCountryAuditor;
+          _isBorderOfficial = isBorderOfficial;
+          _isLocalAuthority = isLocalAuthority;
           _isLoadingRoles = false;
         });
       }
@@ -109,6 +114,8 @@ class _HomeScreenState extends State<HomeScreen> {
       debugPrint('🔑 Superuser check: $_isSuperuser');
       debugPrint('🌍 Country Admin check: $_isCountryAdmin');
       debugPrint('🔍 Country Auditor check: $_isCountryAuditor');
+      debugPrint('🛡️ Border Official check: $_isBorderOfficial');
+      debugPrint('🏛️ Local Authority check: $_isLocalAuthority');
       debugPrint(
           '🎯 Should load authorities: ${isSuperuser || isCountryAdmin || isCountryAuditor}');
 
@@ -132,6 +139,8 @@ class _HomeScreenState extends State<HomeScreen> {
           _isSuperuser = false;
           _isCountryAdmin = false;
           _isCountryAuditor = false;
+          _isBorderOfficial = false;
+          _isLocalAuthority = false;
           _isLoadingRoles = false;
         });
       }
@@ -696,6 +705,93 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         const Divider(),
       ],
+      // Operational screens (role-gated, require selected authority)
+      if (_selectedAuthority != null && _isBorderOfficial) ...[
+        // Border Control - only for border_official
+        ListTile(
+          leading: const Icon(Icons.shield, color: Colors.blue),
+          title: const Text('Border Control'),
+          subtitle: Text(
+            'Validate passes at ${_selectedAuthority!.name}',
+          ),
+          onTap: () async {
+            final countryCode = _selectedAuthority!.countryCode;
+            if (countryCode == null || countryCode.isEmpty) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Selected authority has no country code'),
+                  backgroundColor: Colors.orange,
+                ),
+              );
+              return;
+            }
+            final allowed = await RoleService.isBorderOfficial(countryCode);
+            if (!mounted) return;
+            if (!allowed) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                      'Access denied: Border Control requires Border Official role'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+              return;
+            }
+            Navigator.of(context).pop();
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => const AuthorityValidationScreen(
+                  role: AuthorityRole.borderOfficial,
+                ),
+              ),
+            );
+          },
+        ),
+      ],
+      if (_selectedAuthority != null && _isLocalAuthority) ...[
+        // Local Authority Validation - only for local_authority
+        ListTile(
+          leading: const Icon(Icons.verified, color: Colors.green),
+          title: const Text('Local Authority Validation'),
+          subtitle: Text(
+            'Validate passes for ${_selectedAuthority!.name}',
+          ),
+          onTap: () async {
+            final countryCode = _selectedAuthority!.countryCode;
+            if (countryCode == null || countryCode.isEmpty) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Selected authority has no country code'),
+                  backgroundColor: Colors.orange,
+                ),
+              );
+              return;
+            }
+            final allowed = await RoleService.isLocalAuthority(countryCode);
+            if (!mounted) return;
+            if (!allowed) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                      'Access denied: Local Authority Validation requires Local Authority role'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+              return;
+            }
+            Navigator.of(context).pop();
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => const AuthorityValidationScreen(
+                  role: AuthorityRole.localAuthority,
+                ),
+              ),
+            );
+          },
+        ),
+        const Divider(),
+      ],
+
       // Country Admin functions
       if (_isCountryAdmin) ...[
         ListTile(
@@ -1383,36 +1479,34 @@ class _HomeScreenState extends State<HomeScreen> {
                                             Expanded(
                                               child: ElevatedButton(
                                                 onPressed: () async {
+                                                  // Capture messenger BEFORE the async gap to avoid using context after await.
+                                                  final messenger =
+                                                      ScaffoldMessenger.of(
+                                                          context);
                                                   try {
                                                     await InvitationService
                                                         .acceptInvitation(
                                                             invitation.id);
-                                                    if (mounted) {
-                                                      ScaffoldMessenger.of(
-                                                              context)
-                                                          .showSnackBar(
-                                                        const SnackBar(
-                                                          content: Text(
-                                                              'Invitation accepted successfully!'),
-                                                          backgroundColor:
-                                                              Colors.green,
-                                                        ),
-                                                      );
-                                                      _loadPendingInvitations();
-                                                    }
+                                                    if (!mounted) return;
+                                                    messenger.showSnackBar(
+                                                      const SnackBar(
+                                                        content: Text(
+                                                            'Invitation accepted successfully!'),
+                                                        backgroundColor:
+                                                            Colors.green,
+                                                      ),
+                                                    );
+                                                    _loadPendingInvitations();
                                                   } catch (e) {
-                                                    if (mounted) {
-                                                      ScaffoldMessenger.of(
-                                                              context)
-                                                          .showSnackBar(
-                                                        SnackBar(
-                                                          content: Text(
-                                                              'Error accepting invitation: $e'),
-                                                          backgroundColor:
-                                                              Colors.red,
-                                                        ),
-                                                      );
-                                                    }
+                                                    if (!mounted) return;
+                                                    messenger.showSnackBar(
+                                                      SnackBar(
+                                                        content: Text(
+                                                            'Error accepting invitation: $e'),
+                                                        backgroundColor:
+                                                            Colors.red,
+                                                      ),
+                                                    );
                                                   }
                                                 },
                                                 style: ElevatedButton.styleFrom(
@@ -1445,10 +1539,12 @@ class _HomeScreenState extends State<HomeScreen> {
                                                     await InvitationService
                                                         .declineInvitation(
                                                             invitation.id);
+                                                    if (!mounted) return;
                                                     if (mounted) {
-                                                      ScaffoldMessenger.of(
-                                                              context)
-                                                          .showSnackBar(
+                                                      final messenger =
+                                                          ScaffoldMessenger.of(
+                                                              this.context);
+                                                      messenger.showSnackBar(
                                                         const SnackBar(
                                                           content: Text(
                                                               'Invitation declined'),
@@ -1456,13 +1552,15 @@ class _HomeScreenState extends State<HomeScreen> {
                                                               Colors.orange,
                                                         ),
                                                       );
-                                                      _loadPendingInvitations();
                                                     }
+                                                    _loadPendingInvitations();
                                                   } catch (e) {
+                                                    if (!mounted) return;
                                                     if (mounted) {
-                                                      ScaffoldMessenger.of(
-                                                              context)
-                                                          .showSnackBar(
+                                                      final messenger =
+                                                          ScaffoldMessenger.of(
+                                                              this.context);
+                                                      messenger.showSnackBar(
                                                         SnackBar(
                                                           content: Text(
                                                               'Error declining invitation: $e'),

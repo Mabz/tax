@@ -19,6 +19,8 @@ class PurchasedPass {
   final String? countryName;
   final String? vehicleNumberPlate;
   final String? vehicleVin;
+  final String? secureCode;
+  final DateTime? secureCodeExpiresAt;
 
   PurchasedPass({
     required this.passId,
@@ -41,6 +43,8 @@ class PurchasedPass {
     this.countryName,
     this.vehicleNumberPlate,
     this.vehicleVin,
+    this.secureCode,
+    this.secureCodeExpiresAt,
   });
 
   factory PurchasedPass.fromJson(Map<String, dynamic> json) {
@@ -77,6 +81,10 @@ class PurchasedPass {
       countryName: json['country_name']?.toString(),
       vehicleNumberPlate: json['vehicle_number_plate']?.toString(),
       vehicleVin: json['vehicle_vin']?.toString(),
+      secureCode: json['secure_code']?.toString(),
+      secureCodeExpiresAt: json['secure_code_expires_at'] != null
+          ? DateTime.parse(json['secure_code_expires_at'].toString())
+          : null,
     );
   }
 
@@ -102,6 +110,8 @@ class PurchasedPass {
       'vehicle_description': vehicleDescription,
       'vehicle_number_plate': vehicleNumberPlate,
       'vehicle_vin': vehicleVin,
+      'secure_code': secureCode,
+      'secure_code_expires_at': secureCodeExpiresAt?.toIso8601String(),
     };
   }
 
@@ -109,7 +119,7 @@ class PurchasedPass {
   String get displayVehicleDescription {
     final List<String> parts = [];
 
-    if (vehicleDescription != null && vehicleDescription.isNotEmpty) {
+    if (vehicleDescription.isNotEmpty) {
       parts.add(vehicleDescription);
     }
 
@@ -130,7 +140,7 @@ class PurchasedPass {
 
   // Check if this pass has vehicle information
   bool get hasVehicleInfo {
-    return (vehicleDescription != null && vehicleDescription.isNotEmpty) ||
+    return (vehicleDescription.isNotEmpty) ||
         (vehicleNumberPlate != null && vehicleNumberPlate!.isNotEmpty) ||
         (vehicleVin != null && vehicleVin!.isNotEmpty);
   }
@@ -163,13 +173,13 @@ class PurchasedPass {
     final activationDateOnly =
         DateTime(activationDate.year, activationDate.month, activationDate.day);
 
-    // Check if expired by date
-    if (nowDate.isAfter(expiryDate)) {
-      return 'Expired';
+    // Check if no entries remaining (Consumed takes precedence over expired)
+    if (!hasEntriesRemaining) {
+      return 'Consumed';
     }
 
-    // Check if no entries remaining
-    if (!hasEntriesRemaining) {
+    // Check if expired by date (but has entries remaining)
+    if (nowDate.isAfter(expiryDate)) {
       return 'Expired';
     }
 
@@ -189,6 +199,43 @@ class PurchasedPass {
     }
 
     return status.toUpperCase();
+  }
+
+  /// Get the color that should be used for displaying this pass status
+  /// Returns a Color enum value that can be used with Flutter's Colors class
+  String get statusColorName {
+    final now = DateTime.now();
+    final nowDate = DateTime(now.year, now.month, now.day);
+    final expiryDate = DateTime(expiresAt.year, expiresAt.month, expiresAt.day);
+    final activationDateOnly =
+        DateTime(activationDate.year, activationDate.month, activationDate.day);
+
+    // Red for consumed (no entries remaining)
+    if (!hasEntriesRemaining) {
+      return 'red';
+    }
+
+    // Red for expired (but has entries remaining)
+    if (nowDate.isAfter(expiryDate)) {
+      return 'red';
+    }
+
+    // Yellow for pending activation (activates in the future)
+    if (nowDate.isBefore(activationDateOnly)) {
+      return 'yellow';
+    }
+
+    // Green for active passes
+    if (status == 'active' &&
+        (nowDate.isAfter(activationDateOnly) ||
+            nowDate.isAtSameMomentAs(activationDateOnly)) &&
+        (nowDate.isBefore(expiryDate) ||
+            nowDate.isAtSameMomentAs(expiryDate)) &&
+        hasEntriesRemaining) {
+      return 'green';
+    }
+
+    return 'grey';
   }
 
   /// Generate a short backup code from pass ID for manual entry when QR can't be scanned
@@ -266,6 +313,35 @@ class PurchasedPass {
       vehicleNumberPlate,
       vehicleVin,
     );
+  }
+
+  /// Check if this pass has a valid (non-expired) secure code
+  bool get hasValidSecureCode {
+    if (secureCode == null || secureCode!.isEmpty) return false;
+    if (secureCodeExpiresAt == null) return false;
+    return DateTime.now().isBefore(secureCodeExpiresAt!);
+  }
+
+  /// Check if this pass has an expired secure code
+  bool get hasExpiredSecureCode {
+    if (secureCode == null || secureCode!.isEmpty) return false;
+    if (secureCodeExpiresAt == null) return false;
+    return DateTime.now().isAfter(secureCodeExpiresAt!);
+  }
+
+  /// Get the secure code status for display
+  String get secureCodeStatus {
+    if (secureCode == null || secureCode!.isEmpty) return 'none';
+    if (hasValidSecureCode) return 'valid';
+    if (hasExpiredSecureCode) return 'expired';
+    return 'none';
+  }
+
+  /// Get time remaining for secure code in minutes
+  int get secureCodeMinutesRemaining {
+    if (secureCodeExpiresAt == null) return 0;
+    final remaining = secureCodeExpiresAt!.difference(DateTime.now());
+    return remaining.inMinutes.clamp(0, 999);
   }
 
   @override

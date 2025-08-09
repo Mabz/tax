@@ -318,7 +318,7 @@ class AuditService {
       if (hasAdminRole) return true;
 
       final isCountryAuditor =
-          await RoleService.userHasRole(AppConstants.roleCountryAuditor);
+          await RoleService.profileHasRole(AppConstants.roleCountryAuditor);
       debugPrint('🔍 Has country auditor role: $isCountryAuditor');
       return isCountryAuditor;
     } catch (e) {
@@ -355,7 +355,7 @@ class AuditService {
 
       // Check if user also has auditor role for additional countries
       final isCountryAuditor =
-          await RoleService.userHasRole(AppConstants.roleCountryAuditor);
+          await RoleService.profileHasRole(AppConstants.roleCountryAuditor);
       if (isCountryAuditor) {
         debugPrint('✅ User has country auditor role');
         // For now, return the same countries. In the future, you might want to

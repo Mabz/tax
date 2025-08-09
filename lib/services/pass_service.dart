@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'dart:convert';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/purchased_pass.dart';
 import '../models/authority.dart';
@@ -32,75 +33,94 @@ class PassService {
           table: 'purchased_passes',
           callback: (payload) async {
             try {
-              // Check if this change is for the current user
+              // Extract records (payloads can be partial depending on REPLICA IDENTITY)
               final newRecord = payload.newRecord;
               final oldRecord = payload.oldRecord;
 
-              // For INSERT and UPDATE, check newRecord
-              if (newRecord.isNotEmpty) {
-                final recordUserId =
-                    newRecord['profile_id'] ?? newRecord['user_id'];
-                if (recordUserId != user.id) {
-                  return; // Skip if not for current user
-                }
+              // Best-effort quick filter if profile_id is present
+              final newProfileId =
+                  newRecord['profile_id'] ?? newRecord['user_id'];
+              final oldProfileId =
+                  oldRecord['profile_id'] ?? oldRecord['user_id'];
+              if (newProfileId != null && newProfileId != user.id) {
+                return;
               }
-
-              // For DELETE, check oldRecord
               if (payload.eventType == PostgresChangeEvent.delete &&
-                  oldRecord.isNotEmpty) {
-                final recordUserId =
-                    oldRecord['profile_id'] ?? oldRecord['user_id'];
-                if (recordUserId != user.id) {
-                  return; // Skip if not for current user
-                }
+                  oldProfileId != null &&
+                  oldProfileId != user.id) {
+                return;
               }
 
               // Handle specific change types
               switch (payload.eventType) {
                 case PostgresChangeEvent.insert:
-                  if (newRecord.isNotEmpty) {
-                    // For new passes, we need to fetch the full pass data with JOINs
-                    // since the raw record doesn't include joined data like border_name, authority_name
-                    final passId = newRecord['id'];
-                    final fullPassData =
-                        await _supabase.rpc('get_passes_for_user', params: {
-                      'target_profile_id': user.id,
-                    });
-
-                    // Find the newly inserted pass
-                    final List<dynamic> data = fullPassData as List<dynamic>;
-                    final newPassData = data.firstWhere(
-                      (pass) => pass['pass_id'] == passId,
-                      orElse: () => null,
-                    );
-
-                    if (newPassData != null) {
-                      final newPass = PurchasedPass.fromJson(
-                          newPassData as Map<String, dynamic>);
+                  if (newRecord.isNotEmpty || oldRecord.isNotEmpty) {
+                    // For new passes, fetch the full pass by ID (includes joins and secure_code)
+                    final passId =
+                        (newRecord['id'] ?? oldRecord['id'])?.toString();
+                    if (passId == null) {
+                      break; // Cannot proceed without id
+                    }
+                    final newPass = await getPassById(passId);
+                    if (newPass != null) {
                       onPassChanged(newPass, 'INSERT');
+                    } else {
+                      // Fallback: scan RPC list if getPassById didn't return
+                      final fullPassData =
+                          await _supabase.rpc('get_passes_for_user', params: {
+                        'target_profile_id': user.id,
+                      });
+                      final List<dynamic> data =
+                          (fullPassData ?? []) as List<dynamic>;
+                      Map<String, dynamic>? newPassData;
+                      for (final p in data) {
+                        final m = p as Map<String, dynamic>;
+                        final pid = (m['pass_id'] ?? m['id'])?.toString();
+                        if (pid == passId) {
+                          newPassData = m;
+                          break;
+                        }
+                      }
+                      if (newPassData != null) {
+                        onPassChanged(
+                            PurchasedPass.fromJson(newPassData), 'INSERT');
+                      }
                     }
                   }
                   break;
 
                 case PostgresChangeEvent.update:
-                  if (newRecord.isNotEmpty) {
-                    // For updates, fetch the updated pass data
-                    final passId = newRecord['id'];
-                    final fullPassData =
-                        await _supabase.rpc('get_passes_for_user', params: {
-                      'target_profile_id': user.id,
-                    });
-
-                    final List<dynamic> data = fullPassData as List<dynamic>;
-                    final updatedPassData = data.firstWhere(
-                      (pass) => pass['pass_id'] == passId,
-                      orElse: () => null,
-                    );
-
-                    if (updatedPassData != null) {
-                      final updatedPass = PurchasedPass.fromJson(
-                          updatedPassData as Map<String, dynamic>);
+                  if (newRecord.isNotEmpty || oldRecord.isNotEmpty) {
+                    // For updates, fetch the updated pass by ID (ensures secure_code changes are included)
+                    final passId =
+                        (newRecord['id'] ?? oldRecord['id'])?.toString();
+                    if (passId == null) {
+                      break; // Cannot proceed without id
+                    }
+                    final updatedPass = await getPassById(passId);
+                    if (updatedPass != null) {
                       onPassChanged(updatedPass, 'UPDATE');
+                    } else {
+                      // Fallback: scan RPC list
+                      final fullPassData =
+                          await _supabase.rpc('get_passes_for_user', params: {
+                        'target_profile_id': user.id,
+                      });
+                      final List<dynamic> data =
+                          (fullPassData ?? []) as List<dynamic>;
+                      Map<String, dynamic>? updatedPassData;
+                      for (final p in data) {
+                        final m = p as Map<String, dynamic>;
+                        final pid = (m['pass_id'] ?? m['id'])?.toString();
+                        if (pid == passId) {
+                          updatedPassData = m;
+                          break;
+                        }
+                      }
+                      if (updatedPassData != null) {
+                        onPassChanged(
+                            PurchasedPass.fromJson(updatedPassData), 'UPDATE');
+                      }
                     }
                   }
                   break;
@@ -253,7 +273,16 @@ class PassService {
         'country_name': countryData?['name'] ?? '',
 
         // Pass details
-        'pass_description': templateResponse['description'] ?? 'Border Pass',
+        'pass_description': _buildPassDescription(
+          templateResponse,
+          authorityData,
+          borderData,
+          countryData,
+          finalVehicleDescription,
+          finalVehicleNumberPlate,
+          finalVehicleVin,
+          activationDate,
+        ),
         'entry_limit': templateResponse['entry_limit'],
         'currency': templateResponse['currency_code'] ?? 'USD',
         'amount': templateResponse['tax_amount'],
@@ -283,7 +312,16 @@ class PassService {
         'amount': templateResponse['tax_amount'],
         'pass_hash': passHash,
         'short_code': shortCode,
-        'pass_description': templateResponse['description'] ?? 'Border Pass',
+        'pass_description': _buildPassDescription(
+          templateResponse,
+          authorityData,
+          borderData,
+          countryData,
+          finalVehicleDescription,
+          finalVehicleNumberPlate,
+          finalVehicleVin,
+          activationDate,
+        ),
         'authority_id': templateResponse['authority_id'],
         'country_id': countryData?['id'] ?? templateResponse['country_id'],
         'border_id': templateResponse['border_id'],
@@ -381,16 +419,74 @@ class PassService {
       throw Exception('User not authenticated');
     }
 
-    final response = await _supabase.rpc('get_passes_for_user', params: {
-      'target_profile_id': user.id,
-    });
+    try {
+      // Try RPC function first
+      final response = await _supabase.rpc('get_passes_for_user', params: {
+        'target_profile_id': user.id,
+      });
 
-    if (response == null) return [];
+      if (response != null) {
+        final List<dynamic> data = response as List<dynamic>;
+        debugPrint('🔍 RPC returned ${data.length} passes');
 
-    final List<dynamic> data = response as List<dynamic>;
-    return data
-        .map((json) => PurchasedPass.fromJson(json as Map<String, dynamic>))
-        .toList();
+        // Debug: Check if any passes have secure codes
+        for (var json in data) {
+          if (json['secure_code'] != null) {
+            debugPrint(
+                '📋 Found secure code in RPC data: ${json['secure_code']} expires: ${json['secure_code_expires_at']}');
+          }
+        }
+
+        return data
+            .map((json) => PurchasedPass.fromJson(json as Map<String, dynamic>))
+            .toList();
+      }
+    } catch (e) {
+      debugPrint('RPC get_passes_for_user failed, using fallback query: $e');
+    }
+
+    // Fallback: Direct database query with all fields including secure_code
+    try {
+      final response = await _supabase.from('purchased_passes').select('''
+            *,
+            pass_templates(
+              id,
+              description,
+              entry_limit,
+              expiration_days,
+              tax_amount,
+              currency_code,
+              authority_id,
+              border_id,
+              is_active
+            ),
+            authorities(
+              id,
+              name,
+              code,
+              country_id,
+              countries(name, country_code)
+            )
+          ''').eq('profile_id', user.id).order('created_at', ascending: false);
+
+      final List<dynamic> data = response as List<dynamic>;
+      debugPrint('🔍 Fallback query returned ${data.length} passes');
+
+      // Debug: Check if any passes have secure codes
+      for (var json in data) {
+        if (json['secure_code'] != null) {
+          debugPrint(
+              '📋 Found secure code in fallback data: ${json['secure_code']} expires: ${json['secure_code_expires_at']}');
+        }
+      }
+
+      return data
+          .map((json) => PurchasedPass.fromJson(json as Map<String, dynamic>))
+          .toList();
+    } catch (e) {
+      debugPrint('Fallback query also failed: $e');
+      return [];
+    }
   }
 
   /// Gets active authorities for pass template selection
@@ -493,8 +589,9 @@ class PassService {
         return pass;
       }
 
-      debugPrint('No pass found for QR data via RPC');
-      return null;
+      debugPrint('No pass found for QR data via RPC, trying fallback');
+      // Fallback to direct parsing and query when RPC returns empty
+      return _fallbackValidatePassByQRCode(qrData);
     } catch (e) {
       debugPrint('RPC validation failed, trying fallback: $e');
       // Fallback to direct parsing and query
@@ -507,59 +604,116 @@ class PassService {
       String qrData) async {
     try {
       debugPrint('Using fallback QR validation method');
+      final raw = qrData.trim();
 
       // Parse QR code data - handle different formats
       String? passId;
+      String? passHash;
 
-      // Try parsing pipe-separated format first
-      if (qrData.contains('|')) {
-        final parts = qrData.split('|');
+      // 1) Minimal formats: PASS:<uuid> or HASH:<hash>
+      if (raw.toUpperCase().startsWith('PASS:')) {
+        passId = raw.substring(5).trim();
+      } else if (raw.toUpperCase().startsWith('HASH:')) {
+        passHash = raw.substring(5).trim().toUpperCase();
+      } else if (raw.startsWith('{')) {
+        // 2) JSON payload
+        try {
+          final decoded = jsonDecode(raw) as Map<String, dynamic>;
+          final idCandidate = (decoded['passId'] ?? decoded['id'])?.toString();
+          final hashCandidate =
+              (decoded['hash'] ?? decoded['pass_hash'] ?? decoded['shortCode'])
+                  ?.toString();
+          if (idCandidate != null && idCandidate.isNotEmpty) {
+            passId = idCandidate;
+          }
+          if (hashCandidate != null && hashCandidate.isNotEmpty) {
+            passHash = hashCandidate.toUpperCase().replaceAll('-', '');
+          }
+        } catch (_) {
+          // Ignore JSON errors; fall through to other strategies
+        }
+      } else if (raw.contains('|')) {
+        // 3) Legacy pipe-delimited key:value pairs; split only on first ':'
+        final parts = raw.split('|');
         final passData = <String, String>{};
-
         for (final part in parts) {
-          final keyValue = part.split(':');
-          if (keyValue.length == 2) {
-            passData[keyValue[0]] = keyValue[1];
+          final idx = part.indexOf(':');
+          if (idx > 0) {
+            final key = part.substring(0, idx);
+            final value = part.substring(idx + 1);
+            passData[key] = value;
           }
         }
-        passId = passData['passId'];
-        debugPrint('Parsed pipe format, passId: $passId');
+
+        passId = passData['passId'] ?? passData['id'];
+        passHash =
+            (passData['hash'] ?? passData['pass_hash'] ?? passData['shortCode'])
+                ?.toUpperCase()
+                .replaceAll('-', '');
       } else {
-        // Try treating the entire string as a pass ID
-        passId = qrData.trim();
-        debugPrint('Treating as direct passId: $passId');
+        // 4) Raw candidates: UUID or 8-char hash
+        final uuidRegex = RegExp(r'^[0-9a-fA-F-]{32,36}$');
+        final hashRegex = RegExp(r'^[A-Z0-9]{8}$');
+        if (uuidRegex.hasMatch(raw)) {
+          passId = raw;
+        } else if (hashRegex.hasMatch(raw.toUpperCase())) {
+          passHash = raw.toUpperCase();
+        }
       }
 
-      if (passId == null || passId.isEmpty) {
-        debugPrint('No passId found in QR data');
-        return null;
+      // Prefer direct ID lookup; otherwise try pass_hash
+      Map<String, dynamic>? response;
+      if (passId != null && passId.isNotEmpty) {
+        response = await _supabase.from('purchased_passes').select('''
+              *,
+              pass_templates(
+                id,
+                description,
+                entry_limit,
+                expiration_days,
+                tax_amount,
+                currency_code,
+                authority_id,
+                border_id,
+                is_active
+              ),
+              authorities(
+                id,
+                name,
+                code,
+                country_id,
+                countries(name, country_code)
+              )
+            ''').eq('id', passId).maybeSingle();
       }
 
-      // Get pass from database with joins
-      final response = await _supabase.from('purchased_passes').select('''
-            *,
-            pass_templates(
-              id,
-              description,
-              entry_limit,
-              expiration_days,
-              tax_amount,
-              currency_code,
-              authority_id,
-              border_id,
-              is_active
-            ),
-            authorities(
-              id,
-              name,
-              code,
-              country_id,
-              countries(name, country_code)
-            )
-          ''').eq('id', passId).maybeSingle();
+      if (response == null && passHash != null && passHash.isNotEmpty) {
+        response = await _supabase.from('purchased_passes').select('''
+              *,
+              pass_templates(
+                id,
+                description,
+                entry_limit,
+                expiration_days,
+                tax_amount,
+                currency_code,
+                authority_id,
+                border_id,
+                is_active
+              ),
+              authorities(
+                id,
+                name,
+                code,
+                country_id,
+                countries(name, country_code)
+              )
+            ''').eq('pass_hash', passHash).maybeSingle();
+      }
 
       if (response == null) {
-        debugPrint('No pass found with ID: $passId');
+        debugPrint(
+            'No pass found via fallback. passId=$passId, passHash=$passHash');
         return null;
       }
 
@@ -695,6 +849,8 @@ class PassService {
   /// Deduct an entry from a pass
   static Future<bool> deductEntry(String passId) async {
     try {
+      debugPrint('Starting entry deduction for pass: $passId');
+
       // Get current pass
       final currentPass = await _supabase
           .from('purchased_passes')
@@ -703,25 +859,39 @@ class PassService {
           .single();
 
       final currentEntries = currentPass['entries_remaining'] as int;
+      debugPrint('Current entries: $currentEntries');
 
       if (currentEntries <= 0) {
+        debugPrint('No entries remaining');
         throw Exception('No entries remaining');
       }
 
-      // Deduct one entry
+      // Deduct one entry and clear secure code fields to prevent reuse
+      debugPrint('Updating pass with new entry count: ${currentEntries - 1}');
       await _supabase.from('purchased_passes').update({
         'entries_remaining': currentEntries - 1,
+        'secure_code': null,
+        'secure_code_expires_at': null,
         'updated_at': DateTime.now().toIso8601String(),
       }).eq('id', passId);
 
-      // Log the entry deduction (optional)
-      await _supabase.from('pass_usage_logs').insert({
-        'pass_id': passId,
-        'action': 'entry_deducted',
-        'performed_by': _supabase.auth.currentUser?.id,
-        'performed_at': DateTime.now().toIso8601String(),
-        'details': {'entries_remaining': currentEntries - 1},
-      });
+      debugPrint('Entry deduction successful');
+
+      // Try to log the entry deduction (optional - don't fail if this fails)
+      try {
+        await _supabase.from('pass_usage_logs').insert({
+          'pass_id': passId,
+          'action': 'entry_deducted',
+          'performed_by': _supabase.auth.currentUser?.id,
+          'performed_at': DateTime.now().toIso8601String(),
+          'details': {'entries_remaining': currentEntries - 1},
+        });
+        debugPrint('Usage log created successfully');
+      } catch (logError) {
+        debugPrint(
+            'Warning: Could not create usage log (this is optional): $logError');
+        // Don't fail the entire operation if logging fails
+      }
 
       return true;
     } catch (e) {
@@ -760,5 +930,80 @@ class PassService {
       debugPrint('Error getting pass by ID: $e');
       return null;
     }
+  }
+
+  /// Build a clean, comprehensive pass description for auditing purposes
+  static String _buildPassDescription(
+    Map<String, dynamic> templateResponse,
+    Map<String, dynamic>? authorityData,
+    Map<String, dynamic>? borderData,
+    Map<String, dynamic>? countryData,
+    String? vehicleDescription,
+    String? vehicleNumberPlate,
+    String? vehicleVin,
+    DateTime activationDate,
+  ) {
+    final List<String> descriptionParts = [];
+
+    // Add authority information
+    final authorityName = authorityData?['name']?.toString();
+    if (authorityName != null && authorityName.isNotEmpty) {
+      descriptionParts.add('Authority: $authorityName');
+    }
+
+    // Add country information
+    final countryName = countryData?['name']?.toString();
+    if (countryName != null && countryName.isNotEmpty) {
+      descriptionParts.add('Country: $countryName');
+    }
+
+    // Add border information if available
+    final borderName = borderData?['name']?.toString();
+    if (borderName != null && borderName.isNotEmpty) {
+      descriptionParts.add('Border: $borderName');
+    }
+
+    // Add activation date
+    final activationDateStr =
+        '${activationDate.day}/${activationDate.month}/${activationDate.year}';
+    descriptionParts.add('Activates: $activationDateStr');
+
+    // Add vehicle information if this is a vehicle-specific pass
+    if (vehicleDescription != null && vehicleDescription.isNotEmpty) {
+      descriptionParts.add('Vehicle: $vehicleDescription');
+    }
+
+    if (vehicleNumberPlate != null && vehicleNumberPlate.isNotEmpty) {
+      descriptionParts.add('Plate: $vehicleNumberPlate');
+    }
+
+    if (vehicleVin != null && vehicleVin.isNotEmpty) {
+      descriptionParts.add('VIN: $vehicleVin');
+    }
+
+    // Add entry limit information
+    final entryLimit = templateResponse['entry_limit'];
+    if (entryLimit != null) {
+      final limitText = entryLimit == 1 ? '1 Entry' : '$entryLimit Entries';
+      descriptionParts.add(limitText);
+    }
+
+    // Add validity period information
+    final expirationDays = templateResponse['expiration_days'];
+    if (expirationDays != null && expirationDays > 0) {
+      final periodText =
+          expirationDays == 1 ? '1 Day Valid' : '$expirationDays Days Valid';
+      descriptionParts.add(periodText);
+    }
+
+    // Add amount information
+    final amount = templateResponse['tax_amount'];
+    final currency = templateResponse['currency_code'] ?? 'USD';
+    if (amount != null) {
+      descriptionParts.add('Amount: $currency ${amount.toStringAsFixed(2)}');
+    }
+
+    // Join all parts with bullet separators for clean auditing
+    return descriptionParts.join(' • ');
   }
 }

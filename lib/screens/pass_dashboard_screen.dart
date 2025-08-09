@@ -5,6 +5,9 @@ import '../models/pass_template.dart';
 import '../models/vehicle.dart';
 import '../services/pass_service.dart';
 import '../services/vehicle_service.dart';
+import '../services/profile_management_service.dart';
+import '../enums/pass_verification_method.dart';
+import '../widgets/pass_card_widget.dart';
 
 class PassDashboardScreen extends StatefulWidget {
   const PassDashboardScreen({super.key});
@@ -391,24 +394,9 @@ class _PassDashboardScreenState extends State<PassDashboardScreen>
   }
 
   String _generateQrCodeForPass(PurchasedPass pass) {
-    // Generate QR code data for existing passes that don't have one
-    final qrData = {
-      'passId': pass.passId,
-      'passDescription': pass.passDescription,
-      'vehicleDescription': pass.vehicleDescription,
-      'borderName': pass.borderName ?? 'Any',
-      'issuedAt':
-          DateTime(pass.issuedAt.year, pass.issuedAt.month, pass.issuedAt.day)
-              .toIso8601String(),
-      'expiresAt': DateTime(
-              pass.expiresAt.year, pass.expiresAt.month, pass.expiresAt.day)
-          .toIso8601String(),
-      'amount': pass.amount,
-      'currency': pass.currency,
-      'status': pass.status,
-      'entries': '${pass.entriesRemaining}/${pass.entryLimit}',
-    };
-    return qrData.entries.map((e) => '${e.key}:${e.value}').join('|');
+    // Minimal, canonical QR payload to improve scan reliability
+    // Format: PASS:<uuid>
+    return 'PASS:${pass.passId}';
   }
 
   void _showQrCodeDialog(PurchasedPass pass) {
@@ -426,18 +414,133 @@ class _PassDashboardScreenState extends State<PassDashboardScreen>
                       fontWeight: FontWeight.bold,
                     ),
               ),
+
+              const SizedBox(height: 12),
+              // Secure code section (if available) or instructions
+              Builder(builder: (context) {
+                if (pass.hasValidSecureCode) {
+                  return Column(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.green.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.green.shade200),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Text(
+                              'Secure Code',
+                              style: TextStyle(
+                                color: Colors.green.shade800,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              pass.secureCode ?? '',
+                              style: TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.green.shade900,
+                                fontFamily: 'Courier',
+                                letterSpacing: 3,
+                                height: 1.2,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Expires in ${pass.secureCodeMinutesRemaining} min',
+                              style: TextStyle(
+                                color: Colors.green.shade700,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                  );
+                }
+                if (pass.hasExpiredSecureCode) {
+                  return Column(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.orange.shade200),
+                        ),
+                        child: Column(
+                          children: [
+                            Text(
+                              'Secure code expired',
+                              style: TextStyle(
+                                color: Colors.orange.shade800,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Ask the border official to scan the QR Code or enter the Backup Code.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.orange.shade700,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                  );
+                }
+                return Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.grey.shade300),
+                      ),
+                      child: Column(
+                        children: [
+                          Text(
+                            'No secure code yet',
+                            style: TextStyle(
+                              color: Colors.grey.shade800,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Ask the border official to scan the QR Code or enter the Backup Code.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Colors.grey.shade700,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                );
+              }),
               const SizedBox(height: 8),
-              Text(
-                pass.passDescription,
-                style: TextStyle(
-                  color: Colors.grey.shade600,
-                  fontSize: 14,
-                ),
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 24),
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -476,11 +579,13 @@ class _PassDashboardScreenState extends State<PassDashboardScreen>
                     Text(
                       pass.displayShortCode,
                       style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900, // Extra bold for clarity
                         color: Colors.grey.shade800,
-                        fontFamily: 'monospace',
-                        letterSpacing: 2,
+                        fontFamily:
+                            'Courier', // More distinctive monospace font
+                        letterSpacing: 3, // Increased spacing for clarity
+                        height: 1.2, // Better line height
                       ),
                     ),
                   ],
@@ -531,341 +636,21 @@ class _PassDashboardScreenState extends State<PassDashboardScreen>
   }
 
   Widget _buildFullWidthPassCard(PurchasedPass pass) {
-    final isActive = pass.isActive;
-    final statusDisplay = pass.statusDisplay;
-
-    Color statusColor = Colors.green;
-    if (statusDisplay == 'Expired') {
-      statusColor = Colors.red;
-    } else if (statusDisplay == 'Pending Activation') {
-      statusColor = Colors.orange;
-    } else if (statusDisplay == 'Active') {
-      statusColor = Colors.green;
-    }
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          // QR Code Section - Full Width
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              // Add green border for active passes
-              border:
-                  isActive ? Border.all(color: Colors.green, width: 3) : null,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.1),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Stack(
-              children: [
-                Column(
-                  children: [
-                    // Pass Title
-                    Text(
-                      pass.passDescription,
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 16),
-                    // QR Code
-                    GestureDetector(
-                      onTap: () => _showQrCodeDialog(pass),
-                      child: Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          border:
-                              Border.all(color: Colors.grey.shade300, width: 2),
-                        ),
-                        child: QrImageView(
-                          data: pass.qrCode ?? _generateQrCodeForPass(pass),
-                          version: QrVersions.auto,
-                          size: 200,
-                          backgroundColor: Colors.white,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    // Short Code
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.grey.shade300),
-                      ),
-                      child: Column(
-                        children: [
-                          Text(
-                            'Backup Code',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey.shade600,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            pass.displayShortCode,
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.grey.shade800,
-                              fontFamily: 'monospace',
-                              letterSpacing: 2,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                // Red overlay for inactive passes
-                if (!isActive)
-                  Positioned.fill(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.red.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.red, width: 2),
-                      ),
-                      child: Center(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: Colors.red,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            statusDisplay == 'Expired'
-                                ? 'EXPIRED'
-                                : 'NO ENTRIES',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-          // Pass Details Section
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade50,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.grey.shade200),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Status Badge
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'Pass Details',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.grey.shade800,
-                        ),
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: statusColor.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                            color: statusColor.withValues(alpha: 0.3)),
-                      ),
-                      child: Text(
-                        pass.statusDisplay,
-                        style: TextStyle(
-                          color: statusColor,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                // Vehicle Info
-                _buildVehicleDetailRow(pass),
-                // Vehicle Number Plate (if available)
-                if (pass.vehicleNumberPlate != null &&
-                    pass.vehicleNumberPlate!.isNotEmpty)
-                  _buildPassDetailRow(
-                    Icons.confirmation_num,
-                    'Number Plate',
-                    pass.vehicleNumberPlate!,
-                  ),
-                // Vehicle VIN (if available)
-                if (pass.vehicleVin != null && pass.vehicleVin!.isNotEmpty)
-                  _buildPassDetailRow(
-                    Icons.fingerprint,
-                    'VIN',
-                    pass.vehicleVin!,
-                  ),
-                if (pass.borderName != null)
-                  _buildPassDetailRow(
-                    Icons.location_on,
-                    'Border',
-                    pass.borderName!,
-                  ),
-                _buildPassDetailRow(
-                  Icons.confirmation_number,
-                  'Entries',
-                  pass.entriesDisplay,
-                ),
-                _buildPassDetailRow(
-                  Icons.attach_money,
-                  'Amount',
-                  '${pass.currency} ${pass.amount.toStringAsFixed(2)}',
-                ),
-                _buildPassDetailRow(
-                  Icons.calendar_today,
-                  'Issued',
-                  _formatDateOnly(pass.issuedAt),
-                ),
-                _buildPassDetailRow(
-                  Icons.play_arrow,
-                  'Activates',
-                  _formatDateOnly(pass.activationDate),
-                ),
-                _buildPassDetailRow(
-                  Icons.event,
-                  'Expires',
-                  _formatDateOnly(pass.expiresAt),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPassDetailRow(IconData icon, String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        children: [
-          Icon(
-            icon,
-            size: 20,
-            color: Colors.blue.shade600,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            flex: 2,
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: Colors.grey.shade600,
-              ),
-            ),
-          ),
-          Expanded(
-            flex: 3,
-            child: Text(
-              value,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: Colors.black87,
-              ),
-              textAlign: TextAlign.right,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildVehicleDetailRow(PurchasedPass pass) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        children: [
-          Icon(
-            Icons.directions_car,
-            size: 20,
-            color: Colors.blue.shade600,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            flex: 2,
-            child: Text(
-              'Vehicle',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: Colors.grey.shade600,
-              ),
-            ),
-          ),
-          Expanded(
-            flex: 3,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                if (pass.vehicleNumberPlate != null &&
-                    pass.vehicleNumberPlate!.isNotEmpty) ...[
-                  Text(
-                    pass.vehicleDescription,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
-                    ),
-                    textAlign: TextAlign.right,
-                  ),
-                ] else ...[
-                  Text(
-                    pass.vehicleDescription.isNotEmpty
-                        ? pass.vehicleDescription
-                        : 'General Pass - Any Vehicle',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.black87,
-                    ),
-                    textAlign: TextAlign.right,
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
+    // Only show secure code if the pass owner's preference is dynamic secure code
+    return FutureBuilder<PassVerificationMethod>(
+      future: ProfileManagementService.getPassOwnerVerificationPreference(
+          pass.passId),
+      builder: (context, snapshot) {
+        final method = snapshot.data;
+        final showSecure = method == PassVerificationMethod.secureCode;
+        return PassCardWidget(
+          pass: pass,
+          showQrCode: true,
+          showDetails: true,
+          showSecureCode: showSecure,
+          onQrCodeTap: () => _showQrCodeDialog(pass),
+        );
+      },
     );
   }
 }
@@ -2331,68 +2116,5 @@ class _PassSelectionDialogState extends State<PassSelectionDialog> {
         ),
       ),
     );
-  }
-}
-
-String _formatDateOnly(DateTime date) {
-  final now = DateTime.now();
-  final nowDate = DateTime(now.year, now.month, now.day);
-  final compareDate = DateTime(date.year, date.month, date.day);
-  final difference = nowDate.difference(compareDate);
-
-  // If it's today
-  if (difference.inDays == 0) {
-    return 'Today';
-  }
-
-  // If it's yesterday
-  if (difference.inDays == 1) {
-    return 'Yesterday';
-  }
-
-  // If it's tomorrow
-  if (difference.inDays == -1) {
-    return 'Tomorrow';
-  }
-
-  // If it's within this week
-  if (difference.inDays.abs() <= 7) {
-    final weekdays = [
-      'Monday',
-      'Tuesday',
-      'Wednesday',
-      'Thursday',
-      'Friday',
-      'Saturday',
-      'Sunday'
-    ];
-    return weekdays[date.weekday - 1];
-  }
-
-  // For dates beyond this week, show the actual date
-  final months = [
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec'
-  ];
-
-  final month = months[date.month - 1];
-  final day = date.day;
-  final year = date.year;
-
-  // Show year only if it's different from current year
-  if (year != now.year) {
-    return '$month $day, $year';
-  } else {
-    return '$month $day';
   }
 }

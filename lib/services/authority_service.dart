@@ -213,6 +213,113 @@ class AuthorityService {
     ];
   }
 
+  /// Get authorities for operational roles (border officials and local authorities)
+  static Future<List<Authority>> getOperationalAuthorities() async {
+    try {
+      debugPrint('🔍 Fetching operational authorities for current user');
+
+      // Try to use the admin authorities function first, as it might work for operational roles too
+      try {
+        final response = await _supabase.rpc('get_admin_authorities');
+        final authorities =
+            (response as List).map((json) => Authority.fromJson(json)).toList();
+
+        if (authorities.isNotEmpty) {
+          debugPrint(
+              '✅ Fetched ${authorities.length} operational authorities via admin function');
+          return authorities;
+        }
+      } catch (e) {
+        debugPrint(
+            '⚠️ Admin authorities function failed for operational role: $e');
+      }
+
+      // Fallback: Get authorities based on user's profile_roles
+      debugPrint('🔄 Falling back to direct profile_roles query');
+
+      final user = _supabase.auth.currentUser;
+      if (user == null) {
+        debugPrint('❌ No authenticated user');
+        return [];
+      }
+
+      final response = await _supabase
+          .from('profile_roles')
+          .select('''
+            authorities!inner(
+              id,
+              country_id,
+              name,
+              code,
+              authority_type,
+              description,
+              is_active,
+              default_pass_advance_days,
+              default_currency_code,
+              created_at,
+              updated_at,
+              countries!inner(
+                id,
+                name,
+                country_code,
+                is_active,
+                is_global,
+                created_at,
+                updated_at
+              )
+            )
+          ''')
+          .eq('profile_id', user.id)
+          .eq('is_active', true)
+          .eq('authorities.is_active', true)
+          .eq('authorities.countries.is_active', true)
+          .neq('authorities.authority_type', 'global')
+          .neq('authorities.countries.is_global', true);
+
+      final authorities = <Authority>[];
+      final seenAuthorityIds = <String>{};
+
+      for (final item in response) {
+        final authorityData = item['authorities'] as Map<String, dynamic>;
+        final authorityId = authorityData['id'] as String;
+
+        // Avoid duplicates
+        if (seenAuthorityIds.contains(authorityId)) continue;
+        seenAuthorityIds.add(authorityId);
+
+        final countryData = authorityData['countries'] as Map<String, dynamic>;
+
+        // Create authority with country information
+        final authority = Authority(
+          id: authorityId,
+          countryId: authorityData['country_id'] as String,
+          name: authorityData['name'] as String,
+          code: authorityData['code'] as String,
+          authorityType: authorityData['authority_type'] as String,
+          description: authorityData['description'] as String?,
+          isActive: authorityData['is_active'] as bool,
+          defaultPassAdvanceDays:
+              authorityData['default_pass_advance_days'] as int? ?? 30,
+          defaultCurrencyCode:
+              authorityData['default_currency_code'] as String?,
+          createdAt: DateTime.parse(authorityData['created_at'] as String),
+          updatedAt: DateTime.parse(authorityData['updated_at'] as String),
+          countryName: countryData['name'] as String,
+          countryCode: countryData['country_code'] as String,
+        );
+
+        authorities.add(authority);
+      }
+
+      debugPrint(
+          '✅ Fetched ${authorities.length} operational authorities via fallback');
+      return authorities;
+    } catch (e) {
+      debugPrint('❌ Error fetching operational authorities: $e');
+      return [];
+    }
+  }
+
   /// Get authority statistics
   static Future<Map<String, dynamic>> getAuthorityStats(
       String authorityId) async {

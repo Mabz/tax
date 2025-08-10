@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -22,10 +23,14 @@ enum ValidationStep {
 
 class AuthorityValidationScreen extends StatefulWidget {
   final AuthorityRole role;
+  final String? currentAuthorityId;
+  final String? currentCountryId;
 
   const AuthorityValidationScreen({
     super.key,
     required this.role,
+    this.currentAuthorityId,
+    this.currentCountryId,
   });
 
   @override
@@ -70,6 +75,12 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
   String? _errorMessage;
   bool _useBackupCode = false;
 
+  // QR Scanner cooldown management
+  DateTime? _lastScanAttempt;
+  bool _scanningEnabled = true;
+  static const Duration _scanCooldownDuration = Duration(seconds: 3);
+  Timer? _cooldownTimer;
+
   @override
   void dispose() {
     controller?.dispose();
@@ -91,6 +102,9 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
     _secureDigit1Focus.dispose();
     _secureDigit2Focus.dispose();
     _secureDigit3Focus.dispose();
+
+    // Cancel cooldown timer if active
+    _cooldownTimer?.cancel();
 
     super.dispose();
   }
@@ -270,7 +284,7 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
               Text(
                 _useBackupCode
                     ? 'Enter the 8-character backup code (XXXX-XXXX)'
-                    : 'Position QR code within the frame',
+                    : _getScanningStatusText(),
                 style: const TextStyle(
                   fontSize: 14,
                   color: Colors.white70,
@@ -331,7 +345,7 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
           onDetect: (capture) {
             final List<Barcode> barcodes = capture.barcodes;
             for (final barcode in barcodes) {
-              if (barcode.rawValue != null && !_isProcessing) {
+              if (barcode.rawValue != null && _canProcessScan()) {
                 _validateQRCode(barcode.rawValue!);
                 break;
               }
@@ -927,36 +941,119 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
     controller = MobileScannerController();
   }
 
+  /// Check if we can process a new scan (implements cooldown logic)
+  bool _canProcessScan() {
+    // Don't scan if already processing
+    if (_isProcessing) return false;
+
+    // Don't scan if scanning is disabled
+    if (!_scanningEnabled) return false;
+
+    // Check cooldown period
+    if (_lastScanAttempt != null) {
+      final timeSinceLastScan = DateTime.now().difference(_lastScanAttempt!);
+      if (timeSinceLastScan < _scanCooldownDuration) {
+        debugPrint(
+            '🔄 Scan blocked - cooldown active (${_scanCooldownDuration.inSeconds - timeSinceLastScan.inSeconds}s remaining)');
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  /// Get the appropriate scanning status text
+  String _getScanningStatusText() {
+    if (_isProcessing) {
+      return 'Processing QR code...';
+    }
+
+    if (!_scanningEnabled) {
+      return 'Scanning disabled - use "Scan Another Pass" to continue';
+    }
+
+    if (_lastScanAttempt != null) {
+      final timeSinceLastScan = DateTime.now().difference(_lastScanAttempt!);
+      if (timeSinceLastScan < _scanCooldownDuration) {
+        final remainingSeconds =
+            _scanCooldownDuration.inSeconds - timeSinceLastScan.inSeconds;
+        return 'Please wait ${remainingSeconds}s before scanning again';
+      }
+    }
+
+    return 'Position QR code within the frame';
+  }
+
+  // Start a cooldown to prevent rapid repeated scans
+  void _startCooldownTimer() {
+    // Record the attempt time and disable scanning during cooldown
+    _lastScanAttempt = DateTime.now();
+
+    // Ensure any previous timer is cancelled
+    _cooldownTimer?.cancel();
+
+    setState(() {
+      _scanningEnabled = false;
+    });
+
+    _cooldownTimer = Timer(_scanCooldownDuration, () {
+      if (!mounted) return;
+      setState(() {
+        _scanningEnabled = true;
+      });
+    });
+  }
+
   Future<void> _validateQRCode(String qrData) async {
+    // Record scan attempt for cooldown
+    _lastScanAttempt = DateTime.now();
+
     setState(() {
       _isProcessing = true;
       _errorMessage = null;
     });
 
     try {
+      debugPrint('🔍 Starting QR code validation...');
+      debugPrint('📱 QR Data length: ${qrData.length} characters');
+      debugPrint(
+          '📱 QR Data preview: ${qrData.length > 100 ? '${qrData.substring(0, 100)}...' : qrData}');
+
       // Parse QR code data and validate pass
       final pass = await _parseAndValidatePass(qrData);
       if (pass != null) {
+        debugPrint('✅ QR code validation successful');
         setState(() {
           _scannedPass = pass;
           _currentStep = ValidationStep.passDetails;
           _isProcessing = false;
+          _scanningEnabled = false; // Disable scanning after success
         });
         controller?.stop();
       } else {
+        debugPrint(
+            '❌ QR code validation failed - no pass found or access denied');
         setState(() {
-          _errorMessage =
-              'QR code not recognized. Please check the code or try entering the backup code manually.';
+          _errorMessage = _errorMessage ??
+              'QR code not recognized or access denied. This could be because:\n\n'
+                  '• The QR code is not a valid pass\n'
+                  '• The pass is from a different authority\n'
+                  '• You don\'t have permission to process this pass\n\n'
+                  'Try entering the backup code manually or contact your administrator.';
           _isProcessing = false;
+          // Keep scanning enabled for retry after cooldown
         });
+        _startCooldownTimer();
       }
     } catch (e) {
+      debugPrint('❌ QR validation error: $e');
       setState(() {
         _errorMessage =
-            'Network error. Please check your connection and try again.';
+            'Network error while validating QR code. Please check your internet connection and try again.';
         _isProcessing = false;
+        // Keep scanning enabled for retry after cooldown
       });
-      debugPrint('QR validation error: $e');
+      _startCooldownTimer();
     }
   }
 
@@ -967,31 +1064,37 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
     });
 
     try {
-      debugPrint('UI: Starting validation for backup code: $backupCode');
+      debugPrint('🔍 Starting backup code validation: $backupCode');
+
       // Validate backup code and get pass
       final pass = await _validatePassByBackupCode(backupCode);
       if (pass != null) {
-        debugPrint('UI: Validation successful, found pass: ${pass.passId}');
+        debugPrint(
+            '✅ Backup code validation successful, found pass: ${pass.passId}');
         setState(() {
           _scannedPass = pass;
           _currentStep = ValidationStep.passDetails;
           _isProcessing = false;
         });
       } else {
-        debugPrint('UI: Validation failed, no pass found');
+        debugPrint('❌ Backup code validation failed');
         setState(() {
-          _errorMessage =
-              'Backup code not found. Please check the 8-character code and try again.';
+          _errorMessage = _errorMessage ??
+              'Backup code not found or access denied. This could be because:\n\n'
+                  '• The backup code is incorrect (check for typos)\n'
+                  '• The pass is from a different authority\n'
+                  '• You don\'t have permission to process this pass\n\n'
+                  'Please verify the 8-character code (XXXX-XXXX format) or contact your administrator.';
           _isProcessing = false;
         });
       }
     } catch (e) {
+      debugPrint('❌ Backup code validation error: $e');
       setState(() {
         _errorMessage =
-            'Network error. Please check your connection and try again.';
+            'Network error while validating backup code. Please check your internet connection and try again.';
         _isProcessing = false;
       });
-      debugPrint('Backup code validation error: $e');
     }
   }
 
@@ -1290,6 +1393,10 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
       _isProcessing = false;
       _useBackupCode = false;
       _secureCodeHasError = false;
+
+      // Reset scanning controls
+      _scanningEnabled = true;
+      _lastScanAttempt = null;
     });
 
     _backupCodeController.clear();
@@ -1349,34 +1456,61 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
   Future<PurchasedPass?> _parseAndValidatePass(String qrData) async {
     try {
       debugPrint(
-          'Attempting to validate QR data: ${qrData.substring(0, qrData.length > 50 ? 50 : qrData.length)}...');
+          '🔍 Parsing QR data: ${qrData.substring(0, qrData.length > 50 ? 50 : qrData.length)}...');
+
       final pass = await PassService.validatePassByQRCode(qrData);
       if (pass == null) {
         debugPrint(
-            'QR validation returned null - pass not found or invalid format');
+            '❌ PassService returned null - pass not found or invalid QR format');
+        // Don't set error message here, let the calling method handle it
+        return null;
       } else {
-        debugPrint('QR validation successful - found pass: ${pass.passId}');
+        debugPrint('✅ PassService found pass: ${pass.passId}');
+
+        // Validate authority permissions
+        final canValidate = await _validateAuthorityPermissions(pass);
+        if (!canValidate) {
+          debugPrint('❌ Authority validation failed');
+          // Error message is already set by _validateAuthorityPermissions
+          return null;
+        }
+
+        debugPrint('✅ All validations passed for pass: ${pass.passId}');
+        return pass;
       }
-      return pass;
     } catch (e) {
-      debugPrint('Error parsing QR data: $e');
+      debugPrint('❌ Error parsing QR data: $e');
+      // Don't set error message here, let the calling method handle it
       return null;
     }
   }
 
   Future<PurchasedPass?> _validatePassByBackupCode(String backupCode) async {
     try {
-      debugPrint('Attempting to validate backup code: $backupCode');
+      debugPrint('🔍 Validating backup code: $backupCode');
+
       final pass = await PassService.validatePassByBackupCode(backupCode);
       if (pass == null) {
-        debugPrint('Backup code validation returned null - code not found');
+        debugPrint('❌ PassService returned null - backup code not found');
+        // Don't set error message here, let the calling method handle it
+        return null;
       } else {
-        debugPrint(
-            'Backup code validation successful - found pass: ${pass.passId}');
+        debugPrint('✅ PassService found pass: ${pass.passId}');
+
+        // Validate authority permissions
+        final canValidate = await _validateAuthorityPermissions(pass);
+        if (!canValidate) {
+          debugPrint('❌ Authority validation failed');
+          // Error message is already set by _validateAuthorityPermissions
+          return null;
+        }
+
+        debugPrint('✅ All validations passed for pass: ${pass.passId}');
+        return pass;
       }
-      return pass;
     } catch (e) {
-      debugPrint('Error validating backup code: $e');
+      debugPrint('❌ Error validating backup code: $e');
+      // Don't set error message here, let the calling method handle it
       return null;
     }
   }
@@ -1510,6 +1644,170 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
         ],
       ),
     );
+  }
+
+  /// Validate that the current user's authority can process this pass
+  /// Implements the exact logic: Border Control validation for border officials
+  Future<bool> _validateAuthorityPermissions(PurchasedPass pass) async {
+    try {
+      debugPrint(
+          '🔍 Starting Border Control validation for pass: ${pass.passId}');
+
+      // Use pass data directly instead of making additional database calls
+      final passAuthorityId = pass.authorityId;
+      final passBorderId = pass.borderId;
+
+      debugPrint('📋 Pass Information:');
+      debugPrint('  - Authority ID: $passAuthorityId');
+      debugPrint('  - Border ID: $passBorderId');
+      debugPrint('  - Country Name: ${pass.countryName}');
+      debugPrint('👤 Current Border Official:');
+      debugPrint('  - Authority ID: ${widget.currentAuthorityId}');
+      debugPrint('  - Country ID: ${widget.currentCountryId}');
+      debugPrint('  - Role: ${widget.role}');
+
+      if (widget.role == AuthorityRole.borderOfficial) {
+        // STEP 1: Check if pass has a border_id set
+        if (passBorderId != null) {
+          debugPrint('🔍 Pass has specific border: $passBorderId');
+
+          // STEP 2: Check if current border official is assigned to this border
+          final currentUser = _supabase.auth.currentUser;
+          if (currentUser == null) {
+            debugPrint('❌ No authenticated user');
+            setState(() {
+              _errorMessage = 'Authentication error. Please log in again.';
+            });
+            return false;
+          }
+
+          final assignmentResponse = await _supabase
+              .from('border_official_borders')
+              .select('border_id')
+              .eq('profile_id', currentUser.id)
+              .eq('border_id', passBorderId)
+              .eq('is_active', true)
+              .maybeSingle();
+
+          if (assignmentResponse == null) {
+            debugPrint(
+                '❌ Border official not assigned to border: $passBorderId');
+            setState(() {
+              _errorMessage =
+                  'Access denied: You are not assigned to process passes for this specific border. This pass is for a border you do not have access to.';
+            });
+            return false;
+          }
+
+          debugPrint('✅ Border official is assigned to border: $passBorderId');
+          debugPrint('✅ Validation passed - can process border-specific pass');
+          return true;
+        } else {
+          debugPrint('🔍 Pass has no specific border (general pass)');
+
+          // STEP 3: For general passes, check if border official is from same authority
+          if (widget.currentAuthorityId == null) {
+            debugPrint('❌ Current user has no authority assigned');
+            setState(() {
+              _errorMessage =
+                  'Error: Your account is not assigned to any authority. Please contact your administrator.';
+            });
+            return false;
+          }
+
+          if (widget.currentAuthorityId != passAuthorityId) {
+            debugPrint(
+                '❌ Authority mismatch: ${widget.currentAuthorityId} != $passAuthorityId');
+            setState(() {
+              _errorMessage =
+                  'Access denied: This pass was issued by a different authority. You can only process passes from your own authority.';
+            });
+            return false;
+          }
+
+          debugPrint('✅ Same authority - can process general pass');
+          debugPrint(
+              '✅ Validation passed - can process general authority pass');
+          return true;
+        }
+      } else if (widget.role == AuthorityRole.localAuthority) {
+        // Local Authority logic - validate by country
+        if (widget.currentCountryId == null) {
+          debugPrint('❌ Current user has no country assigned');
+          setState(() {
+            _errorMessage =
+                'Error: Your account is not assigned to any country. Please contact your administrator.';
+          });
+          return false;
+        }
+
+        // For local authority, we need to get the pass country info
+        final passAuthorityInfo = await _getPassAuthorityInfo(pass.passId);
+        if (passAuthorityInfo == null) {
+          debugPrint('❌ Unable to get pass country information');
+          setState(() {
+            _errorMessage =
+                'Unable to verify pass information. The pass may be invalid.';
+          });
+          return false;
+        }
+
+        final passCountryId = passAuthorityInfo['country_id'] as String?;
+        if (widget.currentCountryId != passCountryId) {
+          debugPrint(
+              '❌ Country mismatch: ${widget.currentCountryId} != $passCountryId');
+          setState(() {
+            _errorMessage =
+                'Access denied: This pass was issued by an authority in a different country. Local authorities can only validate passes from their own country.';
+          });
+          return false;
+        }
+
+        debugPrint('✅ Country validation passed for local authority');
+        return true;
+      }
+
+      debugPrint('❌ Unknown role or validation failed');
+      return false;
+    } catch (e) {
+      debugPrint('❌ Error during validation: $e');
+      setState(() {
+        _errorMessage =
+            'System error while validating permissions. Please try again or contact support.';
+      });
+      return false;
+    }
+  }
+
+  /// Get the authority and country information for a pass
+  Future<Map<String, dynamic>?> _getPassAuthorityInfo(String passId) async {
+    try {
+      final response = await _supabase.from('purchased_passes').select('''
+            border_id,
+            authority_id,
+            country_id,
+            authorities!inner(
+              id,
+              country_id
+            )
+          ''').eq('id', passId).maybeSingle();
+
+      if (response != null) {
+        final authority = response['authorities'] as Map<String, dynamic>;
+
+        return {
+          'authority_id': authority['id'] as String,
+          'country_id': authority['country_id'] as String,
+          'border_id': response['border_id']
+              as String?, // Get border_id directly from purchased_passes
+        };
+      }
+
+      return null;
+    } catch (e) {
+      debugPrint('Error getting pass authority info: $e');
+      return null;
+    }
   }
 }
 

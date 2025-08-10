@@ -31,8 +31,8 @@ class _CountryUserManagementScreenState
 
   // Helper getter to extract authority information from selectedCountry
   String get _authorityName {
-    return widget.selectedCountry['authority_name'] as String? ?? 
-           widget.selectedCountry['name'] as String;
+    return widget.selectedCountry['authority_name'] as String? ??
+        widget.selectedCountry['name'] as String;
   }
 
   @override
@@ -92,8 +92,8 @@ class _CountryUserManagementScreenState
         CountryUserService.getProfilesByCountry(
           widget.selectedCountry['id'] as String,
         ),
-        CountryUserService.getAllInvitationsForCountry(
-          widget.selectedCountry['id'] as String,
+        CountryUserService.getAllInvitationsForAuthority(
+          widget.selectedCountry['authority_id'] as String,
         ),
       ]);
 
@@ -135,7 +135,7 @@ class _CountryUserManagementScreenState
         context: context,
         builder: (context) => _UserRoleManagementDialog(
           profile: profile,
-          countryId: widget.selectedCountry['id'] as String,
+          authorityId: widget.selectedCountry['authority_id'] as String,
           authorityName: _authorityName,
           onRoleChanged: _loadUsers,
         ),
@@ -147,7 +147,7 @@ class _CountryUserManagementScreenState
     showDialog(
       context: context,
       builder: (context) => _InviteUserDialog(
-        countryCode: widget.selectedCountry['country_code'] as String,
+        authorityId: widget.selectedCountry['authority_id'] as String,
         authorityName: _authorityName,
         onInviteSent: () {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -166,6 +166,8 @@ class _CountryUserManagementScreenState
       MaterialPageRoute(
         builder: (context) => InvitationManagementScreen(
           selectedCountry: country,
+          authorityId: widget.selectedCountry['authority_id'] as String?,
+          authorityName: widget.selectedCountry['authority_name'] as String?,
         ),
       ),
     );
@@ -316,167 +318,190 @@ class _CountryUserManagementScreenState
                             )
                           : Column(
                               children: [
-                          // Search bar
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child: TextField(
-                              controller: _searchController,
-                              decoration: InputDecoration(
-                                hintText:
-                                    'Search users by name, email, or role...',
-                                prefixIcon: const Icon(Icons.search),
-                                suffixIcon: _searchController.text.isNotEmpty
-                                    ? IconButton(
-                                        icon: const Icon(Icons.clear),
-                                        onPressed: () {
-                                          _searchController.clear();
-                                        },
-                                      )
-                                    : null,
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                filled: true,
-                                fillColor: Colors.grey.shade50,
-                              ),
-                            ),
-                          ),
-                          // Recent Invitations Section
-                          if (_invitations.isNotEmpty)
-                            Container(
-                              margin: const EdgeInsets.symmetric(horizontal: 16),
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: Colors.orange.shade50,
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: Colors.orange.shade200),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Icon(
-                                        Icons.mail_outline,
-                                        size: 16,
-                                        color: Colors.orange.shade700,
+                                // Search bar
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 16),
+                                  child: TextField(
+                                    controller: _searchController,
+                                    decoration: InputDecoration(
+                                      hintText:
+                                          'Search users by name, email, or role...',
+                                      prefixIcon: const Icon(Icons.search),
+                                      suffixIcon:
+                                          _searchController.text.isNotEmpty
+                                              ? IconButton(
+                                                  icon: const Icon(Icons.clear),
+                                                  onPressed: () {
+                                                    _searchController.clear();
+                                                  },
+                                                )
+                                              : null,
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
                                       ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        'Recent Invitations (${_invitations.length})',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.w600,
-                                          color: Colors.orange.shade700,
-                                          fontSize: 14,
-                                        ),
-                                      ),
-                                      const Spacer(),
-                                      TextButton(
-                                        onPressed: _navigateToInvitationManagement,
-                                        child: Text(
-                                          'View All',
-                                          style: TextStyle(
-                                            color: Colors.orange.shade700,
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
+                                      filled: true,
+                                      fillColor: Colors.grey.shade50,
+                                    ),
                                   ),
-                                  const SizedBox(height: 8),
-                                  ...(_invitations.take(3).map((invitation) {
-                                    final status = invitation['status'] as String;
-                                    final email = invitation['email'] as String;
-                                    final roleName = invitation['role_name'] as String;
-                                    final invitedAt = DateTime.parse(invitation['invited_at'] as String);
-                                    
-                                    return Padding(
-                                      padding: const EdgeInsets.only(bottom: 4),
-                                      child: Row(
-                                        children: [
-                                          Icon(
-                                            status == 'pending' ? Icons.schedule :
-                                            status == 'accepted' ? Icons.check_circle :
-                                            Icons.cancel,
-                                            size: 12,
-                                            color: status == 'pending' ? Colors.orange :
-                                                   status == 'accepted' ? Colors.green :
-                                                   Colors.red,
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Expanded(
-                                            child: Text(
-                                              '$email ($roleName)',
-                                              style: const TextStyle(fontSize: 12),
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ),
-                                          Text(
-                                            '${invitedAt.day}/${invitedAt.month}',
-                                            style: TextStyle(
-                                              fontSize: 10,
-                                              color: Colors.grey.shade600,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    );
-                                  }).toList()),
-                                ],
-                              ),
-                            ),
-                          if (_invitations.isNotEmpty) const SizedBox(height: 16),
-                          // User list
-                          Expanded(
-                            child: _filteredUsers.isEmpty
-                                ? Center(
+                                ),
+                                // Recent Invitations Section
+                                if (_invitations.isNotEmpty)
+                                  Container(
+                                    margin: const EdgeInsets.symmetric(
+                                        horizontal: 16),
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: Colors.orange.shade50,
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                          color: Colors.orange.shade200),
+                                    ),
                                     child: Column(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
-                                        Icon(
-                                          Icons.search_off,
-                                          size: 64,
-                                          color: Colors.grey.shade400,
-                                        ),
-                                        const SizedBox(height: 16),
-                                        Text(
-                                          'No Results Found',
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .titleLarge
-                                              ?.copyWith(
-                                                color: Colors.grey.shade600,
+                                        Row(
+                                          children: [
+                                            Icon(
+                                              Icons.mail_outline,
+                                              size: 16,
+                                              color: Colors.orange.shade700,
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              'Recent Invitations (${_invitations.length})',
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.w600,
+                                                color: Colors.orange.shade700,
+                                                fontSize: 14,
                                               ),
+                                            ),
+                                            const Spacer(),
+                                            TextButton(
+                                              onPressed:
+                                                  _navigateToInvitationManagement,
+                                              child: Text(
+                                                'View All',
+                                                style: TextStyle(
+                                                  color: Colors.orange.shade700,
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                         const SizedBox(height: 8),
-                                        Text(
-                                          'Try adjusting your search terms.',
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .bodyMedium
-                                              ?.copyWith(
-                                                color: Colors.grey.shade500,
-                                              ),
-                                        ),
+                                        ...(_invitations
+                                            .take(3)
+                                            .map((invitation) {
+                                          final status =
+                                              invitation['status'] as String;
+                                          final email =
+                                              invitation['email'] as String;
+                                          final roleName =
+                                              invitation['role_name'] as String;
+                                          final invitedAt = DateTime.parse(
+                                              invitation['invited_at']
+                                                  as String);
+
+                                          return Padding(
+                                            padding: const EdgeInsets.only(
+                                                bottom: 4),
+                                            child: Row(
+                                              children: [
+                                                Icon(
+                                                  status == 'pending'
+                                                      ? Icons.schedule
+                                                      : status == 'accepted'
+                                                          ? Icons.check_circle
+                                                          : Icons.cancel,
+                                                  size: 12,
+                                                  color: status == 'pending'
+                                                      ? Colors.orange
+                                                      : status == 'accepted'
+                                                          ? Colors.green
+                                                          : Colors.red,
+                                                ),
+                                                const SizedBox(width: 8),
+                                                Expanded(
+                                                  child: Text(
+                                                    '$email ($roleName)',
+                                                    style: const TextStyle(
+                                                        fontSize: 12),
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                                Text(
+                                                  '${invitedAt.day}/${invitedAt.month}',
+                                                  style: TextStyle(
+                                                    fontSize: 10,
+                                                    color: Colors.grey.shade600,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                        }).toList()),
                                       ],
                                     ),
-                                  )
-                                : RefreshIndicator(
-                                    onRefresh: _loadUsers,
-                                    child: ListView.builder(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 16),
-                                      itemCount: _filteredUsers.length,
-                                      itemBuilder: (context, index) {
-                                        return _buildUserCard(
-                                            _filteredUsers[index]);
-                                      },
-                                    ),
                                   ),
-                              ),
-                            ],
-                          ),
+                                if (_invitations.isNotEmpty)
+                                  const SizedBox(height: 16),
+                                // User list
+                                Expanded(
+                                  child: _filteredUsers.isEmpty
+                                      ? Center(
+                                          child: Column(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            children: [
+                                              Icon(
+                                                Icons.search_off,
+                                                size: 64,
+                                                color: Colors.grey.shade400,
+                                              ),
+                                              const SizedBox(height: 16),
+                                              Text(
+                                                'No Results Found',
+                                                style: Theme.of(context)
+                                                    .textTheme
+                                                    .titleLarge
+                                                    ?.copyWith(
+                                                      color:
+                                                          Colors.grey.shade600,
+                                                    ),
+                                              ),
+                                              const SizedBox(height: 8),
+                                              Text(
+                                                'Try adjusting your search terms.',
+                                                style: Theme.of(context)
+                                                    .textTheme
+                                                    .bodyMedium
+                                                    ?.copyWith(
+                                                      color:
+                                                          Colors.grey.shade500,
+                                                    ),
+                                              ),
+                                            ],
+                                          ),
+                                        )
+                                      : RefreshIndicator(
+                                          onRefresh: _loadUsers,
+                                          child: ListView.builder(
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 16),
+                                            itemCount: _filteredUsers.length,
+                                            itemBuilder: (context, index) {
+                                              return _buildUserCard(
+                                                  _filteredUsers[index]);
+                                            },
+                                          ),
+                                        ),
+                                ),
+                              ],
+                            ),
             ),
           ),
         ],
@@ -589,13 +614,13 @@ class _CountryUserManagementScreenState
 /// Dialog for managing user roles within a country
 class _UserRoleManagementDialog extends StatefulWidget {
   final Profile profile;
-  final String countryId;
+  final String authorityId;
   final String authorityName;
   final VoidCallback onRoleChanged;
 
   const _UserRoleManagementDialog({
     required this.profile,
-    required this.countryId,
+    required this.authorityId,
     required this.authorityName,
     required this.onRoleChanged,
   });
@@ -620,9 +645,9 @@ class _UserRoleManagementDialogState extends State<_UserRoleManagementDialog> {
     setState(() => _isLoading = true);
 
     try {
-      final userRoles = await CountryUserService.getUserRolesInCountry(
+      final userRoles = await CountryUserService.getUserRolesInAuthority(
         widget.profile.id,
-        widget.countryId,
+        widget.authorityId,
       );
       final availableRoles = await CountryUserService.getAssignableRoles();
 
@@ -684,7 +709,8 @@ class _UserRoleManagementDialogState extends State<_UserRoleManagementDialog> {
     }
   }
 
-  Future<void> _toggleRoleStatus(String profileRoleId, bool newStatus, String roleName) async {
+  Future<void> _toggleRoleStatus(
+      String profileRoleId, bool newStatus, String roleName) async {
     try {
       await CountryUserService.toggleUserRoleStatus(profileRoleId, newStatus);
       widget.onRoleChanged();
@@ -712,7 +738,7 @@ class _UserRoleManagementDialogState extends State<_UserRoleManagementDialog> {
       context: context,
       builder: (context) => _AssignRoleDialog(
         profileId: widget.profile.id,
-        countryId: widget.countryId,
+        authorityId: widget.authorityId,
         availableRoles: _availableRoles,
         existingRoles:
             _userRoles.map((r) => r['roles']['name'] as String).toList(),
@@ -842,7 +868,8 @@ class _UserRoleManagementDialogState extends State<_UserRoleManagementDialog> {
                                             style: TextStyle(
                                               fontWeight: FontWeight.w600,
                                               fontSize: 16,
-                                              color: isActive ? null : Colors.grey,
+                                              color:
+                                                  isActive ? null : Colors.grey,
                                             ),
                                           ),
                                         ),
@@ -851,7 +878,8 @@ class _UserRoleManagementDialogState extends State<_UserRoleManagementDialog> {
                                             roleData['id'] as String,
                                             role['display_name'] as String,
                                           ),
-                                          icon: const Icon(Icons.remove_circle_outline),
+                                          icon: const Icon(
+                                              Icons.remove_circle_outline),
                                           color: Colors.red,
                                           tooltip: 'Remove Role',
                                           constraints: const BoxConstraints(
@@ -863,7 +891,8 @@ class _UserRoleManagementDialogState extends State<_UserRoleManagementDialog> {
                                     ),
                                     // Description Row
                                     Text(
-                                      role['description'] as String? ?? 'No description',
+                                      role['description'] as String? ??
+                                          'No description',
                                       style: TextStyle(
                                         fontSize: 12,
                                         color: Colors.grey.shade600,
@@ -893,13 +922,15 @@ class _UserRoleManagementDialogState extends State<_UserRoleManagementDialog> {
                                         const SizedBox(width: 12),
                                         Switch(
                                           value: isActive,
-                                          onChanged: (value) => _toggleRoleStatus(
+                                          onChanged: (value) =>
+                                              _toggleRoleStatus(
                                             roleData['id'] as String,
                                             value,
                                             role['display_name'] as String,
                                           ),
                                           activeColor: Colors.orange.shade600,
-                                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                          materialTapTargetSize:
+                                              MaterialTapTargetSize.shrinkWrap,
                                         ),
                                         const SizedBox(width: 12),
                                         Text(
@@ -907,7 +938,9 @@ class _UserRoleManagementDialogState extends State<_UserRoleManagementDialog> {
                                           style: TextStyle(
                                             fontSize: 12,
                                             fontWeight: FontWeight.w500,
-                                            color: isActive ? Colors.green.shade600 : Colors.grey.shade600,
+                                            color: isActive
+                                                ? Colors.green.shade600
+                                                : Colors.grey.shade600,
                                           ),
                                         ),
                                       ],
@@ -960,14 +993,14 @@ class _UserRoleManagementDialogState extends State<_UserRoleManagementDialog> {
 /// Dialog for assigning a new role to a user
 class _AssignRoleDialog extends StatefulWidget {
   final String profileId;
-  final String countryId;
+  final String authorityId;
   final List<Map<String, dynamic>> availableRoles;
   final List<String> existingRoles;
   final VoidCallback onRoleAssigned;
 
   const _AssignRoleDialog({
     required this.profileId,
-    required this.countryId,
+    required this.authorityId,
     required this.availableRoles,
     required this.existingRoles,
     required this.onRoleAssigned,
@@ -996,7 +1029,7 @@ class _AssignRoleDialogState extends State<_AssignRoleDialog> {
       await CountryUserService.assignUserRole(
         profileId: widget.profileId,
         roleId: _selectedRoleId!,
-        countryId: widget.countryId,
+        authorityId: widget.authorityId,
       );
 
       widget.onRoleAssigned();
@@ -1075,14 +1108,14 @@ class _AssignRoleDialogState extends State<_AssignRoleDialog> {
   }
 }
 
-/// Dialog for inviting a new user to the country
+/// Dialog for inviting a new user to the authority
 class _InviteUserDialog extends StatefulWidget {
-  final String countryCode;
+  final String authorityId;
   final String authorityName;
   final VoidCallback onInviteSent;
 
   const _InviteUserDialog({
-    required this.countryCode,
+    required this.authorityId,
     required this.authorityName,
     required this.onInviteSent,
   });
@@ -1125,7 +1158,7 @@ class _InviteUserDialogState extends State<_InviteUserDialog> {
       await InvitationService.inviteUserToRole(
         email: _emailController.text.trim(),
         roleName: _selectedRole!,
-        countryCode: widget.countryCode,
+        authorityId: widget.authorityId,
       );
 
       widget.onInviteSent();

@@ -17,6 +17,7 @@ class PurchasedPass {
   final String? authorityId;
   final String? authorityName;
   final String? countryName;
+  final String? borderId;
   final String? vehicleNumberPlate;
   final String? vehicleVin;
   final String? secureCode;
@@ -41,6 +42,7 @@ class PurchasedPass {
     this.authorityId,
     this.authorityName,
     this.countryName,
+    this.borderId,
     this.vehicleNumberPlate,
     this.vehicleVin,
     this.secureCode,
@@ -57,13 +59,45 @@ class PurchasedPass {
       qrCodeString = qrData.entries.map((e) => '${e.key}:${e.value}').join('|');
     }
 
+    // Enhanced data extraction with multiple fallback sources
+    int entryLimit = (json['entry_limit'] as num?)?.toInt() ?? 0;
+    double amount = (json['amount'] as num?)?.toDouble() ?? 0.0;
+    String currency = json['currency']?.toString() ?? '';
+
+    // If primary fields are missing/zero, try nested template data
+    if (entryLimit == 0 && json['pass_templates'] != null) {
+      final template = json['pass_templates'] as Map<String, dynamic>;
+      entryLimit = (template['entry_limit'] as num?)?.toInt() ?? 0;
+    }
+
+    if (amount == 0.0 && json['pass_templates'] != null) {
+      final template = json['pass_templates'] as Map<String, dynamic>;
+      amount = (template['tax_amount'] as num?)?.toDouble() ?? 0.0;
+    }
+
+    if (currency.isEmpty && json['pass_templates'] != null) {
+      final template = json['pass_templates'] as Map<String, dynamic>;
+      currency = template['currency_code']?.toString() ?? '';
+    }
+
+    // Extract border name from nested data if not already flattened
+    String? borderName = json['border_name']?.toString();
+    if (borderName == null && json['pass_templates'] != null) {
+      final template = json['pass_templates'] as Map<String, dynamic>;
+      if (template['borders'] != null) {
+        final border = template['borders'] as Map<String, dynamic>;
+        borderName = border['name']?.toString();
+      }
+    }
+
     return PurchasedPass(
       passId: json['pass_id']?.toString() ?? json['id']?.toString() ?? '',
       vehicleDescription: json['vehicle_description']?.toString() ?? '',
       passDescription: json['pass_description']?.toString() ?? '',
-      borderName: json['border_name']?.toString(),
-      entryLimit: (json['entry_limit'] as num?)?.toInt() ?? 0,
-      entriesRemaining: (json['entries_remaining'] as num?)?.toInt() ?? 0,
+      borderName: borderName,
+      entryLimit: entryLimit,
+      entriesRemaining:
+          (json['entries_remaining'] as num?)?.toInt() ?? entryLimit,
       issuedAt: DateTime.parse(
           json['issued_at']?.toString() ?? DateTime.now().toIso8601String()),
       activationDate: DateTime.parse(json['activation_date']?.toString() ??
@@ -71,14 +105,15 @@ class PurchasedPass {
       expiresAt: DateTime.parse(
           json['expires_at']?.toString() ?? DateTime.now().toIso8601String()),
       status: json['status']?.toString() ?? 'active',
-      currency: json['currency']?.toString() ?? '',
-      amount: (json['amount'] as num?)?.toDouble() ?? 0.0,
+      currency: currency,
+      amount: amount,
       qrCode: qrCodeString,
       shortCode: json['short_code']?.toString(),
       passHash: json['pass_hash']?.toString(),
       authorityId: json['authority_id']?.toString(),
       authorityName: json['authority_name']?.toString(),
       countryName: json['country_name']?.toString(),
+      borderId: json['border_id']?.toString(),
       vehicleNumberPlate: json['vehicle_number_plate']?.toString(),
       vehicleVin: json['vehicle_vin']?.toString(),
       secureCode: json['secure_code']?.toString(),
@@ -107,6 +142,7 @@ class PurchasedPass {
       'authority_id': authorityId,
       'authority_name': authorityName,
       'country_name': countryName,
+      'border_id': borderId,
       'vehicle_description': vehicleDescription,
       'vehicle_number_plate': vehicleNumberPlate,
       'vehicle_vin': vehicleVin,
@@ -258,6 +294,11 @@ class PurchasedPass {
 
   /// Get user-friendly entries display
   String get entriesDisplay {
+    // Handle case where data might not be fully loaded yet
+    if (entryLimit == 0) {
+      return 'Loading...';
+    }
+
     if (entryLimit == 1) {
       return hasEntriesRemaining ? '1 entry remaining' : 'No entries remaining';
     } else {
@@ -286,6 +327,7 @@ class PurchasedPass {
         other.authorityId == authorityId &&
         other.authorityName == authorityName &&
         other.countryName == countryName &&
+        other.borderId == borderId &&
         other.vehicleNumberPlate == vehicleNumberPlate &&
         other.vehicleVin == vehicleVin;
   }
@@ -310,6 +352,7 @@ class PurchasedPass {
       authorityId,
       authorityName,
       countryName,
+      borderId,
       vehicleNumberPlate,
       vehicleVin,
     );

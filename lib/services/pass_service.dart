@@ -419,35 +419,16 @@ class PassService {
       throw Exception('User not authenticated');
     }
 
+    // Temporarily disable RPC function to avoid hanging issues
+    debugPrint('🔍 Skipping RPC function, using direct query for reliability');
+    debugPrint('🔍 User ID: ${user.id}');
+
+    // Direct database query with timeout
     try {
-      // Try RPC function first
-      final response = await _supabase.rpc('get_passes_for_user', params: {
-        'target_profile_id': user.id,
-      });
-
-      if (response != null) {
-        final List<dynamic> data = response as List<dynamic>;
-        debugPrint('🔍 RPC returned ${data.length} passes');
-
-        // Debug: Check if any passes have secure codes
-        for (var json in data) {
-          if (json['secure_code'] != null) {
-            debugPrint(
-                '📋 Found secure code in RPC data: ${json['secure_code']} expires: ${json['secure_code_expires_at']}');
-          }
-        }
-
-        return data
-            .map((json) => PurchasedPass.fromJson(json as Map<String, dynamic>))
-            .toList();
-      }
-    } catch (e) {
-      debugPrint('RPC get_passes_for_user failed, using fallback query: $e');
-    }
-
-    // Fallback: Direct database query with all fields including secure_code
-    try {
-      final response = await _supabase.from('purchased_passes').select('''
+      debugPrint('🔍 Starting direct database query for passes');
+      final response = await _supabase
+          .from('purchased_passes')
+          .select('''
             *,
             pass_templates(
               id,
@@ -458,7 +439,11 @@ class PassService {
               currency_code,
               authority_id,
               border_id,
-              is_active
+              is_active,
+              borders(
+                id,
+                name
+              )
             ),
             authorities(
               id,
@@ -467,7 +452,10 @@ class PassService {
               country_id,
               countries(name, country_code)
             )
-          ''').eq('profile_id', user.id).order('created_at', ascending: false);
+          ''')
+          .eq('profile_id', user.id)
+          .order('created_at', ascending: false)
+          .timeout(const Duration(seconds: 30));
 
       final List<dynamic> data = response as List<dynamic>;
       debugPrint('🔍 Fallback query returned ${data.length} passes');
@@ -480,12 +468,66 @@ class PassService {
         }
       }
 
-      return data
-          .map((json) => PurchasedPass.fromJson(json as Map<String, dynamic>))
-          .toList();
+      return data.map((json) {
+        final passData = json as Map<String, dynamic>;
+
+        debugPrint('🔍 Raw pass data keys: ${passData.keys}');
+        debugPrint('🔍 Pass templates data: ${passData['pass_templates']}');
+
+        // Flatten pass_templates data into the main object
+        if (passData['pass_templates'] != null) {
+          final template = passData['pass_templates'] as Map<String, dynamic>;
+          debugPrint('🔍 Template data: $template');
+
+          passData['entry_limit'] = template['entry_limit'];
+          passData['amount'] =
+              template['tax_amount']; // tax_amount maps to amount
+          passData['currency'] =
+              template['currency_code']; // currency_code maps to currency
+
+          debugPrint(
+              '🔍 After flattening - entry_limit: ${passData['entry_limit']}, amount: ${passData['amount']}, currency: ${passData['currency']}');
+
+          // Flatten border information if available
+          if (template['borders'] != null) {
+            final border = template['borders'] as Map<String, dynamic>;
+            passData['border_name'] = border['name'];
+            debugPrint('🔍 Border name: ${passData['border_name']}');
+          }
+        } else {
+          debugPrint('⚠️ No pass_templates data found in response');
+        }
+
+        // Flatten authorities data
+        if (passData['authorities'] != null) {
+          final authority = passData['authorities'] as Map<String, dynamic>;
+          passData['authority_id'] = authority['id'];
+          passData['authority_name'] = authority['name'];
+
+          // Flatten country information
+          if (authority['countries'] != null) {
+            final country = authority['countries'] as Map<String, dynamic>;
+            passData['country_name'] = country['name'];
+          }
+        }
+
+        debugPrint(
+            '🔍 Final flattened data - entry_limit: ${passData['entry_limit']}, amount: ${passData['amount']}');
+        return PurchasedPass.fromJson(passData);
+      }).toList();
     } catch (e) {
-      debugPrint('Fallback query also failed: $e');
-      return [];
+      debugPrint('❌ Database query failed: $e');
+      if (e.toString().contains('timeout') ||
+          e.toString().contains('TimeoutException')) {
+        throw Exception(
+            'Request timed out. Please check your internet connection and try again.');
+      } else if (e.toString().contains('network') ||
+          e.toString().contains('connection')) {
+        throw Exception(
+            'Network error. Please check your internet connection.');
+      } else {
+        throw Exception('Failed to load passes: ${e.toString()}');
+      }
     }
   }
 

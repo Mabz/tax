@@ -305,7 +305,9 @@ class PassCardWidget extends StatelessWidget {
                   _buildDetailRow(
                     Icons.attach_money,
                     'Amount',
-                    '${pass.currency} ${pass.amount.toStringAsFixed(2)}',
+                    pass.amount == 0.0 && pass.currency.isEmpty
+                        ? 'Loading...'
+                        : '${pass.currency} ${pass.amount.toStringAsFixed(2)}',
                     isCompact: isCompact,
                   ),
                   _buildDetailRow(

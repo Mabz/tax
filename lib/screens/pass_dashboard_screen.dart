@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../models/purchased_pass.dart';
@@ -42,73 +43,106 @@ class _PassDashboardScreenState extends State<PassDashboardScreen>
   }
 
   void _setupRealtimeSubscription() {
-    PassService.subscribeToPassUpdates(
-      onPassChanged: (pass, eventType) {
-        if (mounted) {
-          setState(() {
-            switch (eventType) {
-              case 'INSERT':
-                // Add new pass to the list
-                _passes.add(pass);
-                // Sort passes by issued date (newest first)
-                _passes.sort((a, b) => b.issuedAt.compareTo(a.issuedAt));
-                break;
+    try {
+      PassService.subscribeToPassUpdates(
+        onPassChanged: (pass, eventType) {
+          if (mounted) {
+            setState(() {
+              switch (eventType) {
+                case 'INSERT':
+                  // Add new pass to the list
+                  _passes.add(pass);
+                  // Sort passes by issued date (newest first)
+                  _passes.sort((a, b) => b.issuedAt.compareTo(a.issuedAt));
+                  break;
 
-              case 'UPDATE':
-                // Find and update existing pass
-                final index =
-                    _passes.indexWhere((p) => p.passId == pass.passId);
-                if (index != -1) {
-                  _passes[index] = pass;
-                }
-                break;
+                case 'UPDATE':
+                  // Find and update existing pass
+                  final index =
+                      _passes.indexWhere((p) => p.passId == pass.passId);
+                  if (index != -1) {
+                    _passes[index] = pass;
+                  }
+                  break;
 
-              case 'DELETE':
-                // Remove pass from list
-                _passes.removeWhere((p) => p.passId == pass.passId);
-                // Reset page index if current index is out of bounds
-                if (_currentPassIndex >= _passes.length && _passes.isNotEmpty) {
-                  _currentPassIndex = 0;
-                  _pageController.animateToPage(
-                    0,
-                    duration: const Duration(milliseconds: 300),
-                    curve: Curves.easeInOut,
-                  );
-                }
-                break;
-            }
-            _isLoadingPasses = false;
-          });
-        }
-      },
-      onError: (error) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Realtime update error: $error'),
-              backgroundColor: Colors.orange,
-            ),
-          );
-        }
-      },
-    );
+                case 'DELETE':
+                  // Remove pass from list
+                  _passes.removeWhere((p) => p.passId == pass.passId);
+                  // Reset page index if current index is out of bounds
+                  if (_currentPassIndex >= _passes.length &&
+                      _passes.isNotEmpty) {
+                    _currentPassIndex = 0;
+                    _pageController.animateToPage(
+                      0,
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOut,
+                    );
+                  }
+                  break;
+              }
+              _isLoadingPasses = false;
+            });
+          }
+        },
+        onError: (error) {
+          // Only show error messages for non-connection issues
+          if (mounted &&
+              !error.toLowerCase().contains('connection') &&
+              !error.toLowerCase().contains('network') &&
+              !error.toLowerCase().contains('websocket')) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Realtime update error: $error'),
+                backgroundColor: Colors.orange,
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
+          // Log all errors for debugging but don't show connection errors to users
+          debugPrint('🔄 Realtime error (will retry): $error');
+        },
+      );
+    } catch (e) {
+      debugPrint('🔄 Failed to setup realtime subscription: $e');
+      // App continues to work without realtime updates
+    }
   }
 
   Future<void> _loadPasses() async {
     try {
       setState(() => _isLoadingPasses = true);
-      final passes = await PassService.getPassesForUser();
-      setState(() {
-        _passes = passes;
-        _isLoadingPasses = false;
-      });
-    } catch (e) {
-      setState(() => _isLoadingPasses = false);
+
+      // Add timeout to prevent infinite loading
+      final passes = await PassService.getPassesForUser().timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          throw Exception('Loading passes timed out. Please try again.');
+        },
+      );
+
+      // Debug: Log the loaded passes to verify data integrity
+      for (final pass in passes) {
+        debugPrint('🔍 Loaded pass: ${pass.passId}');
+        debugPrint('   Entry limit: ${pass.entryLimit}');
+        debugPrint('   Amount: ${pass.amount}');
+        debugPrint('   Currency: ${pass.currency}');
+        debugPrint('   Entries display: ${pass.entriesDisplay}');
+      }
+
       if (mounted) {
+        setState(() {
+          _passes = passes;
+          _isLoadingPasses = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingPasses = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error loading passes: $e'),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
           ),
         );
       }
@@ -317,7 +351,22 @@ class _PassDashboardScreenState extends State<PassDashboardScreen>
 
   Widget _buildPassesTab() {
     if (_isLoadingPasses) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text(
+              'Loading your passes...',
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.grey,
+              ),
+            ),
+          ],
+        ),
+      );
     }
 
     if (_passes.isEmpty) {
@@ -331,18 +380,26 @@ class _PassDashboardScreenState extends State<PassDashboardScreen>
           // Pass indicator dots if multiple passes
           if (_passes.length > 1) _buildPassIndicator(),
           Expanded(
-            child: PageView.builder(
-              controller: _pageController,
-              onPageChanged: (index) {
-                setState(() {
-                  _currentPassIndex = index;
-                });
-              },
-              itemCount: _passes.length,
-              itemBuilder: (context, index) {
-                final pass = _passes[index];
-                return _buildFullWidthPassCard(pass);
-              },
+            child: ScrollConfiguration(
+              behavior: ScrollConfiguration.of(context).copyWith(
+                dragDevices: {
+                  PointerDeviceKind.touch,
+                  PointerDeviceKind.mouse,
+                },
+              ),
+              child: PageView.builder(
+                controller: _pageController,
+                onPageChanged: (index) {
+                  setState(() {
+                    _currentPassIndex = index;
+                  });
+                },
+                itemCount: _passes.length,
+                itemBuilder: (context, index) {
+                  final pass = _passes[index];
+                  return _buildFullWidthPassCard(pass);
+                },
+              ),
             ),
           ),
         ],
@@ -416,130 +473,17 @@ class _PassDashboardScreenState extends State<PassDashboardScreen>
               ),
 
               const SizedBox(height: 12),
-              // Secure code section (if available) or instructions
-              Builder(builder: (context) {
-                if (pass.hasValidSecureCode) {
-                  return Column(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: Colors.green.shade50,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.green.shade200),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            Text(
-                              'Secure Code',
-                              style: TextStyle(
-                                color: Colors.green.shade800,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              pass.secureCode ?? '',
-                              style: TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.w900,
-                                color: Colors.green.shade900,
-                                fontFamily: 'Courier',
-                                letterSpacing: 3,
-                                height: 1.2,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Expires in ${pass.secureCodeMinutesRemaining} min',
-                              style: TextStyle(
-                                color: Colors.green.shade700,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                    ],
-                  );
-                }
-                if (pass.hasExpiredSecureCode) {
-                  return Column(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.shade50,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.orange.shade200),
-                        ),
-                        child: Column(
-                          children: [
-                            Text(
-                              'Secure code expired',
-                              style: TextStyle(
-                                color: Colors.orange.shade800,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Ask the border official to scan the QR Code or enter the Backup Code.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: Colors.orange.shade700,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                    ],
-                  );
-                }
-                return Column(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.grey.shade300),
-                      ),
-                      child: Column(
-                        children: [
-                          Text(
-                            'No secure code yet',
-                            style: TextStyle(
-                              color: Colors.grey.shade800,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Ask the border official to scan the QR Code or enter the Backup Code.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: Colors.grey.shade700,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-                );
-              }),
+              // Verification section based on preference
+              FutureBuilder<PassVerificationMethod>(
+                future:
+                    ProfileManagementService.getPassOwnerVerificationPreference(
+                        pass.passId),
+                builder: (context, snapshot) {
+                  final method = snapshot.data ?? PassVerificationMethod.none;
+                  return _buildVerificationSection(pass, method);
+                },
+              ),
+
               const SizedBox(height: 8),
               Container(
                 padding: const EdgeInsets.all(16),
@@ -633,6 +577,239 @@ class _PassDashboardScreenState extends State<PassDashboardScreen>
         ),
       ),
     );
+  }
+
+  Widget _buildVerificationSection(
+      PurchasedPass pass, PassVerificationMethod method) {
+    switch (method) {
+      case PassVerificationMethod.secureCode:
+        // Show secure code logic (existing behavior)
+        if (pass.hasValidSecureCode) {
+          return Column(
+            children: [
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.green.shade200),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Text(
+                      'Secure Code',
+                      style: TextStyle(
+                        color: Colors.green.shade800,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      pass.secureCode ?? '',
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.green.shade900,
+                        fontFamily: 'Courier',
+                        letterSpacing: 3,
+                        height: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Expires in ${pass.secureCodeMinutesRemaining} min',
+                      style: TextStyle(
+                        color: Colors.green.shade700,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+          );
+        } else if (pass.hasExpiredSecureCode) {
+          return Column(
+            children: [
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.orange.shade200),
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      'Secure code expired',
+                      style: TextStyle(
+                        color: Colors.orange.shade800,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Ask the border official to scan the QR Code or enter the Backup Code.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.orange.shade700,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+          );
+        } else {
+          return Column(
+            children: [
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      'No secure code yet',
+                      style: TextStyle(
+                        color: Colors.grey.shade800,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Ask the border official to scan the QR Code or enter the Backup Code.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.grey.shade700,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+          );
+        }
+
+      case PassVerificationMethod.pin:
+        // Show PIN verification message
+        return Column(
+          children: [
+            FutureBuilder<String?>(
+              future:
+                  ProfileManagementService.getPassOwnerStoredPin(pass.passId),
+              builder: (context, snapshot) {
+                final pin = snapshot.data;
+                return Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue.shade200),
+                  ),
+                  child: Column(
+                    children: [
+                      Text(
+                        'Personal PIN Verification',
+                        style: TextStyle(
+                          color: Colors.blue.shade800,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      if (pin != null && pin.isNotEmpty) ...[
+                        Text(
+                          'Your PIN: $pin',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.blue.shade900,
+                            fontFamily: 'Courier',
+                            letterSpacing: 2,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Provide this PIN to the border official when requested.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.blue.shade700,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ] else ...[
+                        Text(
+                          'PIN not set. Please update your profile settings.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.blue.shade700,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 16),
+          ],
+        );
+
+      case PassVerificationMethod.none:
+        // Show no verification message
+        return Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.green.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.green.shade200),
+              ),
+              child: Column(
+                children: [
+                  Text(
+                    'No Additional Verification',
+                    style: TextStyle(
+                      color: Colors.green.shade800,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Simply present the QR Code or Backup Code to the border official.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.green.shade700,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+        );
+    }
   }
 
   Widget _buildFullWidthPassCard(PurchasedPass pass) {

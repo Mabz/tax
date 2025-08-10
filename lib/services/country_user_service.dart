@@ -80,7 +80,38 @@ class CountryUserService {
     }
   }
 
-  /// Get user roles for a specific country
+  /// Get user roles for a specific authority (updated from country-based to authority-based)
+  static Future<List<Map<String, dynamic>>> getUserRolesInAuthority(
+      String profileId, String authorityId) async {
+    try {
+      debugPrint(
+          '🔍 Fetching user roles for profile: $profileId in authority: $authorityId');
+
+      final response = await _supabase
+          .from(AppConstants.tableProfileRoles)
+          .select('''
+            id,
+            role_id,
+            authority_id,
+            is_active,
+            assigned_at,
+            expires_at,
+            roles!inner(name, display_name, description),
+            authorities!inner(name, code, country_id, countries!inner(name, country_code))
+          ''')
+          .eq(AppConstants.fieldProfileRoleProfileId, profileId)
+          .eq(AppConstants.fieldProfileRoleAuthorityId, authorityId)
+          .order('assigned_at', ascending: false);
+
+      debugPrint('✅ Fetched ${response.length} roles for user in authority');
+      return response;
+    } catch (e) {
+      debugPrint('❌ Error fetching user roles in authority: $e');
+      return [];
+    }
+  }
+
+  /// Get user roles for a specific country (legacy method - gets all roles for authorities in a country)
   static Future<List<Map<String, dynamic>>> getUserRolesInCountry(
       String profileId, String countryId) async {
     try {
@@ -92,13 +123,15 @@ class CountryUserService {
           .select('''
             id,
             role_id,
+            authority_id,
             is_active,
             assigned_at,
             expires_at,
-            roles!inner(name, display_name, description)
+            roles!inner(name, display_name, description),
+            authorities!inner(name, code, country_id, countries!inner(name, country_code))
           ''')
           .eq(AppConstants.fieldProfileRoleProfileId, profileId)
-          .eq(AppConstants.fieldProfileRoleCountryId, countryId)
+          .eq('authorities.country_id', countryId)
           .order('assigned_at', ascending: false);
 
       debugPrint('✅ Fetched ${response.length} roles for user in country');
@@ -127,14 +160,16 @@ class CountryUserService {
   }
 
   /// Toggle the active status of a role assignment
-  static Future<void> toggleUserRoleStatus(String profileRoleId, bool isActive) async {
+  static Future<void> toggleUserRoleStatus(
+      String profileRoleId, bool isActive) async {
     try {
-      debugPrint('🔍 Toggling role assignment status: $profileRoleId to $isActive');
+      debugPrint(
+          '🔍 Toggling role assignment status: $profileRoleId to $isActive');
 
       await _supabase
           .from(AppConstants.tableProfileRoles)
-          .update({AppConstants.fieldProfileRoleIsActive: isActive})
-          .eq(AppConstants.fieldId, profileRoleId);
+          .update({AppConstants.fieldProfileRoleIsActive: isActive}).eq(
+              AppConstants.fieldId, profileRoleId);
 
       debugPrint('✅ Role assignment status updated successfully');
     } catch (e) {
@@ -160,22 +195,22 @@ class CountryUserService {
     }
   }
 
-  /// Assign a role to a user in the current country
+  /// Assign a role to a user for a specific authority
   static Future<void> assignUserRole({
     required String profileId,
     required String roleId,
-    required String countryId,
+    required String authorityId,
     DateTime? expiresAt,
   }) async {
     try {
-      debugPrint('🔍 Assigning role to user: $profileId');
+      debugPrint(
+          '🔍 Assigning role to user: $profileId for authority: $authorityId');
 
       await _supabase.from(AppConstants.tableProfileRoles).insert({
         AppConstants.fieldProfileRoleProfileId: profileId,
         AppConstants.fieldProfileRoleRoleId: roleId,
-        AppConstants.fieldProfileRoleCountryId: countryId,
-        AppConstants.fieldProfileRoleAssignedBy:
-            _supabase.auth.currentUser?.id,
+        AppConstants.fieldProfileRoleAuthorityId: authorityId,
+        AppConstants.fieldProfileRoleAssignedBy: _supabase.auth.currentUser?.id,
         AppConstants.fieldProfileRoleExpiresAt: expiresAt?.toIso8601String(),
         AppConstants.fieldProfileRoleIsActive: true,
       });
@@ -210,20 +245,42 @@ class CountryUserService {
     }
   }
 
-  /// Get all invitations for a specific country
-  static Future<List<Map<String, dynamic>>> getAllInvitationsForCountry(String countryId) async {
+  /// Get all invitations for a specific authority
+  static Future<List<Map<String, dynamic>>> getAllInvitationsForAuthority(
+      String authorityId) async {
     try {
-      debugPrint('🔍 Fetching all invitations for country: $countryId');
+      debugPrint('🔍 Fetching all invitations for authority: $authorityId');
+
+      final response = await _supabase.rpc(
+        AppConstants.getAllInvitationsForAuthorityFunction,
+        params: {'target_authority_id': authorityId},
+      );
+
+      debugPrint('✅ Fetched ${response.length} invitations for authority');
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('❌ Error fetching invitations for authority: $e');
+      return [];
+    }
+  }
+
+  /// Legacy method: Get all invitations for a specific country (deprecated)
+  static Future<List<Map<String, dynamic>>> getAllInvitationsForCountry(
+      String countryId) async {
+    try {
+      debugPrint(
+          '🔍 Fetching all invitations for country (legacy): $countryId');
 
       final response = await _supabase.rpc(
         AppConstants.getAllInvitationsForCountryFunction,
         params: {'target_country_id': countryId},
       );
 
-      debugPrint('✅ Fetched ${response.length} invitations for country');
+      debugPrint(
+          '✅ Fetched ${response.length} invitations for country (legacy)');
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
-      debugPrint('❌ Error fetching invitations for country: $e');
+      debugPrint('❌ Error fetching invitations for country (legacy): $e');
       return [];
     }
   }

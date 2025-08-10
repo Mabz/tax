@@ -119,12 +119,16 @@ class _HomeScreenState extends State<HomeScreen> {
       debugPrint(
           '🎯 Should load authorities: ${isSuperuser || isCountryAdmin || isCountryAuditor}');
 
-      // Load authorities if user has admin, auditor, or superuser role
-      if (isSuperuser || isCountryAdmin || isCountryAuditor) {
+      // Load authorities if user has admin, auditor, superuser, border official, or local authority role
+      if (isSuperuser ||
+          isCountryAdmin ||
+          isCountryAuditor ||
+          isBorderOfficial ||
+          isLocalAuthority) {
         debugPrint('✅ Loading authorities...');
         await _loadAuthorities();
       } else {
-        debugPrint('❌ Not loading authorities - user has no admin roles');
+        debugPrint('❌ Not loading authorities - user has no operational roles');
       }
 
       // Load pending invitations for all users
@@ -185,10 +189,10 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     try {
-      List<Authority> authorities;
+      List<Authority> authorities = []; // Initialize with empty list
 
       debugPrint(
-          '🔍 Loading authorities - Superuser: $_isSuperuser, Country Admin: $_isCountryAdmin, Country Auditor: $_isCountryAuditor');
+          '🔍 Loading authorities - Superuser: $_isSuperuser, Country Admin: $_isCountryAdmin, Country Auditor: $_isCountryAuditor, Border Official: $_isBorderOfficial, Local Authority: $_isLocalAuthority');
 
       if (_isSuperuser) {
         // Superusers get all active authorities
@@ -196,7 +200,7 @@ class _HomeScreenState extends State<HomeScreen> {
         authorities = await AuthorityService.getAllAuthorities();
         debugPrint(
             '🔑 Loaded ${authorities.length} active authorities for superuser');
-      } else {
+      } else if (_isCountryAdmin || _isCountryAuditor) {
         // Country admins and auditors get only their assigned authorities
         debugPrint('🔍 Loading admin authorities for country admin/auditor...');
         authorities = await AuthorityService.getAdminAuthorities();
@@ -213,11 +217,38 @@ class _HomeScreenState extends State<HomeScreen> {
                 '  - ${authority.name} (${authority.code}) - ${authority.countryName}');
           }
         }
+      } else if (_isBorderOfficial || _isLocalAuthority) {
+        // Border officials and local authorities get their assigned authorities
+        debugPrint(
+            '🛡️ Loading operational authorities for border official/local authority...');
+        authorities = await AuthorityService.getOperationalAuthorities();
+        debugPrint(
+            '🛡️ Loaded ${authorities.length} assigned authorities for operational roles');
+
+        // Debug: Print authority details
+        if (authorities.isEmpty) {
+          debugPrint(
+              '⚠️ No authorities returned for border official/local authority!');
+        } else {
+          debugPrint('📋 Authority details:');
+          for (final authority in authorities) {
+            debugPrint(
+                '  - ${authority.name} (${authority.code}) - ${authority.countryName}');
+          }
+        }
+      } else {
+        // For users with no operational roles, keep empty list
+        debugPrint('ℹ️ User has no roles that require authority access');
       }
 
       if (mounted) {
         setState(() {
-          _authorities = authorities;
+          // Filter out global authorities
+          _authorities = authorities.where((authority) {
+            return authority.authorityType != 'global' &&
+                authority.code != 'GLOBAL';
+          }).toList();
+
           if (_authorities.isNotEmpty && _selectedAuthority == null) {
             _selectedAuthority = _authorities.first;
           }
@@ -422,7 +453,7 @@ class _HomeScreenState extends State<HomeScreen> {
         '🎯 Drawer build - Superuser: $_isSuperuser, Country Admin: $_isCountryAdmin, Country Auditor: $_isCountryAuditor');
     debugPrint('🎯 Authorities count: ${_authorities.length}');
     debugPrint(
-        '🎯 Should show authority selection: ${(_isSuperuser || _isCountryAdmin || _isCountryAuditor) && _authorities.isNotEmpty}');
+        '🎯 Should show authority selection: ${(_isSuperuser || _isCountryAdmin || _isCountryAuditor || _isBorderOfficial || _isLocalAuthority) && _authorities.isNotEmpty}');
 
     return SafeArea(
         child: Drawer(
@@ -556,6 +587,40 @@ class _HomeScreenState extends State<HomeScreen> {
                     fontSize: 12,
                   ),
                 ),
+              )
+            else if (_isBorderOfficial)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade100,
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: Colors.blue.shade300),
+                ),
+                child: Text(
+                  'BORDER OFFICIAL',
+                  style: TextStyle(
+                    color: Colors.blue.shade700,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+              )
+            else if (_isLocalAuthority)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade100,
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: Colors.green.shade300),
+                ),
+                child: Text(
+                  'LOCAL AUTHORITY',
+                  style: TextStyle(
+                    color: Colors.green.shade700,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
               ),
           ],
         ),
@@ -632,6 +697,15 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 2),
               Text(
+                'Border Official: ${_isBorderOfficial ? "Yes" : "No"} • '
+                'Local Authority: ${_isLocalAuthority ? "Yes" : "No"}',
+                style: TextStyle(
+                  color: Colors.purple.shade600,
+                  fontSize: 11,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
                 '${_authorities.length} ${_authorities.length == 1 ? "authority" : "authorities"} loaded',
                 style: TextStyle(
                   color: Colors.purple.shade600,
@@ -657,15 +731,20 @@ class _HomeScreenState extends State<HomeScreen> {
               : () async {
                   debugPrint('🔄 Manual authority refresh requested...');
                   await _loadAuthorities();
+                  await _checkSuperuserStatus(); // Also refresh roles
                   setState(() {}); // Force rebuild to update subtitle
                 },
         ),
       ),
-      const Divider(),
 
-      // Authority Selection (for Superusers, Country Admins and Auditors)
-      if ((_isSuperuser || _isCountryAdmin || _isCountryAuditor) &&
+      // Authority Selection (for Superusers, Country Admins, Auditors, Border Officials, and Local Authorities)
+      if ((_isSuperuser ||
+              _isCountryAdmin ||
+              _isCountryAuditor ||
+              _isBorderOfficial ||
+              _isLocalAuthority) &&
           _authorities.isNotEmpty) ...[
+        const Divider(),
         Container(
           color: Colors.orange.shade100,
           child: ListTile(
@@ -715,33 +794,15 @@ class _HomeScreenState extends State<HomeScreen> {
             'Validate passes at ${_selectedAuthority!.name}',
           ),
           onTap: () async {
-            final countryCode = _selectedAuthority!.countryCode;
-            if (countryCode == null || countryCode.isEmpty) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Selected authority has no country code'),
-                  backgroundColor: Colors.orange,
-                ),
-              );
-              return;
-            }
-            final allowed = await RoleService.isBorderOfficial(countryCode);
-            if (!mounted) return;
-            if (!allowed) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                      'Access denied: Border Control requires Border Official role'),
-                  backgroundColor: Colors.red,
-                ),
-              );
-              return;
-            }
+            // Border Official role is authority-based, not country-based
+            // If user has the role and authority is selected, they can access
             Navigator.of(context).pop();
             Navigator.of(context).push(
               MaterialPageRoute(
-                builder: (context) => const AuthorityValidationScreen(
+                builder: (context) => AuthorityValidationScreen(
                   role: AuthorityRole.borderOfficial,
+                  currentAuthorityId: _selectedAuthority?.id,
+                  currentCountryId: _selectedAuthority?.countryId,
                 ),
               ),
             );
@@ -757,34 +818,64 @@ class _HomeScreenState extends State<HomeScreen> {
             'Validate passes for ${_selectedAuthority!.name}',
           ),
           onTap: () async {
-            final countryCode = _selectedAuthority!.countryCode;
-            if (countryCode == null || countryCode.isEmpty) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Selected authority has no country code'),
-                  backgroundColor: Colors.orange,
-                ),
-              );
-              return;
-            }
-            final allowed = await RoleService.isLocalAuthority(countryCode);
-            if (!mounted) return;
-            if (!allowed) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                      'Access denied: Local Authority Validation requires Local Authority role'),
-                  backgroundColor: Colors.red,
-                ),
-              );
-              return;
-            }
+            // Local Authority role is authority-based, not country-based
+            // If user has the role and authority is selected, they can access
             Navigator.of(context).pop();
             Navigator.of(context).push(
               MaterialPageRoute(
-                builder: (context) => const AuthorityValidationScreen(
+                builder: (context) => AuthorityValidationScreen(
                   role: AuthorityRole.localAuthority,
+                  currentAuthorityId: _selectedAuthority?.id,
+                  currentCountryId: _selectedAuthority?.countryId,
                 ),
+              ),
+            );
+          },
+        ),
+      ],
+
+      // Invitations (if user has pending invitations)
+      if (_pendingInvitationsCount > 0) ...[
+        ListTile(
+          leading: Stack(
+            children: [
+              const Icon(Icons.mail, color: Colors.orange),
+              if (_pendingInvitationsCount > 0)
+                Positioned(
+                  right: 0,
+                  top: 0,
+                  child: Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: BoxDecoration(
+                      color: Colors.red,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    constraints: const BoxConstraints(
+                      minWidth: 16,
+                      minHeight: 16,
+                    ),
+                    child: Text(
+                      '$_pendingInvitationsCount',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          title: const Text('Role Invitations'),
+          subtitle: Text(
+            '$_pendingInvitationsCount pending invitation${_pendingInvitationsCount == 1 ? '' : 's'}',
+          ),
+          onTap: () {
+            Navigator.of(context).pop();
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => const InvitationDashboardScreen(),
               ),
             );
           },
@@ -814,15 +905,16 @@ class _HomeScreenState extends State<HomeScreen> {
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (context) => InvitationManagementScreen(
+                  authorityId: _selectedAuthority!.id,
+                  authorityName: _selectedAuthority!.name,
                   selectedCountry: Country(
                     id: _selectedAuthority!.countryId,
-                    name: _selectedAuthority!
-                        .name, // Use authority name instead of country name
+                    name: _selectedAuthority!.countryName ?? 'Unknown',
                     countryCode: _selectedAuthority!.countryCode ?? '',
-                    isActive: true, // Assume active since authority is active
-                    isGlobal: false, // Country-specific authority
-                    createdAt: DateTime.now(), // Placeholder timestamp
-                    updatedAt: DateTime.now(), // Placeholder timestamp
+                    isActive: true,
+                    isGlobal: false,
+                    createdAt: DateTime.now(),
+                    updatedAt: DateTime.now(),
                   ),
                 ),
               ),
@@ -1123,46 +1215,6 @@ class _HomeScreenState extends State<HomeScreen> {
         },
       ),
 
-      // Authority Validation Options
-      const Divider(),
-      Container(
-        color: Colors.green.shade50,
-        child: Column(
-          children: [
-            ListTile(
-              leading: Icon(Icons.verified_user, color: Colors.blue.shade600),
-              title: const Text('Local Authority Validation'),
-              subtitle: const Text('Scan passes for validation only'),
-              onTap: () {
-                Navigator.of(context).pop();
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => const AuthorityValidationScreen(
-                      role: AuthorityRole.localAuthority,
-                    ),
-                  ),
-                );
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.border_clear, color: Colors.green.shade600),
-              title: const Text('Border Control'),
-              subtitle: const Text('Scan passes and deduct entries'),
-              onTap: () {
-                Navigator.of(context).pop();
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => const AuthorityValidationScreen(
-                      role: AuthorityRole.borderOfficial,
-                    ),
-                  ),
-                );
-              },
-            ),
-          ],
-        ),
-      ),
-
       // Country Auditor functions (for auditors who are not admins)
       if (_isCountryAuditor && !_isCountryAdmin) ...[
         ListTile(
@@ -1198,6 +1250,15 @@ class _HomeScreenState extends State<HomeScreen> {
           },
         ),
       ],
+
+      // Sign out option at the bottom
+      const Divider(),
+      ListTile(
+        leading: const Icon(Icons.logout, color: Colors.red),
+        title: const Text('Sign Out'),
+        subtitle: const Text('Sign out of your account'),
+        onTap: () => _signOut(context),
+      ),
     ])));
   }
 
@@ -2151,7 +2212,10 @@ class _AuthoritySelectionDialogState extends State<_AuthoritySelectionDialog> {
   void initState() {
     super.initState();
     _searchController = TextEditingController();
-    _filteredAuthorities = widget.authorities;
+    // Filter out global authorities from the start
+    _filteredAuthorities = widget.authorities.where((authority) {
+      return authority.authorityType != 'global' && authority.code != 'GLOBAL';
+    }).toList();
     _searchController.addListener(_filterAuthorities);
   }
 
@@ -2165,6 +2229,11 @@ class _AuthoritySelectionDialogState extends State<_AuthoritySelectionDialog> {
     final query = _searchController.text.toLowerCase();
     setState(() {
       _filteredAuthorities = widget.authorities.where((authority) {
+        // Exclude global authorities
+        if (authority.authorityType == 'global' || authority.code == 'GLOBAL') {
+          return false;
+        }
+
         return authority.name.toLowerCase().contains(query) ||
             (authority.countryName?.toLowerCase().contains(query) ?? false) ||
             authority.code.toLowerCase().contains(query) ||

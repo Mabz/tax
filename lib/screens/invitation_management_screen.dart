@@ -7,10 +7,14 @@ import '../services/invitation_service.dart';
 /// Screen for managing role invitations (Superuser and Country Admin access)
 class InvitationManagementScreen extends StatefulWidget {
   final Country? selectedCountry;
+  final String? authorityId;
+  final String? authorityName;
 
   const InvitationManagementScreen({
     super.key,
     this.selectedCountry,
+    this.authorityId,
+    this.authorityName,
   });
 
   @override
@@ -24,15 +28,14 @@ class _InvitationManagementScreenState
   List<Map<String, dynamic>> _roles = [];
   bool _isLoading = true;
 
-  // Helper getter to extract authority information from selectedCountry
+  // Helper getter for authority name
   String? get _authorityName {
-    if (widget.selectedCountry == null) return null;
-    // Check if this is authority data passed as country (from home_screen.dart)
-    final countryData = widget.selectedCountry!;
-    if (countryData is Map) {
-      return (countryData as Map<String, dynamic>)['authority_name'];
-    }
-    return widget.selectedCountry!.name; // Fallback to country name
+    return widget.authorityName ?? widget.selectedCountry?.name;
+  }
+
+  // Helper getter for authority ID
+  String? get _authorityId {
+    return widget.authorityId;
   }
 
   @override
@@ -75,19 +78,33 @@ class _InvitationManagementScreenState
     setState(() => _isLoading = true);
 
     try {
-      // Determine which invitations to load based on selected country
+      // Determine which invitations to load based on selected country/authority
       Future<List<RoleInvitation>> invitationsFuture;
 
-      if (widget.selectedCountry != null) {
-        // Load invitations for the specific selected country using new function
+      if (_authorityId != null && _authorityId!.isNotEmpty) {
+        // Load invitations for the specific authority (preferred method)
+        invitationsFuture =
+            InvitationService.getAllInvitationsForAuthority(_authorityId!);
+        debugPrint(
+            '🏛️ Loading invitations for authority: $_authorityName ($_authorityId)');
+      } else if (widget.selectedCountry != null &&
+          widget.selectedCountry!.id.isNotEmpty) {
+        // Fallback: Load invitations for the specific country using legacy function
+        debugPrint(
+            '⚠️ No authority ID provided, falling back to country-based loading');
+        debugPrint('🌍 Country ID: ${widget.selectedCountry!.id}');
+        debugPrint('🌍 Country Name: ${widget.selectedCountry!.name}');
+
         invitationsFuture = InvitationService.getAllInvitationsForCountry(
             widget.selectedCountry!.id);
         debugPrint(
             '🌍 Loading invitations for country: ${widget.selectedCountry!.name}');
       } else {
         // Load all invitations (fallback for superusers or when no country selected)
+        debugPrint(
+            '⚠️ No authority or country information available, loading all invitations');
         invitationsFuture = InvitationService.getAllInvitations();
-        debugPrint('🌍 Loading all invitations (no country filter)');
+        debugPrint('🌍 Loading all invitations (no filter)');
       }
 
       // Load invitations and roles concurrently
@@ -170,6 +187,33 @@ class _InvitationManagementScreenState
                       setDialogState(() => selectedRoleName = value);
                     },
                   ),
+                  if (_authorityId == null) ...[
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.orange.shade200),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.warning,
+                              color: Colors.orange.shade700, size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Authority information not available. Please select an authority from the home screen.',
+                              style: TextStyle(
+                                color: Colors.orange.shade700,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -182,7 +226,7 @@ class _InvitationManagementScreenState
             ElevatedButton(
               onPressed: email.isNotEmpty &&
                       selectedRoleName != null &&
-                      _authorityName != null
+                      _authorityId != null
                   ? () async {
                       // Capture context before async operation
                       final navigator = Navigator.of(context);
@@ -192,7 +236,7 @@ class _InvitationManagementScreenState
                         await InvitationService.inviteUserToRole(
                           email: email,
                           roleName: selectedRoleName!,
-                          countryCode: widget.selectedCountry!.countryCode,
+                          authorityId: _authorityId!,
                         );
 
                         if (mounted) {
@@ -445,7 +489,8 @@ class _InvitationManagementScreenState
 
   @override
   Widget build(BuildContext context) {
-    final theme = (Colors.orange, Colors.orange.shade100, Colors.orange.shade800);
+    final theme =
+        (Colors.orange, Colors.orange.shade100, Colors.orange.shade800);
 
     return Scaffold(
       appBar: AppBar(

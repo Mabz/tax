@@ -8,20 +8,27 @@ import '../services/role_service.dart';
 class InvitationService {
   static final SupabaseClient _supabase = Supabase.instance.client;
 
-  /// Send a role invitation using database function
+  /// Send a role invitation using database function (authority-based)
   static Future<void> inviteUserToRole({
     required String email,
     required String roleName,
-    required String countryCode,
+    required String authorityId,
   }) async {
     try {
       debugPrint(
-          '🔍 Sending invitation - Email: $email, Role: $roleName, Country: $countryCode');
+          '🔍 Sending invitation - Email: $email, Role: $roleName, Authority: $authorityId');
 
-      await _supabase.rpc(AppConstants.inviteUserToRoleFunction, params: {
+      // Get current user ID for invited_by_profile_id
+      final currentUser = _supabase.auth.currentUser;
+      if (currentUser == null) {
+        throw Exception('No authenticated user found');
+      }
+
+      await _supabase.rpc(AppConstants.inviteProfileToRoleFunction, params: {
+        'authority_id': authorityId,
+        'invited_by_profile_id': currentUser.id,
+        'role_name': roleName,
         'target_email': email.toLowerCase(),
-        'target_role_name': roleName,
-        'target_country_code': countryCode,
       });
 
       debugPrint('✅ Invitation sent successfully');
@@ -31,15 +38,93 @@ class InvitationService {
     }
   }
 
+  /// Legacy method: Send a role invitation by country code (deprecated)
+  static Future<void> inviteUserToRoleByCountry({
+    required String email,
+    required String roleName,
+    required String countryCode,
+  }) async {
+    try {
+      debugPrint(
+          '🔍 Sending invitation (legacy) - Email: $email, Role: $roleName, Country: $countryCode');
+
+      await _supabase.rpc(AppConstants.inviteUserToRoleFunction, params: {
+        'target_email': email.toLowerCase(),
+        'target_role_name': roleName,
+        'target_country_code': countryCode,
+      });
+
+      debugPrint('✅ Invitation sent successfully (legacy)');
+    } catch (e) {
+      debugPrint('❌ Error sending invitation (legacy): $e');
+      rethrow;
+    }
+  }
+
+  /// Get all invitations for a specific authority
+  static Future<List<RoleInvitation>> getAllInvitationsForAuthority(
+      String authorityId) async {
+    try {
+      debugPrint('🔍 Fetching all invitations for authority: $authorityId');
+
+      final response = await _supabase.rpc(
+        AppConstants.getAllInvitationsForAuthorityFunction,
+        params: {'target_authority_id': authorityId},
+      );
+
+      debugPrint('✅ Fetched ${response.length} invitations for authority');
+
+      // Convert to RoleInvitation objects
+      return response.map<RoleInvitation>((json) {
+        // Map the database function results to RoleInvitation format
+        final mapped = {
+          AppConstants.fieldId: json['invitation_id'],
+          AppConstants.fieldRoleInvitationEmail: json['email'],
+          AppConstants.fieldRoleInvitationStatus: json['status'],
+          AppConstants.fieldRoleInvitationInvitedAt: json['invited_at'],
+          AppConstants.fieldRoleInvitationRespondedAt: json['responded_at'],
+          // Required fields for RoleInvitation model
+          AppConstants.fieldRoleInvitationRoleId: json['role_id'],
+          AppConstants.fieldRoleInvitationAuthorityId: authorityId,
+          AppConstants.fieldRoleInvitationInvitedBy:
+              json['invited_by_profile_id'],
+          // Optional fields from the authority function
+          AppConstants.fieldRoleName: json['role_name'],
+          AppConstants.fieldRoleDisplayName:
+              json['role_display_name'] ?? json['role_name'],
+          AppConstants.fieldRoleDescription: json['role_description'],
+          'inviter_name': json['inviter_name'],
+          'inviter_email': json['inviter_email'],
+          'authority_name': json['authority_name'],
+          'country_name': json['country_name'],
+          // Add required fields for RoleInvitation model
+          AppConstants.fieldCreatedAt: json['invited_at'],
+          AppConstants.fieldUpdatedAt:
+              json['responded_at'] ?? json['invited_at'],
+        };
+
+        return RoleInvitation.fromJson(mapped);
+      }).toList();
+    } catch (e) {
+      debugPrint('❌ Error fetching all invitations for authority: $e');
+      return [];
+    }
+  }
+
   /// Get all invitations for a specific country using the authority-based function
   static Future<List<RoleInvitation>> getAllInvitationsForCountry(
       String countryId) async {
     try {
+      if (countryId.isEmpty) {
+        debugPrint('❌ Empty country ID provided');
+        return [];
+      }
+
       debugPrint('🔍 Fetching all invitations for country: $countryId');
 
       // First, get the authority ID for this country
       final authorityId = await _getAuthorityIdForCountry(countryId);
-      if (authorityId == null) {
+      if (authorityId == null || authorityId.isEmpty) {
         debugPrint('⚠️ No active authority found for country: $countryId');
         return [];
       }

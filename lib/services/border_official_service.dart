@@ -94,7 +94,9 @@ class BorderOfficialService {
       String countryId) async {
     try {
       // Query borders through authorities table for authority-centric model
-      final response = await _supabase.from('borders').select('''
+      final response = await _supabase
+          .from('borders')
+          .select('''
             id,
             authority_id,
             name,
@@ -107,9 +109,10 @@ class BorderOfficialService {
             created_at,
             updated_at,
             authorities!inner(country_id)
-          ''').eq('authorities.country_id', countryId)
-            .eq('is_active', true)
-            .order('name');
+          ''')
+          .eq('authorities.country_id', countryId)
+          .eq('is_active', true)
+          .order('name');
 
       return (response as List)
           .map((item) => border_model.Border.fromJson(item))
@@ -171,6 +174,83 @@ class BorderOfficialService {
           .toList();
     } catch (e) {
       throw Exception('Failed to get border officials by country: $e');
+    }
+  }
+
+  /// Check if a border official can process passes for a specific border
+  static Future<bool> canOfficialProcessBorder(
+    String profileId,
+    String borderId,
+  ) async {
+    try {
+      final response = await _supabase
+          .from('border_official_borders')
+          .select('id')
+          .eq('profile_id', profileId)
+          .eq('border_id', borderId)
+          .eq('is_active', true)
+          .maybeSingle();
+
+      return response != null;
+    } catch (e) {
+      throw Exception('Failed to check border assignment: $e');
+    }
+  }
+
+  /// Get borders assigned to a specific border official
+  static Future<List<border_model.Border>> getAssignedBordersForOfficial(
+    String profileId,
+  ) async {
+    try {
+      final response = await _supabase
+          .from('border_official_borders')
+          .select('''
+            borders!inner(
+              id,
+              name,
+              border_type_id,
+              authority_id,
+              is_active,
+              latitude,
+              longitude,
+              description,
+              created_at,
+              updated_at,
+              border_types(label)
+            )
+          ''')
+          .eq('profile_id', profileId)
+          .eq('is_active', true)
+          .order('borders.name');
+
+      return (response as List)
+          .map((item) => border_model.Border.fromJson(item['borders']))
+          .toList();
+    } catch (e) {
+      throw Exception('Failed to get assigned borders for official: $e');
+    }
+  }
+
+  /// Check if current user can process passes for all borders of their authority
+  static Future<bool> canProcessAllAuthorityBorders(String authorityId) async {
+    try {
+      final user = _supabase.auth.currentUser;
+      if (user == null) return false;
+
+      // Check if user has country_admin or superuser role for this authority
+      final response = await _supabase
+          .from('profile_roles')
+          .select('''
+            roles!inner(name)
+          ''')
+          .eq('profile_id', user.id)
+          .eq('authority_id', authorityId)
+          .eq('is_active', true)
+          .inFilter('roles.name', ['country_admin', 'superuser']);
+
+      return response.isNotEmpty;
+    } catch (e) {
+      throw Exception('Failed to check authority permissions: $e');
     }
   }
 }

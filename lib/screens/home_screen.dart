@@ -25,6 +25,7 @@ import 'pass_template_management_screen.dart';
 import 'vehicle_management_screen.dart';
 import 'pass_dashboard_screen.dart';
 import 'authority_validation_screen.dart';
+import 'account_security_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -1175,15 +1176,16 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ),
+
       ListTile(
-        leading: const Icon(Icons.person_outline, color: Colors.blue),
-        title: const Text('Profile Settings'),
-        subtitle: const Text('Manage identity, payment & preferences'),
+        leading: const Icon(Icons.receipt_long, color: Colors.blue),
+        title: const Text('My Passes'),
+        subtitle: const Text('Purchase and manage border passes'),
         onTap: () {
           Navigator.of(context).pop();
           Navigator.of(context).push(
             MaterialPageRoute(
-              builder: (context) => const ProfileSettingsScreen(),
+              builder: (context) => const PassDashboardScreen(),
             ),
           );
         },
@@ -1202,14 +1204,27 @@ class _HomeScreenState extends State<HomeScreen> {
         },
       ),
       ListTile(
-        leading: const Icon(Icons.receipt_long, color: Colors.blue),
-        title: const Text('My Passes'),
-        subtitle: const Text('Purchase and manage border passes'),
+        leading: const Icon(Icons.lock, color: Colors.blue),
+        title: const Text('Account & Security'),
+        subtitle: const Text('Change password, enable 2FA'),
         onTap: () {
           Navigator.of(context).pop();
           Navigator.of(context).push(
             MaterialPageRoute(
-              builder: (context) => const PassDashboardScreen(),
+              builder: (context) => const AccountSecurityScreen(),
+            ),
+          );
+        },
+      ),
+      ListTile(
+        leading: const Icon(Icons.person_outline, color: Colors.blue),
+        title: const Text('Profile Settings'),
+        subtitle: const Text('Manage identity, payment & preferences'),
+        onTap: () {
+          Navigator.of(context).pop();
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => const ProfileSettingsScreen(),
             ),
           );
         },

@@ -134,7 +134,8 @@ class _MfaEnrollScreenState extends State<MfaEnrollScreen> {
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(color: Colors.red.shade200),
                           ),
-                          child: Text(_error!, style: const TextStyle(color: Colors.red)),
+                          child: Text(_error!,
+                              style: const TextStyle(color: Colors.red)),
                         ),
                       const SizedBox(height: 12),
                       if (_qrSvg != null)
@@ -145,7 +146,7 @@ class _MfaEnrollScreenState extends State<MfaEnrollScreen> {
                             borderRadius: BorderRadius.circular(12),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withOpacity(0.05),
+                                color: Colors.black.withValues(alpha: 0.05),
                                 blurRadius: 8,
                                 offset: const Offset(0, 2),
                               )
@@ -195,7 +196,8 @@ class _MfaEnrollScreenState extends State<MfaEnrollScreen> {
                               ? const SizedBox(
                                   width: 22,
                                   height: 22,
-                                  child: CircularProgressIndicator(strokeWidth: 2.4),
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2.4),
                                 )
                               : const Text('Verify and enable'),
                         ),

@@ -76,7 +76,7 @@ class BorderIdFixTest {
       entriesRemaining: 3,
       issuedAt: DateTime.now(),
       activationDate: DateTime.now(),
-      expiresAt: DateTime.now().add(Duration(days: 30)),
+      expiresAt: DateTime.now().add(const Duration(days: 30)),
       status: 'active',
       currency: 'USD',
       amount: 100.0,

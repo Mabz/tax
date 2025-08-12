@@ -98,7 +98,7 @@ class _PostLoginGateState extends State<_PostLoginGate> {
       _needsMfa = false;
     });
     try {
-      final res = await Supabase.instance.client.auth.mfa
+      final res = Supabase.instance.client.auth.mfa
           .getAuthenticatorAssuranceLevel();
       final current = res.currentLevel;
       final next = res.nextLevel;
@@ -111,7 +111,7 @@ class _PostLoginGateState extends State<_PostLoginGate> {
           MaterialPageRoute(builder: (_) => const MfaChallengeScreen()),
         );
         // Re-check AAL after verification attempt
-        final res2 = await Supabase.instance.client.auth.mfa
+        final res2 = Supabase.instance.client.auth.mfa
             .getAuthenticatorAssuranceLevel();
         final ok = res2.currentLevel == AuthenticatorAssuranceLevels.aal2;
         setState(() {

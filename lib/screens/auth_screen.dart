@@ -257,14 +257,14 @@ class _AuthScreenState extends State<AuthScreen> {
                           margin: const EdgeInsets.only(right: 16),
                           padding: const EdgeInsets.all(24),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.1),
+                            color: Colors.white.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(color: Colors.white24),
                           ),
-                          child: Column(
+                          child: const Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             crossAxisAlignment: CrossAxisAlignment.start,
-                            children: const [
+                            children: [
                               Icon(Icons.account_balance_wallet,
                                   color: Colors.white, size: 48),
                               SizedBox(height: 16),
@@ -354,7 +354,8 @@ class _AuthScreenState extends State<AuthScreen> {
                                   keyboardType: TextInputType.emailAddress,
                                   decoration: InputDecoration(
                                     labelText: 'Email',
-                                    prefixIcon: const Icon(Icons.email_outlined),
+                                    prefixIcon:
+                                        const Icon(Icons.email_outlined),
                                     border: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(12),
                                     ),
@@ -436,8 +437,7 @@ class _AuthScreenState extends State<AuthScreen> {
                                     onPressed:
                                         _isLoading ? null : _authenticate,
                                     style: ElevatedButton.styleFrom(
-                                      backgroundColor:
-                                          const Color(0xFF1E88E5),
+                                      backgroundColor: const Color(0xFF1E88E5),
                                       foregroundColor: Colors.white,
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(12),
@@ -452,13 +452,15 @@ class _AuthScreenState extends State<AuthScreen> {
                                               color: Colors.white,
                                             ),
                                           )
-                                        : Text(_isSignUp ? 'Create account' : 'Sign in'),
+                                        : Text(_isSignUp
+                                            ? 'Create account'
+                                            : 'Sign in'),
                                   ),
                                 ),
 
                                 const SizedBox(height: 16),
-                                Row(
-                                  children: const [
+                                const Row(
+                                  children: [
                                     Expanded(child: Divider()),
                                     Padding(
                                       padding:

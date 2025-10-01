@@ -5,9 +5,14 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/purchased_pass.dart';
 import '../services/pass_service.dart';
+
+import '../services/enhanced_border_service.dart';
+// import '../services/pass_verification_service.dart'; // Removed - using working methods instead
 import '../services/profile_management_service.dart';
 import '../enums/pass_verification_method.dart';
 import '../widgets/pass_card_widget.dart';
+import '../utils/time_utils.dart';
+import '../screens/vehicle_search_screen.dart';
 
 enum AuthorityRole { localAuthority, borderOfficial }
 
@@ -70,10 +75,27 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
   ValidationStep _currentStep = ValidationStep.scanning;
   PurchasedPass? _scannedPass;
   ValidationPreference? _validationPreference;
-  String? _dynamicSecureCode;
+
   bool _isProcessing = false;
   String? _errorMessage;
   bool _useBackupCode = false;
+
+  // Enhanced border control state
+  PassActionInfo? _passAction;
+  PassMovementResult? _movementResult;
+  PassVerificationMethod? _verificationMethod;
+  List<PassMovement>? _passHistory;
+
+  // Helper method to get verification method
+  Future<PassVerificationMethod> _getVerificationMethod(String passId) async {
+    try {
+      return await ProfileManagementService.getPassOwnerVerificationPreference(
+          passId);
+    } catch (e) {
+      debugPrint('Error getting verification method: $e');
+      return PassVerificationMethod.none;
+    }
+  }
 
   // QR Scanner cooldown management
   DateTime? _lastScanAttempt;
@@ -208,7 +230,12 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
-          if (_currentStep == ValidationStep.scanning)
+          if (_currentStep == ValidationStep.scanning) ...[
+            IconButton(
+              icon: const Icon(Icons.search),
+              onPressed: _showVehicleSearch,
+              tooltip: 'Search by Vehicle',
+            ),
             IconButton(
               icon: Icon(_useBackupCode ? Icons.qr_code : Icons.keyboard),
               onPressed: () {
@@ -220,6 +247,7 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
               tooltip:
                   _useBackupCode ? 'Switch to QR Scanner' : 'Enter Backup Code',
             ),
+          ],
         ],
       ),
       body: SafeArea(
@@ -470,14 +498,180 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
 
     return Column(
       children: [
-        // Use the reusable PassCardWidget
+        // Enhanced Pass Information
         Expanded(
-          child: PassCardWidget(
-            pass: pass,
-            showQrCode: false, // Don't show QR code in validation screen
-            showDetails: true,
-            isCompact: true,
-            showSecureCode: false, // Hide secure code on authority UI
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Pass Card Widget
+                PassCardWidget(
+                  pass: pass,
+                  showQrCode: false,
+                  showDetails: true,
+                  isCompact: true,
+                  showSecureCode: false,
+                ),
+
+                const SizedBox(height: 16),
+
+                // Enhanced Border Control Information (for Border Officials)
+                if (widget.role == AuthorityRole.borderOfficial &&
+                    _passAction != null) ...[
+                  Card(
+                    color: Colors.orange.withValues(alpha: 0.1),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                _passAction!.isCheckIn
+                                    ? Icons.login
+                                    : Icons.logout,
+                                color: Colors.orange,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Ready to ${_passAction!.actionDescription}',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Text('Current Status: ${_passAction!.currentStatus}'),
+                          Text('Vehicle Status: ${pass.vehicleStatusDisplay}'),
+                          if (_passAction!.willDeductEntry)
+                            const Text(
+                              'This action will deduct 1 entry',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w500,
+                                color: Colors.orange,
+                              ),
+                            ),
+                          if (_verificationMethod != null)
+                            Text(
+                                'Verification: ${_verificationMethod!.displayName}'),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+
+                // Movement History (if available)
+                if (_passHistory != null && _passHistory!.isNotEmpty) ...[
+                  SafeArea(
+                    child: Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Row(
+                              children: [
+                                Icon(Icons.history, color: Colors.blue),
+                                SizedBox(width: 8),
+                                Text(
+                                  'Movement History',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            ...(_passHistory!.take(3).map((movement) => Padding(
+                                  padding: const EdgeInsets.only(bottom: 8),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        movement.movementType == 'check_in'
+                                            ? Icons.login
+                                            : Icons.logout,
+                                        size: 16,
+                                        color:
+                                            movement.movementType == 'check_in'
+                                                ? Colors.green
+                                                : Colors.blue,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              '${movement.actionDescription} at ${movement.borderName}',
+                                              style:
+                                                  const TextStyle(fontSize: 14),
+                                            ),
+                                            Text(
+                                              'by ${movement.officialName}',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.grey.shade600,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.end,
+                                        children: [
+                                          Text(
+                                            _formatFriendlyTime(
+                                                movement.processedAt),
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.grey.shade600,
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          ),
+                                          if (movement.entriesDeducted > 0)
+                                            Text(
+                                              '-${movement.entriesDeducted} entry',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                color: Colors.orange.shade600,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ))),
+                            if (_passHistory!.length > 3)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: Center(
+                                  child: Text(
+                                    '... and ${_passHistory!.length - 3} more entries',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey.shade600,
+                                      fontStyle: FontStyle.italic,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
         ),
 
@@ -504,8 +698,27 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
                     ),
                   ),
                 ),
+              ] else if (_passAction != null) ...[
+                // Border Official - Enhanced Processing
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () => _proceedToDeduction(),
+                    icon: Icon(
+                        _passAction!.isCheckIn ? Icons.login : Icons.logout),
+                    label: Text(_passAction!.actionDescription),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green.shade600,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
               ] else if (isActive && pass.hasEntriesRemaining) ...[
-                // Border Official - Deduction
+                // Fallback for old logic
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
@@ -777,7 +990,7 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
     final isSuccess = _errorMessage == null;
     final pass = _scannedPass;
 
-    // Determine validation result for Local Authority
+    // Determine validation result
     String validationResult = '';
     String validationDetails = '';
     IconData resultIcon = Icons.error;
@@ -818,17 +1031,35 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
           resultColor = Colors.red.shade600;
         }
       } else {
-        // Border Official - keep existing behavior
-        validationResult = 'Entry Deducted Successfully';
-        validationDetails =
-            'Pass entry has been deducted. Vehicle may proceed.';
-        resultIcon = Icons.check_circle;
-        resultColor = Colors.green.shade600;
+        // Border Official - Enhanced results
+        if (_movementResult != null) {
+          validationResult = _movementResult!.actionDescription;
+          validationDetails =
+              'Status: ${_movementResult!.previousStatus} → ${_movementResult!.newStatus}';
+          if (_movementResult!.entriesDeducted > 0) {
+            validationDetails +=
+                '\nEntries deducted: ${_movementResult!.entriesDeducted}';
+          }
+          validationDetails +=
+              '\nEntries remaining: ${_movementResult!.entriesRemaining}';
+          validationDetails += '\nVehicle may proceed.';
+          resultIcon = _movementResult!.movementType == 'check_in'
+              ? Icons.login
+              : Icons.logout;
+          resultColor = Colors.green.shade600;
+        } else {
+          // Fallback for old behavior
+          validationResult = 'Entry Deducted Successfully';
+          validationDetails =
+              'Pass entry has been deducted. Vehicle may proceed.';
+          resultIcon = Icons.check_circle;
+          resultColor = Colors.green.shade600;
+        }
       }
     } else {
-      validationResult = 'Validation Failed';
+      validationResult = 'Processing Failed';
       validationDetails =
-          _errorMessage ?? 'Unable to validate pass. Please try again.';
+          _errorMessage ?? 'Unable to process pass. Please try again.';
       resultIcon = Icons.error;
       resultColor = Colors.red.shade600;
     }
@@ -1014,44 +1245,71 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
     });
 
     try {
-      debugPrint('🔍 Starting QR code validation...');
+      debugPrint('🔍 Starting enhanced QR code validation...');
       debugPrint('📱 QR Data length: ${qrData.length} characters');
-      debugPrint(
-          '📱 QR Data preview: ${qrData.length > 100 ? '${qrData.substring(0, 100)}...' : qrData}');
 
-      // Parse QR code data and validate pass
-      final pass = await _parseAndValidatePass(qrData);
-      if (pass != null) {
-        debugPrint('✅ QR code validation successful');
+      // Step 1: Verify the pass exists and get pass details
+      debugPrint(
+          '🔍 Attempting to validate QR code: ${qrData.substring(0, 50)}...');
+      final pass = await PassService.validatePassByQRCode(qrData);
+
+      if (pass == null) {
+        debugPrint('❌ Pass validation failed for QR code');
+        setState(() {
+          _errorMessage = 'Pass not found or invalid QR code\n'
+              'QR data length: ${qrData.length} characters\n'
+              'Please verify the QR code is correct or try the backup code.';
+          _isProcessing = false;
+        });
+        _startCooldownTimer();
+        return;
+      }
+
+      // Step 2: For Border Officials, determine action and check permissions
+      if (widget.role == AuthorityRole.borderOfficial) {
+        // Determine what action would be performed
+        final action =
+            await EnhancedBorderService.determinePassAction(pass.passId);
+
+        // Check if current official can perform this action
+        // For now, we'll skip the border-specific permission check since we don't have GPS-based border detection
+        // TODO: Implement GPS-based border detection or user border selection
+        debugPrint(
+            '⚠️ Skipping border-specific permission check - GPS border detection not implemented yet');
+
+        // Get verification method
+        final verificationMethod = await _getVerificationMethod(pass.passId);
+
+        // Load pass history for display
+        final history =
+            await EnhancedBorderService.getPassMovementHistory(pass.passId);
+
+        setState(() {
+          _scannedPass = pass;
+          _passAction = action;
+          _verificationMethod = verificationMethod;
+          _passHistory = history;
+          _currentStep = ValidationStep.passDetails;
+          _isProcessing = false;
+          _scanningEnabled = false;
+        });
+      } else {
+        // Local Authority - just validation
         setState(() {
           _scannedPass = pass;
           _currentStep = ValidationStep.passDetails;
           _isProcessing = false;
-          _scanningEnabled = false; // Disable scanning after success
+          _scanningEnabled = false;
         });
-        controller?.stop();
-      } else {
-        debugPrint(
-            '❌ QR code validation failed - no pass found or access denied');
-        setState(() {
-          _errorMessage = _errorMessage ??
-              'QR code not recognized or access denied. This could be because:\n\n'
-                  '• The QR code is not a valid pass\n'
-                  '• The pass is from a different authority\n'
-                  '• You don\'t have permission to process this pass\n\n'
-                  'Try entering the backup code manually or contact your administrator.';
-          _isProcessing = false;
-          // Keep scanning enabled for retry after cooldown
-        });
-        _startCooldownTimer();
       }
+
+      controller?.stop();
+      debugPrint('✅ Enhanced QR code validation successful');
     } catch (e) {
-      debugPrint('❌ QR validation error: $e');
+      debugPrint('❌ Enhanced QR validation error: $e');
       setState(() {
-        _errorMessage =
-            'Network error while validating QR code. Please check your internet connection and try again.';
+        _errorMessage = 'Error validating pass: ${e.toString()}';
         _isProcessing = false;
-        // Keep scanning enabled for retry after cooldown
       });
       _startCooldownTimer();
     }
@@ -1064,42 +1322,80 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
     });
 
     try {
-      debugPrint('🔍 Starting backup code validation: $backupCode');
+      debugPrint('🔍 Starting enhanced backup code validation: $backupCode');
 
-      // Validate backup code and get pass
-      final pass = await _validatePassByBackupCode(backupCode);
-      if (pass != null) {
+      // Verify the pass using backup code
+      debugPrint('🔍 Attempting to validate backup code: $backupCode');
+      final pass = await PassService.validatePassByBackupCode(backupCode);
+
+      if (pass == null) {
+        debugPrint('❌ Pass validation failed for backup code: $backupCode');
+
+        // Enhanced debugging - check what the cleaned code looks like
+        final cleanCode = backupCode
+            .trim()
+            .toUpperCase()
+            .replaceAll('-', '')
+            .replaceAll(' ', '');
+        debugPrint('🔍 Cleaned backup code: $cleanCode');
+
+        setState(() {
+          _errorMessage = 'Pass not found for backup code: $backupCode\n'
+              'Cleaned code: $cleanCode\n'
+              'Please verify the code is correct or contact support.';
+          _isProcessing = false;
+        });
+        return;
+      }
+
+      // Step 2: For Border Officials, determine action and check permissions
+      if (widget.role == AuthorityRole.borderOfficial) {
+        // Determine what action would be performed
+        final action =
+            await EnhancedBorderService.determinePassAction(pass.passId);
+
+        // Check if current official can perform this action
+        // For now, we'll skip the border-specific permission check since we don't have GPS-based border detection
+        // TODO: Implement GPS-based border detection or user border selection
         debugPrint(
-            '✅ Backup code validation successful, found pass: ${pass.passId}');
+            '⚠️ Skipping border-specific permission check - GPS border detection not implemented yet');
+
+        // Get verification method
+        final verificationMethod = await _getVerificationMethod(pass.passId);
+
+        // Load pass history for display
+        final history =
+            await EnhancedBorderService.getPassMovementHistory(pass.passId);
+
+        setState(() {
+          _scannedPass = pass;
+          _passAction = action;
+          _verificationMethod = verificationMethod;
+          _passHistory = history;
+          _currentStep = ValidationStep.passDetails;
+          _isProcessing = false;
+        });
+      } else {
+        // Local Authority - just validation
         setState(() {
           _scannedPass = pass;
           _currentStep = ValidationStep.passDetails;
           _isProcessing = false;
         });
-      } else {
-        debugPrint('❌ Backup code validation failed');
-        setState(() {
-          _errorMessage = _errorMessage ??
-              'Backup code not found or access denied. This could be because:\n\n'
-                  '• The backup code is incorrect (check for typos)\n'
-                  '• The pass is from a different authority\n'
-                  '• You don\'t have permission to process this pass\n\n'
-                  'Please verify the 8-character code (XXXX-XXXX format) or contact your administrator.';
-          _isProcessing = false;
-        });
       }
+
+      debugPrint('✅ Enhanced backup code validation successful');
     } catch (e) {
-      debugPrint('❌ Backup code validation error: $e');
+      debugPrint('❌ Enhanced backup code validation error: $e');
       setState(() {
-        _errorMessage =
-            'Network error while validating backup code. Please check your internet connection and try again.';
+        _errorMessage = 'Error validating backup code: ${e.toString()}';
         _isProcessing = false;
       });
     }
   }
 
   void _proceedToDeduction() async {
-    if (_scannedPass == null) return;
+    if (_scannedPass == null || _passAction == null) return;
 
     setState(() {
       _isProcessing = true;
@@ -1108,29 +1404,21 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
 
     try {
       debugPrint(
-          '🚀 Starting verification preference check for pass: ${_scannedPass!.passId}');
+          '🚀 Starting enhanced border processing for pass: ${_scannedPass!.passId}');
 
-      // Get the pass owner's verification preference
-      final verificationMethod =
-          await ProfileManagementService.getPassOwnerVerificationPreference(
-              _scannedPass!.passId);
-
-      debugPrint('📨 Received verification method: $verificationMethod');
-
-      // Map to internal enum
-      switch (verificationMethod) {
+      // Map verification method to internal enum for UI compatibility
+      switch (_verificationMethod) {
         case PassVerificationMethod.none:
           _validationPreference = ValidationPreference.direct;
-          debugPrint('✅ Set preference to: direct');
           break;
         case PassVerificationMethod.pin:
           _validationPreference = ValidationPreference.pin;
-          debugPrint('✅ Set preference to: pin');
           break;
         case PassVerificationMethod.secureCode:
           _validationPreference = ValidationPreference.secureCode;
-          debugPrint('✅ Set preference to: secureCode');
           break;
+        default:
+          _validationPreference = ValidationPreference.direct;
       }
 
       setState(() {
@@ -1138,29 +1426,26 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
       });
 
       if (_validationPreference == ValidationPreference.direct) {
-        debugPrint('➡️ Proceeding with direct deduction (no verification)');
-        // Direct deduction without verification
-        _performEntryDeduction();
+        debugPrint('➡️ Proceeding with direct processing (no verification)');
+        // Direct processing without verification
+        _performEnhancedMovementProcessing();
       } else {
         debugPrint('➡️ Requiring verification: $_validationPreference');
         // Require verification
         if (_validationPreference == ValidationPreference.secureCode) {
-          _dynamicSecureCode = _generateSecureCode();
-          debugPrint('🔐 Generated secure code: $_dynamicSecureCode');
+          // Generate and send secure code
+          final secureCode = _generateSecureCode();
+          debugPrint('🔐 Generated secure code: $secureCode');
 
           // Save secure code to database with expiry (10 minutes)
           final expiryTime = DateTime.now().add(const Duration(minutes: 10));
           await _supabase.from('purchased_passes').update({
-            'secure_code': _dynamicSecureCode,
+            'secure_code': secureCode,
             'secure_code_expires_at': expiryTime.toIso8601String(),
           }).eq('id', _scannedPass!.passId);
 
           debugPrint(
               '💾 Secure code saved to database, expires at: $expiryTime');
-
-          // Send the secure code to the pass owner (realtime + future SMS)
-          await _sendSecureCodeToPassOwner(
-              _scannedPass!.passId, _dynamicSecureCode!);
         }
         setState(() {
           _currentStep = ValidationStep.verification;
@@ -1169,7 +1454,7 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
     } catch (e) {
       setState(() {
         _isProcessing = false;
-        _errorMessage = 'Failed to get verification preferences: $e';
+        _errorMessage = 'Failed to prepare border processing: $e';
       });
     }
   }
@@ -1196,14 +1481,12 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
             _pinDigit2Controller.text +
             _pinDigit3Controller.text;
 
-        // Verify PIN is 3 digits and numeric
+        // Verify PIN using enhanced verification service
         if (enteredPin.length == 3 &&
             RegExp(r'^[0-9]+$').hasMatch(enteredPin)) {
-          // Get the stored PIN from database and verify
           final storedPin =
               await ProfileManagementService.getPassOwnerStoredPin(
                   _scannedPass!.passId);
-
           if (storedPin != null) {
             isValid = enteredPin == storedPin;
             debugPrint(
@@ -1217,7 +1500,7 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
           isValid = false;
         }
       } else if (_validationPreference == ValidationPreference.secureCode) {
-        // Verify secure code against database using 3-digit boxes
+        // Verify secure code using enhanced verification service
         final enteredCode = _secureDigit1Controller.text.trim() +
             _secureDigit2Controller.text.trim() +
             _secureDigit3Controller.text.trim();
@@ -1227,13 +1510,11 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
           // Get the current pass data to check stored secure code
           final currentPass =
               await PassService.getPassById(_scannedPass!.passId);
-
           if (currentPass != null &&
               currentPass.secureCode != null &&
               currentPass.secureCodeExpiresAt != null) {
             final now = DateTime.now();
             final isExpired = now.isAfter(currentPass.secureCodeExpiresAt!);
-
             if (isExpired) {
               debugPrint(
                   'Secure code expired at: ${currentPass.secureCodeExpiresAt}');
@@ -1254,7 +1535,7 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
       }
 
       if (isValid) {
-        await _performEntryDeduction();
+        await _performEnhancedMovementProcessing();
       } else {
         String? localError;
         bool localSecureError = false;
@@ -1329,58 +1610,89 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
     }
   }
 
-  Future<void> _performEntryDeduction() async {
+  Future<void> _performEnhancedMovementProcessing() async {
     setState(() {
       _currentStep = ValidationStep.processing;
       _isProcessing = true;
     });
 
     try {
-      if (_scannedPass == null) {
-        throw Exception('No pass selected');
+      if (_scannedPass == null || _passAction == null) {
+        throw Exception('No pass or action selected');
       }
 
-      // Call PassService to deduct entry
-      final success = await PassService.deductEntry(_scannedPass!.passId);
+      // For border officials, process the movement with GPS tracking
+      if (widget.role == AuthorityRole.borderOfficial) {
+        // Use enhanced border service to process movement with GPS
+        // Use the border ID from the pass, or fall back to a default border for the authority
+        String borderIdToUse = _scannedPass!.borderId ?? 'default_border';
 
-      if (!success) {
-        throw Exception('Failed to deduct entry from database');
+        // If the pass doesn't have a specific border, we need to determine which border to use
+        // For now, we'll use the first available border for the pass's authority
+        if (_scannedPass!.borderId == null) {
+          try {
+            final bordersResponse = await _supabase
+                .from('borders')
+                .select('id')
+                .eq('authority_id', _scannedPass!.authorityId ?? '')
+                .limit(1);
+
+            if (bordersResponse.isNotEmpty) {
+              borderIdToUse = bordersResponse.first['id'] as String;
+              debugPrint(
+                  '🔍 Using first available border for authority: $borderIdToUse');
+            } else {
+              debugPrint(
+                  '⚠️ No borders found for authority, using placeholder');
+              borderIdToUse = 'placeholder_border';
+            }
+          } catch (e) {
+            debugPrint('❌ Error finding border for authority: $e');
+            borderIdToUse = 'placeholder_border';
+          }
+        }
+
+        final result = await EnhancedBorderService.processPassMovement(
+          passId: _scannedPass!.passId,
+          borderId: borderIdToUse,
+          metadata: {
+            'verification_method': _verificationMethod?.name ?? 'none',
+            'official_id': widget.currentAuthorityId ?? 'unknown',
+            'processed_via': 'authority_validation_screen',
+          },
+        );
+
+        setState(() {
+          _movementResult = result;
+          _currentStep = ValidationStep.completed;
+          _isProcessing = false;
+        });
+
+        debugPrint(
+            '✅ Enhanced movement processing completed: ${result.actionDescription}');
+      } else {
+        // Local authority - just complete validation (no movement processing)
+        setState(() {
+          _currentStep = ValidationStep.completed;
+          _isProcessing = false;
+        });
+
+        debugPrint('✅ Local authority validation completed');
       }
-
-      // Update local pass object
-      _scannedPass = PurchasedPass(
-        passId: _scannedPass!.passId,
-        vehicleDescription: _scannedPass!.vehicleDescription,
-        passDescription: _scannedPass!.passDescription,
-        borderName: _scannedPass!.borderName,
-        entryLimit: _scannedPass!.entryLimit,
-        entriesRemaining: _scannedPass!.entriesRemaining - 1,
-        issuedAt: _scannedPass!.issuedAt,
-        activationDate: _scannedPass!.activationDate,
-        expiresAt: _scannedPass!.expiresAt,
-        status: _scannedPass!.status,
-        currency: _scannedPass!.currency,
-        amount: _scannedPass!.amount,
-        qrCode: _scannedPass!.qrCode,
-        shortCode: _scannedPass!.shortCode,
-        authorityId: _scannedPass!.authorityId,
-        authorityName: _scannedPass!.authorityName,
-        countryName: _scannedPass!.countryName,
-        vehicleNumberPlate: _scannedPass!.vehicleNumberPlate,
-        vehicleVin: _scannedPass!.vehicleVin,
-      );
-
-      setState(() {
-        _currentStep = ValidationStep.completed;
-        _isProcessing = false;
-      });
     } catch (e) {
       setState(() {
-        _errorMessage = 'Failed to deduct entry: $e';
+        _errorMessage = 'Failed to process movement: $e';
         _currentStep = ValidationStep.completed;
         _isProcessing = false;
       });
+      debugPrint('❌ Enhanced movement processing failed: $e');
     }
+  }
+
+  // Keep the old method for backward compatibility during transition
+  Future<void> _performEntryDeduction() async {
+    // Redirect to enhanced processing
+    await _performEnhancedMovementProcessing();
   }
 
   void _resetScanning() {
@@ -1388,11 +1700,16 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
       _currentStep = ValidationStep.scanning;
       _scannedPass = null;
       _validationPreference = null;
-      _dynamicSecureCode = null;
       _errorMessage = null;
       _isProcessing = false;
       _useBackupCode = false;
       _secureCodeHasError = false;
+
+      // Reset enhanced border control state
+      _passAction = null;
+      _movementResult = null;
+      _verificationMethod = null;
+      _passHistory = null;
 
       // Reset scanning controls
       _scanningEnabled = true;
@@ -1422,10 +1739,43 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
     controller?.start();
   }
 
+  /// Show vehicle search screen and handle pass selection
+  Future<void> _showVehicleSearch() async {
+    try {
+      final selectedPass = await VehicleSearchScreen.showModal(
+        context,
+        title: widget.role == AuthorityRole.localAuthority
+            ? 'Search for Pass to Validate'
+            : 'Search for Pass to Process',
+      );
+
+      if (selectedPass != null) {
+        // Auto-fill the backup code and validate
+        _backupCodeController.text = selectedPass.displayShortCode;
+        setState(() {
+          _useBackupCode = true;
+          _errorMessage = null;
+        });
+
+        // Automatically validate the selected pass
+        await _validateBackupCode(selectedPass.displayShortCode);
+      }
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Failed to search for passes: $e';
+      });
+    }
+  }
+
   String _generateSecureCode() {
     // Generate a 3-digit secure code (100-999)
     final random = DateTime.now().millisecondsSinceEpoch;
     return (random % 900 + 100).toString();
+  }
+
+  /// Format DateTime to a user-friendly time string
+  String _formatFriendlyTime(DateTime dateTime) {
+    return TimeUtils.formatCompactTime(dateTime);
   }
 
   Future<void> _sendSecureCodeToPassOwner(

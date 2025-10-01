@@ -45,6 +45,13 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	
+	<!-- Location permissions for border control GPS tracking -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>This app needs location access to track border crossings and verify your location during pass processing.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>This app needs location access to track border crossings and verify your location during pass processing.</string>
+	
 	<!-- Add this for Google Sign-In -->
 	<key>CFBundleURLTypes</key>
 	<array>

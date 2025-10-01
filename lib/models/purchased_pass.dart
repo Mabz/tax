@@ -9,6 +9,8 @@ class PurchasedPass {
   final DateTime activationDate;
   final DateTime expiresAt;
   final String status;
+  final String?
+      currentStatus; // Vehicle movement status: unused, checked_in, checked_out
   final String currency;
   final double amount;
   final String? qrCode;
@@ -34,6 +36,7 @@ class PurchasedPass {
     required this.activationDate,
     required this.expiresAt,
     required this.status,
+    this.currentStatus,
     required this.currency,
     required this.amount,
     this.qrCode,
@@ -105,6 +108,7 @@ class PurchasedPass {
       expiresAt: DateTime.parse(
           json['expires_at']?.toString() ?? DateTime.now().toIso8601String()),
       status: json['status']?.toString() ?? 'active',
+      currentStatus: json['current_status']?.toString(),
       currency: currency,
       amount: amount,
       qrCode: qrCodeString,
@@ -134,6 +138,7 @@ class PurchasedPass {
       'activation_date': activationDate.toIso8601String(),
       'expires_at': expiresAt.toIso8601String(),
       'status': status,
+      'current_status': currentStatus,
       'currency': currency,
       'amount': amount,
       'qr_code': qrCode,
@@ -320,6 +325,7 @@ class PurchasedPass {
         other.activationDate == activationDate &&
         other.expiresAt == expiresAt &&
         other.status == status &&
+        other.currentStatus == currentStatus &&
         other.currency == currency &&
         other.amount == amount &&
         other.qrCode == qrCode &&
@@ -334,7 +340,7 @@ class PurchasedPass {
 
   @override
   int get hashCode {
-    return Object.hash(
+    return Object.hashAll([
       passId,
       vehicleDescription,
       passDescription,
@@ -345,6 +351,7 @@ class PurchasedPass {
       activationDate,
       expiresAt,
       status,
+      currentStatus,
       currency,
       amount,
       qrCode,
@@ -355,7 +362,7 @@ class PurchasedPass {
       borderId,
       vehicleNumberPlate,
       vehicleVin,
-    );
+    ]);
   }
 
   /// Check if this pass has a valid (non-expired) secure code
@@ -385,6 +392,62 @@ class PurchasedPass {
     if (secureCodeExpiresAt == null) return 0;
     final remaining = secureCodeExpiresAt!.difference(DateTime.now());
     return remaining.inMinutes.clamp(0, 999);
+  }
+
+  /// Get the vehicle movement status display
+  String get vehicleStatusDisplay {
+    switch (currentStatus?.toLowerCase()) {
+      case 'unused':
+        return 'Not Yet Arrived';
+      case 'checked_in':
+        return 'In Country';
+      case 'checked_out':
+        return 'Departed';
+      default:
+        return 'Status Unknown';
+    }
+  }
+
+  /// Get the vehicle status description
+  String get vehicleStatusDescription {
+    switch (currentStatus?.toLowerCase()) {
+      case 'unused':
+        return 'Vehicle has not yet crossed the border';
+      case 'checked_in':
+        return 'Vehicle has entered the country';
+      case 'checked_out':
+        return 'Vehicle has exited the country';
+      default:
+        return 'Vehicle movement status is not available';
+    }
+  }
+
+  /// Get the color for vehicle status display
+  String get vehicleStatusColorName {
+    switch (currentStatus?.toLowerCase()) {
+      case 'unused':
+        return 'grey'; // Neutral - hasn't started journey
+      case 'checked_in':
+        return 'green'; // Positive - vehicle is in country
+      case 'checked_out':
+        return 'blue'; // Neutral/Complete - journey completed
+      default:
+        return 'grey'; // Unknown status
+    }
+  }
+
+  /// Get the icon for vehicle status
+  String get vehicleStatusIcon {
+    switch (currentStatus?.toLowerCase()) {
+      case 'unused':
+        return 'pending'; // Icons.schedule or Icons.pending
+      case 'checked_in':
+        return 'in_country'; // Icons.location_on or Icons.check_circle
+      case 'checked_out':
+        return 'departed'; // Icons.flight_takeoff or Icons.exit_to_app
+      default:
+        return 'unknown'; // Icons.help_outline
+    }
   }
 
   @override

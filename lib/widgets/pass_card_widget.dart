@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../models/purchased_pass.dart';
+import 'pass_history_widget.dart';
 
 class PassCardWidget extends StatelessWidget {
   final PurchasedPass pass;
@@ -259,6 +260,11 @@ class PassCardWidget extends StatelessWidget {
                     ],
                   ),
                   SizedBox(height: isCompact ? 12 : 16),
+
+                  // Vehicle Status Section
+                  _buildVehicleStatusSection(isCompact),
+                  SizedBox(height: isCompact ? 12 : 16),
+
                   // Vehicle Info (optional)
                   if (pass.vehicleDescription.isNotEmpty ||
                       (pass.vehicleNumberPlate != null &&
@@ -334,6 +340,28 @@ class PassCardWidget extends StatelessWidget {
                         pass.expiresAt), // Always use friendly dates
                     valueColor: pass.isExpired ? Colors.red : Colors.black87,
                     isCompact: isCompact,
+                  ),
+
+                  // Pass History Button
+                  SizedBox(height: isCompact ? 12 : 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () => _showPassHistory(context),
+                      icon: const Icon(Icons.history, size: 18),
+                      label: const Text('View Pass History'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.orange,
+                        foregroundColor: Colors.white,
+                        padding: EdgeInsets.symmetric(
+                          vertical: isCompact ? 12 : 14,
+                          horizontal: 16,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -775,5 +803,98 @@ class PassCardWidget extends StatelessWidget {
         );
       }
     }
+  }
+
+  void _showPassHistory(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => PassHistoryWidget(
+          passId: pass.passId,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildVehicleStatusSection(bool isCompact) {
+    // Get status colors
+    Color statusColor;
+    IconData statusIcon;
+
+    switch (pass.vehicleStatusColorName) {
+      case 'green':
+        statusColor = Colors.green.shade600;
+        statusIcon = Icons.location_on;
+        break;
+      case 'blue':
+        statusColor = Colors.blue.shade600;
+        statusIcon = Icons.flight_takeoff;
+        break;
+      case 'grey':
+      default:
+        statusColor = Colors.grey.shade600;
+        statusIcon =
+            pass.currentStatus == null ? Icons.help_outline : Icons.schedule;
+        break;
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(isCompact ? 12 : 16),
+      decoration: BoxDecoration(
+        color: statusColor.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: statusColor.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                statusIcon,
+                color: statusColor,
+                size: isCompact ? 20 : 24,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Vehicle Status',
+                  style: TextStyle(
+                    fontSize: isCompact ? 14 : 16,
+                    fontWeight: FontWeight.bold,
+                    color: statusColor,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  pass.vehicleStatusDisplay,
+                  style: TextStyle(
+                    fontSize: isCompact ? 11 : 12,
+                    fontWeight: FontWeight.bold,
+                    color: statusColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            pass.vehicleStatusDescription,
+            style: TextStyle(
+              fontSize: isCompact ? 12 : 14,
+              color: statusColor.withValues(alpha: 0.8),
+              height: 1.3,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

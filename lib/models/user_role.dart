@@ -5,6 +5,11 @@ enum UserRole {
       'Official processing border crossings', true),
   countryAdmin('country_admin', 'Country Administrator',
       'Administrator managing country-specific settings', true),
+  businessIntelligence(
+      'business_intelligence',
+      'Business Intelligence',
+      'Analyst with access to insights and analytics within the authority',
+      true),
   superuser(
       'superuser', 'Superuser', 'System administrator with full access', false);
 
@@ -159,6 +164,7 @@ class UserRoleData {
   bool isSuperuser() => hasRole(UserRole.superuser);
   bool isCountryAdmin() => hasRole(UserRole.countryAdmin);
   bool isBorderOfficial() => hasRole(UserRole.borderOfficial);
+  bool isBusinessIntelligence() => hasRole(UserRole.businessIntelligence);
   bool isTraveller() => hasRole(UserRole.traveller);
 
   String? getCountryForRole(UserRole role) {

@@ -234,6 +234,7 @@ class CountryUserService {
         AppConstants.roleCountryAdmin,
         AppConstants.roleCountryAuditor,
         AppConstants.roleBorderOfficial,
+        AppConstants.roleBusinessIntelligence,
         AppConstants.roleLocalAuthority,
       ]).order('display_name');
 

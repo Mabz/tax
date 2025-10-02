@@ -293,11 +293,18 @@ class PassCardWidget extends StatelessWidget {
                       pass.vehicleVin!,
                       isCompact: isCompact,
                     ),
-                  if (pass.borderName != null)
+                  _buildDetailRow(
+                    Icons.location_on,
+                    'Entry Point',
+                    pass.entryPointName ?? 'Any Entry Point',
+                    isCompact: isCompact,
+                  ),
+                  // Exit Point (if available)
+                  if (pass.exitPointName != null)
                     _buildDetailRow(
-                      Icons.location_on,
-                      'Border',
-                      pass.borderName!,
+                      Icons.logout,
+                      'Exit Point',
+                      pass.exitPointName!,
                       isCompact: isCompact,
                     ),
                   _buildDetailRow(
@@ -651,7 +658,8 @@ class PassCardWidget extends StatelessWidget {
       'passId': pass.passId,
       'passDescription': pass.passDescription,
       'vehicleDescription': pass.vehicleDescription,
-      'borderName': pass.borderName ?? 'Any',
+      'entryPointName': pass.entryPointName ?? 'Any Entry Point',
+      'exitPointName': pass.exitPointName ?? 'Any Exit Point',
       'issuedAt':
           DateTime(pass.issuedAt.year, pass.issuedAt.month, pass.issuedAt.day)
               .toIso8601String(),

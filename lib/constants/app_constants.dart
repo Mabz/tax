@@ -15,7 +15,8 @@ class AppConstants {
   static const String getPassesForUserFunction = 'get_passes_for_user';
   static const String getPassesForProfileFunction = 'get_passes_for_profile';
   static const String getVehiclesForUserFunction = 'get_vehicles_for_user';
-  static const String getVehiclesForProfileFunction = 'get_vehicles_for_profile';
+  static const String getVehiclesForProfileFunction =
+      'get_vehicles_for_profile';
 
   /// Invitation function names
   static const String inviteUserToRoleFunction = 'invite_user_to_role';
@@ -38,6 +39,7 @@ class AppConstants {
   static const String roleCountryAdmin = 'country_admin';
   static const String roleCountryAuditor = 'country_auditor';
   static const String roleBorderOfficial = 'border_official';
+  static const String roleBusinessIntelligence = 'business_intelligence';
   static const String roleLocalAuthority = 'local_authority';
   static const String roleSuperuser = 'superuser';
 

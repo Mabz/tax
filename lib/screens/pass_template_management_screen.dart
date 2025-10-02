@@ -64,14 +64,14 @@ class _PassTemplateManagementScreenState
   }
 
   Future<void> _loadData() async {
+    // Get the authority ID directly from the country object (passed from home screen)
+    final authorityId = widget.country['authority_id'] as String;
+
     try {
       setState(() {
         _isLoading = true;
         _error = null;
       });
-
-      // Get the authority ID directly from the country object (passed from home screen)
-      final authorityId = widget.country['authority_id'] as String;
 
       // Load all required data using authority-based methods
       final results = await Future.wait([
@@ -91,7 +91,20 @@ class _PassTemplateManagementScreenState
         _currencies = results[4] as List<Currency>;
         _isLoading = false;
       });
+
+      debugPrint('✅ Pass template data loaded successfully:');
+      debugPrint('  - Authority ID: $authorityId');
+      debugPrint('  - Pass Templates: ${_passTemplates.length}');
+      debugPrint('  - Tax Rates: ${_taxRates.length}');
+      debugPrint('  - Vehicle Types: ${_vehicleTypes.length}');
+      debugPrint('  - Borders: ${_borders.length}');
+      debugPrint('  - Currencies: ${_currencies.length}');
     } catch (e) {
+      debugPrint('❌ Error loading pass template data: $e');
+      debugPrint('📋 Loading context:');
+      debugPrint('  - Authority ID: $authorityId');
+      debugPrint('  - Country: ${widget.country}');
+
       setState(() {
         _error = 'Failed to load data: $e';
         _isLoading = false;
@@ -144,7 +157,10 @@ class _PassTemplateManagementScreenState
                   Text('Description: ${template.description}',
                       style: const TextStyle(fontWeight: FontWeight.bold)),
                   Text('Vehicle Type: ${template.vehicleType ?? 'Unknown'}'),
-                  Text('Border: ${template.borderName ?? 'All borders'}'),
+                  Text(
+                      'Entry Point: ${template.entryPointName ?? 'Any entry point'}'),
+                  if (template.exitPointName != null)
+                    Text('Exit Point: ${template.exitPointName}'),
                   Text(
                       'Tax Amount: ${template.taxAmount} ${template.currencyCode}'),
                 ],
@@ -327,7 +343,9 @@ class _PassTemplateManagementScreenState
                                         Text(
                                             'Vehicle: ${template.vehicleType ?? 'Unknown'}'),
                                         Text(
-                                            'Border: ${template.borderName ?? 'All borders'}'),
+                                            'Entry: ${template.entryPointName ?? 'Any entry point'}'),
+                                        Text(
+                                            'Exit: ${template.exitPointName ?? 'Any exit point'}'),
                                         Text(
                                             'Tax: ${template.taxAmount} ${template.currencyCode}'),
                                         Text(
@@ -410,9 +428,11 @@ class _PassTemplateDialogState extends State<_PassTemplateDialog> {
 
   VehicleTaxRate? _selectedTaxRate;
   VehicleType? _selectedVehicleType;
-  border_model.Border? _selectedBorder;
+  border_model.Border? _selectedEntryPoint;
+  border_model.Border? _selectedExitPoint;
   Currency? _selectedCurrency;
   bool _isActive = true;
+  bool _allowUserSelectablePoints = false;
   bool _isLoading = false;
 
   @override
@@ -436,6 +456,7 @@ class _PassTemplateDialogState extends State<_PassTemplateDialog> {
       _passAdvanceDaysController.text = template.passAdvanceDays.toString();
       _taxAmountController.text = template.taxAmount.toString();
       _isActive = template.isActive;
+      _allowUserSelectablePoints = template.allowUserSelectablePoints;
 
       // Find matching vehicle type
       _selectedVehicleType = widget.vehicleTypes.firstWhere(
@@ -443,10 +464,18 @@ class _PassTemplateDialogState extends State<_PassTemplateDialog> {
         orElse: () => widget.vehicleTypes.first,
       );
 
-      // Find matching border
-      if (template.borderName != null) {
-        _selectedBorder = widget.borders.firstWhere(
-          (b) => b.name == template.borderName,
+      // Find matching entry point
+      if (template.entryPointName != null) {
+        _selectedEntryPoint = widget.borders.firstWhere(
+          (b) => b.name == template.entryPointName,
+          orElse: () => widget.borders.first,
+        );
+      }
+
+      // Find matching exit point
+      if (template.exitPointName != null) {
+        _selectedExitPoint = widget.borders.firstWhere(
+          (b) => b.name == template.exitPointName,
           orElse: () => widget.borders.first,
         );
       }
@@ -493,15 +522,18 @@ class _PassTemplateDialogState extends State<_PassTemplateDialog> {
         orElse: () => widget.vehicleTypes.first,
       );
 
-      // Find matching border
+      // Find matching entry point (use tax rate border as entry point)
       if (taxRate.borderName != null) {
-        _selectedBorder = widget.borders.firstWhere(
+        _selectedEntryPoint = widget.borders.firstWhere(
           (b) => b.name == taxRate.borderName,
           orElse: () => widget.borders.first,
         );
       } else {
-        _selectedBorder = null;
+        _selectedEntryPoint = null;
       }
+
+      // Clear exit point when using tax rate template
+      _selectedExitPoint = null;
 
       // Find matching currency
       _selectedCurrency = widget.currencies.firstWhere(
@@ -520,7 +552,8 @@ class _PassTemplateDialogState extends State<_PassTemplateDialog> {
     }
 
     final vehicleType = _selectedVehicleType!.label;
-    final border = _selectedBorder?.name ?? 'All borders';
+    final entryPoint = _selectedEntryPoint?.name ?? 'Any entry point';
+    final exitPoint = _selectedExitPoint?.name ?? 'Any exit point';
     final taxAmount = _taxAmountController.text.isNotEmpty
         ? _taxAmountController.text
         : '0.00';
@@ -539,8 +572,16 @@ class _PassTemplateDialogState extends State<_PassTemplateDialog> {
         ? 'starts immediately'
         : 'starts in $passAdvanceDays days';
 
+    final routeText = _selectedEntryPoint != null && _selectedExitPoint != null
+        ? 'from $entryPoint to $exitPoint'
+        : _selectedEntryPoint != null
+            ? 'entry via $entryPoint'
+            : _selectedExitPoint != null
+                ? 'exit via $exitPoint'
+                : 'any entry/exit points';
+
     final description =
-        '$vehicleType pass for $border - $currency $taxAmount per entry, $entryLimit entries allowed, valid for $expirationDays days, $advanceText';
+        '$vehicleType pass $routeText - $currency $taxAmount per entry, $entryLimit entries allowed, valid for $expirationDays days, $advanceText';
 
     // Update the description field
     _descriptionController.text = description;
@@ -584,7 +625,9 @@ class _PassTemplateDialogState extends State<_PassTemplateDialog> {
           passAdvanceDays: int.parse(_passAdvanceDaysController.text),
           taxAmount: double.parse(_taxAmountController.text),
           currencyCode: _selectedCurrency!.code,
-          borderId: _selectedBorder?.id,
+          entryPointId: _selectedEntryPoint?.id,
+          exitPointId: _selectedExitPoint?.id,
+          allowUserSelectablePoints: _allowUserSelectablePoints,
         );
       } else {
         // Update existing template
@@ -597,6 +640,9 @@ class _PassTemplateDialogState extends State<_PassTemplateDialog> {
           taxAmount: double.parse(_taxAmountController.text),
           currencyCode: _selectedCurrency!.code,
           isActive: _isActive,
+          entryPointId: _selectedEntryPoint?.id,
+          exitPointId: _selectedExitPoint?.id,
+          allowUserSelectablePoints: _allowUserSelectablePoints,
         );
       }
 
@@ -612,6 +658,28 @@ class _PassTemplateDialogState extends State<_PassTemplateDialog> {
         widget.onSaved();
       }
     } catch (e) {
+      debugPrint('❌ Error saving pass template: $e');
+      debugPrint('📋 Template details:');
+      debugPrint('  - Authority ID: ${widget.authorityId}');
+      debugPrint(
+          '  - Vehicle Type: ${_selectedVehicleType?.id} (${_selectedVehicleType?.label})');
+      debugPrint(
+          '  - Entry Point: ${_selectedEntryPoint?.id} (${_selectedEntryPoint?.name})');
+      debugPrint(
+          '  - Exit Point: ${_selectedExitPoint?.id} (${_selectedExitPoint?.name})');
+      debugPrint('  - Currency: ${_selectedCurrency?.code}');
+      debugPrint('  - Allow User Selectable: $_allowUserSelectablePoints');
+      debugPrint('  - Description: ${_descriptionController.text}');
+      debugPrint('  - Entry Limit: ${_entryLimitController.text}');
+      debugPrint('  - Expiration Days: ${_expirationDaysController.text}');
+      debugPrint('  - Pass Advance Days: ${_passAdvanceDaysController.text}');
+      debugPrint('  - Tax Amount: ${_taxAmountController.text}');
+      debugPrint('  - Is Active: $_isActive');
+      debugPrint('  - Is Update: ${widget.template != null}');
+      if (widget.template != null) {
+        debugPrint('  - Template ID: ${widget.template!.id}');
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to save pass template: $e')),
@@ -663,8 +731,11 @@ class _PassTemplateDialogState extends State<_PassTemplateDialog> {
                       _buildDetailRow('Vehicle Type:',
                           _selectedVehicleType?.label ?? 'Not selected'),
                       const SizedBox(height: 8),
-                      _buildDetailRow(
-                          'Border:', _selectedBorder?.name ?? 'All borders'),
+                      _buildDetailRow('Entry Point:',
+                          _selectedEntryPoint?.name ?? 'Any entry point'),
+                      const SizedBox(height: 8),
+                      _buildDetailRow('Exit Point:',
+                          _selectedExitPoint?.name ?? 'Any exit point'),
                       const SizedBox(height: 8),
                       _buildDetailRow('Tax Amount:',
                           '${_taxAmountController.text} ${_selectedCurrency?.code ?? ''}'),
@@ -680,6 +751,9 @@ class _PassTemplateDialogState extends State<_PassTemplateDialog> {
                       const SizedBox(height: 8),
                       _buildDetailRow(
                           'Status:', _isActive ? 'Active' : 'Inactive'),
+                      const SizedBox(height: 8),
+                      _buildDetailRow('User Selectable Points:',
+                          _allowUserSelectablePoints ? 'Yes' : 'No'),
                     ],
                   ),
                 ),
@@ -910,36 +984,137 @@ class _PassTemplateDialogState extends State<_PassTemplateDialog> {
                 ),
                 const SizedBox(height: 16),
 
-                // Border
-                DropdownButtonFormField<border_model.Border>(
-                  value: _selectedBorder,
-                  decoration: const InputDecoration(
-                    labelText: 'Border (Optional)',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.border_all, color: Colors.orange),
+                // User Selectable Points Checkbox (moved above entry/exit points)
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue.shade200),
                   ),
-                  items: [
-                    const DropdownMenuItem<border_model.Border>(
-                      value: null,
-                      child: Text('All borders'),
-                    ),
-                    ...widget.borders
-                        .map((border) => DropdownMenuItem<border_model.Border>(
-                              value: border,
-                              child: Text(
-                                border.name,
-                                overflow: TextOverflow.ellipsis,
-                                maxLines: 1,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      CheckboxListTile(
+                        title: const Text(
+                          'Allow users to select entry/exit points',
+                          style: TextStyle(fontWeight: FontWeight.w500),
+                        ),
+                        subtitle: const Text(
+                          'When enabled, users can choose different entry/exit points when purchasing this pass',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                        value: _allowUserSelectablePoints,
+                        onChanged: (value) {
+                          setState(() {
+                            _allowUserSelectablePoints = value ?? false;
+                            // If enabling user selectable points, clear fixed entry/exit points
+                            if (_allowUserSelectablePoints) {
+                              _selectedEntryPoint = widget.borders.isNotEmpty
+                                  ? widget.borders.first
+                                  : null;
+                              _selectedExitPoint = null;
+                            }
+                          });
+                          _generateDescription();
+                        },
+                        activeColor: Colors.blue,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                      if (_allowUserSelectablePoints)
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          margin: const EdgeInsets.only(top: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.shade100,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.info_outline,
+                                  size: 16, color: Colors.blue),
+                              SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Users will be able to select from all available borders in your authority when purchasing this pass.',
+                                  style: TextStyle(
+                                      fontSize: 11, color: Colors.blue),
+                                ),
                               ),
-                            )),
-                  ],
-                  onChanged: (value) {
-                    setState(() {
-                      _selectedBorder = value;
-                    });
-                    _generateDescription();
-                  },
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
+                const SizedBox(height: 16),
+
+                // Entry/Exit Point dropdowns (only show if user selectable points is disabled)
+                if (!_allowUserSelectablePoints) ...[
+                  // Entry Point
+                  DropdownButtonFormField<border_model.Border>(
+                    value: _selectedEntryPoint,
+                    decoration: const InputDecoration(
+                      labelText: 'Entry Point (Optional)',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.login, color: Colors.orange),
+                    ),
+                    items: [
+                      const DropdownMenuItem<border_model.Border>(
+                        value: null,
+                        child: Text('Any entry point'),
+                      ),
+                      ...widget.borders.map(
+                          (border) => DropdownMenuItem<border_model.Border>(
+                                value: border,
+                                child: Text(
+                                  border.name,
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
+                                ),
+                              )),
+                    ],
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedEntryPoint = value;
+                      });
+                      _generateDescription();
+                    },
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Exit Point
+                  DropdownButtonFormField<border_model.Border>(
+                    value: _selectedExitPoint,
+                    decoration: const InputDecoration(
+                      labelText: 'Exit Point (Optional)',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.logout, color: Colors.orange),
+                    ),
+                    items: [
+                      const DropdownMenuItem<border_model.Border>(
+                        value: null,
+                        child: Text('Any exit point'),
+                      ),
+                      ...widget.borders.map(
+                          (border) => DropdownMenuItem<border_model.Border>(
+                                value: border,
+                                child: Text(
+                                  border.name,
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
+                                ),
+                              )),
+                    ],
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedExitPoint = value;
+                      });
+                      _generateDescription();
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                ],
                 const SizedBox(height: 16),
 
                 // Entry Limit

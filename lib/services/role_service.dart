@@ -103,6 +103,11 @@ class RoleService {
     return profileHasRole(AppConstants.roleLocalAuthority);
   }
 
+  /// Check if current user has business intelligence role (without country restriction)
+  static Future<bool> hasBusinessIntelligenceRole() async {
+    return profileHasRole(AppConstants.roleBusinessIntelligence);
+  }
+
   /// Check if current user has any auditor role (country auditor or superuser)
   static Future<bool> hasAuditorRole() async {
     final isSuperuser = await RoleService.isSuperuser();
@@ -126,6 +131,9 @@ class RoleService {
     }
     if (await profileHasRole(AppConstants.roleBorderOfficial)) {
       roles.add(AppConstants.roleBorderOfficial);
+    }
+    if (await profileHasRole(AppConstants.roleBusinessIntelligence)) {
+      roles.add(AppConstants.roleBusinessIntelligence);
     }
     if (await profileHasRole(AppConstants.roleLocalAuthority)) {
       roles.add(AppConstants.roleLocalAuthority);

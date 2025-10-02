@@ -37,7 +37,9 @@ class VehicleService {
     if (response == null) return [];
 
     final List<dynamic> data = response as List<dynamic>;
-    return data.map((json) => Vehicle.fromJson(json as Map<String, dynamic>)).toList();
+    return data
+        .map((json) => Vehicle.fromJson(json as Map<String, dynamic>))
+        .toList();
   }
 
   /// Updates an existing vehicle

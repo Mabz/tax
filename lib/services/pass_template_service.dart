@@ -20,9 +20,26 @@ class PassTemplateService {
     required int passAdvanceDays,
     required double taxAmount,
     required String currencyCode,
-    String? borderId,
+    String? entryPointId,
+    String? exitPointId,
+    bool allowUserSelectablePoints = false,
   }) async {
     try {
+      debugPrint('🔄 Creating pass template...');
+      debugPrint('📋 Parameters:');
+      debugPrint('  - Authority ID: $authorityId');
+      debugPrint('  - Creator Profile ID: $creatorProfileId');
+      debugPrint('  - Vehicle Type ID: $vehicleTypeId');
+      debugPrint('  - Description: $description');
+      debugPrint('  - Entry Limit: $entryLimit');
+      debugPrint('  - Expiration Days: $expirationDays');
+      debugPrint('  - Pass Advance Days: $passAdvanceDays');
+      debugPrint('  - Tax Amount: $taxAmount');
+      debugPrint('  - Currency Code: $currencyCode');
+      debugPrint('  - Entry Point ID: $entryPointId');
+      debugPrint('  - Exit Point ID: $exitPointId');
+      debugPrint(
+          '  - Allow User Selectable Points: $allowUserSelectablePoints');
       await _supabase.rpc('create_pass_template', params: {
         'target_authority_id': authorityId,
         'creator_profile_id': creatorProfileId,
@@ -33,9 +50,14 @@ class PassTemplateService {
         'pass_advance_days': passAdvanceDays,
         'tax_amount': taxAmount,
         'currency_code': currencyCode,
-        'target_border_id': borderId,
+        'target_entry_point_id': entryPointId,
+        'target_exit_point_id': exitPointId,
+        'allow_user_selectable_points': allowUserSelectablePoints,
       });
+
+      debugPrint('✅ Pass template created successfully');
     } catch (e) {
+      debugPrint('❌ Failed to create pass template: $e');
       throw Exception('Failed to create pass template: $e');
     }
   }
@@ -50,8 +72,25 @@ class PassTemplateService {
     required double taxAmount,
     required String currencyCode,
     required bool isActive,
+    String? entryPointId,
+    String? exitPointId,
+    bool allowUserSelectablePoints = false,
   }) async {
     try {
+      debugPrint('🔄 Updating pass template...');
+      debugPrint('📋 Parameters:');
+      debugPrint('  - Template ID: $templateId');
+      debugPrint('  - Description: $description');
+      debugPrint('  - Entry Limit: $entryLimit');
+      debugPrint('  - Expiration Days: $expirationDays');
+      debugPrint('  - Pass Advance Days: $passAdvanceDays');
+      debugPrint('  - Tax Amount: $taxAmount');
+      debugPrint('  - Currency Code: $currencyCode');
+      debugPrint('  - Is Active: $isActive');
+      debugPrint('  - Entry Point ID: $entryPointId');
+      debugPrint('  - Exit Point ID: $exitPointId');
+      debugPrint(
+          '  - Allow User Selectable Points: $allowUserSelectablePoints');
       await _supabase.rpc('update_pass_template', params: {
         'template_id': templateId,
         'new_description': description,
@@ -61,8 +100,14 @@ class PassTemplateService {
         'new_tax_amount': taxAmount,
         'new_currency_code': currencyCode,
         'new_is_active': isActive,
+        'new_entry_point_id': entryPointId,
+        'new_exit_point_id': exitPointId,
+        'new_allow_user_selectable_points': allowUserSelectablePoints,
       });
+
+      debugPrint('✅ Pass template updated successfully');
     } catch (e) {
+      debugPrint('❌ Failed to update pass template: $e');
       throw Exception('Failed to update pass template: $e');
     }
   }
@@ -97,7 +142,8 @@ class PassTemplateService {
           'id': item['id'],
           'authority_id': authorityId,
           'country_id': '', // Not returned by function but required
-          'border_id': null, // Will be handled by border_name
+          'entry_point_id': item['entry_point_id'],
+          'exit_point_id': item['exit_point_id'],
           'created_by_profile_id': '', // Not returned by function
           'vehicle_type_id': '', // Will be handled by vehicle_type
           'description': item['description'],
@@ -108,11 +154,15 @@ class PassTemplateService {
           'tax_amount': item['tax_amount'],
           'currency_code': item['currency_code'],
           'is_active': item['is_active'],
+          'allow_user_selectable_points':
+              item['allow_user_selectable_points'] ?? false,
           'created_at':
               DateTime.now().toIso8601String(), // Not returned by function
           'updated_at':
               DateTime.now().toIso8601String(), // Not returned by function
-          'border_name': item['border_name'],
+          'entry_point_name':
+              item['entry_point_name'] ?? item['border_name'], // Support legacy
+          'exit_point_name': item['exit_point_name'],
           'vehicle_type': item['vehicle_type'],
         });
       }).toList();

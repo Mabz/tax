@@ -7,7 +7,6 @@ import '../models/purchased_pass.dart';
 import '../services/pass_service.dart';
 
 import '../services/enhanced_border_service.dart';
-// import '../services/pass_verification_service.dart'; // Removed - using working methods instead
 import '../services/profile_management_service.dart';
 import '../enums/pass_verification_method.dart';
 import '../widgets/pass_card_widget.dart';
@@ -1624,12 +1623,12 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
       // For border officials, process the movement with GPS tracking
       if (widget.role == AuthorityRole.borderOfficial) {
         // Use enhanced border service to process movement with GPS
-        // Use the border ID from the pass, or fall back to a default border for the authority
-        String borderIdToUse = _scannedPass!.borderId ?? 'default_border';
+        // Use the entry point ID from the pass, or fall back to a default border for the authority
+        String borderIdToUse = _scannedPass!.entryPointId ?? 'default_border';
 
-        // If the pass doesn't have a specific border, we need to determine which border to use
+        // If the pass doesn't have a specific entry point, we need to determine which border to use
         // For now, we'll use the first available border for the pass's authority
-        if (_scannedPass!.borderId == null) {
+        if (_scannedPass!.entryPointId == null) {
           try {
             final bordersResponse = await _supabase
                 .from('borders')
@@ -1958,8 +1957,10 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
           _buildSummaryRow('Authority', pass.authorityName!, color),
         if (pass.countryName != null)
           _buildSummaryRow('Country', pass.countryName!, color),
-        if (pass.borderName != null)
-          _buildSummaryRow('Border', pass.borderName!, color),
+        _buildSummaryRow(
+            'Entry Point', pass.entryPointName ?? 'Any Entry Point', color),
+        if (pass.exitPointName != null)
+          _buildSummaryRow('Exit Point', pass.exitPointName!, color),
         _buildSummaryRow('Status', pass.statusDisplay, color),
         _buildSummaryRow('Entries', pass.entriesDisplay, color),
       ],
@@ -2005,11 +2006,11 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
 
       // Use pass data directly instead of making additional database calls
       final passAuthorityId = pass.authorityId;
-      final passBorderId = pass.borderId;
+      final passEntryPointId = pass.entryPointId;
 
       debugPrint('📋 Pass Information:');
       debugPrint('  - Authority ID: $passAuthorityId');
-      debugPrint('  - Border ID: $passBorderId');
+      debugPrint('  - Entry Point ID: $passEntryPointId');
       debugPrint('  - Country Name: ${pass.countryName}');
       debugPrint('👤 Current Border Official:');
       debugPrint('  - Authority ID: ${widget.currentAuthorityId}');
@@ -2017,9 +2018,9 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
       debugPrint('  - Role: ${widget.role}');
 
       if (widget.role == AuthorityRole.borderOfficial) {
-        // STEP 1: Check if pass has a border_id set
-        if (passBorderId != null) {
-          debugPrint('🔍 Pass has specific border: $passBorderId');
+        // STEP 1: Check if pass has an entry_point_id set
+        if (passEntryPointId != null) {
+          debugPrint('🔍 Pass has specific entry point: $passEntryPointId');
 
           // STEP 2: Check if current border official is assigned to this border
           final currentUser = _supabase.auth.currentUser;
@@ -2035,25 +2036,27 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
               .from('border_official_borders')
               .select('border_id')
               .eq('profile_id', currentUser.id)
-              .eq('border_id', passBorderId)
+              .eq('border_id', passEntryPointId)
               .eq('is_active', true)
               .maybeSingle();
 
           if (assignmentResponse == null) {
             debugPrint(
-                '❌ Border official not assigned to border: $passBorderId');
+                '❌ Border official not assigned to entry point: $passEntryPointId');
             setState(() {
               _errorMessage =
-                  'Access denied: You are not assigned to process passes for this specific border. This pass is for a border you do not have access to.';
+                  'Access denied: You are not assigned to process passes for this specific entry point. This pass is for a border you do not have access to.';
             });
             return false;
           }
 
-          debugPrint('✅ Border official is assigned to border: $passBorderId');
-          debugPrint('✅ Validation passed - can process border-specific pass');
+          debugPrint(
+              '✅ Border official is assigned to entry point: $passEntryPointId');
+          debugPrint(
+              '✅ Validation passed - can process entry point-specific pass');
           return true;
         } else {
-          debugPrint('🔍 Pass has no specific border (general pass)');
+          debugPrint('🔍 Pass has no specific entry point (general pass)');
 
           // STEP 3: For general passes, check if border official is from same authority
           if (widget.currentAuthorityId == null) {
@@ -2133,7 +2136,8 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
   Future<Map<String, dynamic>?> _getPassAuthorityInfo(String passId) async {
     try {
       final response = await _supabase.from('purchased_passes').select('''
-            border_id,
+            entry_point_id,
+            exit_point_id,
             authority_id,
             country_id,
             authorities!inner(
@@ -2148,8 +2152,10 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
         return {
           'authority_id': authority['id'] as String,
           'country_id': authority['country_id'] as String,
-          'border_id': response['border_id']
-              as String?, // Get border_id directly from purchased_passes
+          'entry_point_id': response['entry_point_id']
+              as String?, // Get entry_point_id directly from purchased_passes
+          'exit_point_id': response['exit_point_id']
+              as String?, // Get exit_point_id directly from purchased_passes
         };
       }
 

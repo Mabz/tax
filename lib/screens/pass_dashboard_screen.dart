@@ -850,6 +850,11 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
   Vehicle? _selectedVehicle;
   DateTime? _selectedActivationDate;
 
+  // User-selected entry/exit points for templates that allow selection
+  Map<String, dynamic>? _selectedEntryPoint;
+  Map<String, dynamic>? _selectedExitPoint;
+  List<Map<String, dynamic>> _availableBorders = [];
+
   bool _isLoadingCountries = true;
   bool _isLoadingTemplates = false;
   bool _isLoadingVehicles = true;
@@ -914,6 +919,9 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
       setState(() {
         _passTemplates = templates;
         _selectedPassTemplate = null;
+        _selectedEntryPoint = null;
+        _selectedExitPoint = null;
+        _availableBorders = [];
         _isLoadingTemplates = false;
       });
     } catch (e) {
@@ -921,6 +929,37 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error loading pass templates: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _loadBordersForTemplate(PassTemplate template) async {
+    if (!template.allowUserSelectablePoints) return;
+
+    try {
+      // Get the authority ID from the template and load its borders
+      debugPrint(
+          'Main screen: Loading borders for authority: ${template.authorityId}');
+      final borders =
+          await PassService.getBordersForAuthority(template.authorityId);
+      debugPrint('Main screen: Loaded ${borders.length} borders');
+
+      setState(() {
+        _availableBorders = borders
+            .map((border) => {
+                  'id': border['border_id'],
+                  'name': border['border_name'],
+                })
+            .toList();
+        _selectedEntryPoint = null;
+        _selectedExitPoint = null;
+      });
+    } catch (e) {
+      debugPrint('Main screen: Error loading borders: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading borders: $e')),
         );
       }
     }
@@ -969,6 +1008,8 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
         vehicleId: _selectedVehicle?.id,
         passTemplateId: _selectedPassTemplate!.id,
         activationDate: _selectedActivationDate!,
+        userSelectedEntryPointId: _selectedEntryPoint?['id'],
+        userSelectedExitPointId: _selectedExitPoint?['id'],
       );
 
       if (mounted) {
@@ -1348,9 +1389,23 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
                     ),
                   ),
                   const SizedBox(height: 6),
-                  if (_selectedPassTemplate!.borderName != null)
+                  // Entry/Exit Point display (selection now happens in dialog)
+                  if (_selectedPassTemplate!.allowUserSelectablePoints) ...[
+                    // Show user-selected entry/exit points
+                    _buildDetailRow('Entry Point',
+                        _selectedEntryPoint?['name'] ?? 'Not selected'),
+                    _buildDetailRow('Exit Point',
+                        _selectedExitPoint?['name'] ?? 'Not selected'),
+                  ] else ...[
+                    // Show fixed entry/exit points from template
                     _buildDetailRow(
-                        'Border', _selectedPassTemplate!.borderName!),
+                        'Entry Point',
+                        _selectedPassTemplate!.entryPointName ??
+                            'Any Entry Point'),
+                    if (_selectedPassTemplate!.exitPointName != null)
+                      _buildDetailRow(
+                          'Exit Point', _selectedPassTemplate!.exitPointName!),
+                  ],
                   _buildDetailRow('Vehicle Type',
                       _selectedPassTemplate!.vehicleType ?? 'Any'),
                   _buildDetailRow(
@@ -1405,7 +1460,7 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
   }
 
   Future<void> _showPassSelectionDialog() async {
-    final result = await showDialog<PassTemplate>(
+    final result = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (context) => PassSelectionDialog(
         passTemplates: _passTemplates,
@@ -1414,8 +1469,16 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
     );
 
     if (result != null) {
+      final template = result['template'] as PassTemplate;
+      final userSelectedEntryPoint =
+          result['userSelectedEntryPoint'] as Map<String, dynamic>?;
+      final userSelectedExitPoint =
+          result['userSelectedExitPoint'] as Map<String, dynamic>?;
+
       setState(() {
-        _selectedPassTemplate = result;
+        _selectedPassTemplate = template;
+        _selectedEntryPoint = userSelectedEntryPoint;
+        _selectedExitPoint = userSelectedExitPoint;
         // Set activation date to now by default, regardless of advance days
         // The advance days setting controls the maximum future date allowed, not the default
         _selectedActivationDate = DateTime.now();
@@ -1425,6 +1488,17 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
           _currentStep = 2;
         }
       });
+
+      // Load borders if the template allows user-selectable points (they should already be loaded from the dialog)
+      if (template.allowUserSelectablePoints &&
+          userSelectedEntryPoint != null &&
+          userSelectedExitPoint != null) {
+        // Borders are already selected, no need to load again
+        setState(() {
+          _availableBorders =
+              []; // Clear since we already have the selected ones
+        });
+      }
     }
   }
 
@@ -1612,8 +1686,19 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
         _buildSummaryRow('Country', _selectedCountry?['name'] ?? ''),
         _buildSummaryRow(
             'Authority', _selectedPassTemplate?.authorityName ?? ''),
-        if (_selectedPassTemplate?.borderName != null)
-          _buildSummaryRow('Border', _selectedPassTemplate!.borderName!),
+        // Entry/Exit Point summary
+        if (_selectedPassTemplate?.allowUserSelectablePoints == true) ...[
+          _buildSummaryRow(
+              'Entry Point', _selectedEntryPoint?['name'] ?? 'Not selected'),
+          _buildSummaryRow(
+              'Exit Point', _selectedExitPoint?['name'] ?? 'Not selected'),
+        ] else ...[
+          _buildSummaryRow('Entry Point',
+              _selectedPassTemplate?.entryPointName ?? 'Any Entry Point'),
+          if (_selectedPassTemplate?.exitPointName != null)
+            _buildSummaryRow(
+                'Exit Point', _selectedPassTemplate!.exitPointName!),
+        ],
         _buildSummaryRow(
             'Vehicle Type', _selectedPassTemplate?.vehicleType ?? ''),
         _buildSummaryRow(
@@ -1719,10 +1804,20 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
   }
 
   bool _canPurchase() {
-    return _selectedCountry != null &&
-        _selectedPassTemplate != null &&
-        _selectedActivationDate != null &&
-        !_isPurchasing;
+    if (_selectedCountry == null ||
+        _selectedPassTemplate == null ||
+        _selectedActivationDate == null ||
+        _isPurchasing) {
+      return false;
+    }
+
+    // If template allows user-selectable points, both entry and exit must be selected
+    // (This should already be validated in the dialog, but double-check here)
+    if (_selectedPassTemplate!.allowUserSelectablePoints) {
+      return _selectedEntryPoint != null && _selectedExitPoint != null;
+    }
+
+    return true;
   }
 
   Future<void> _selectActivationDate() async {
@@ -1879,12 +1974,18 @@ class _PassSelectionDialogState extends State<PassSelectionDialog> {
   PassTemplate? _selectedTemplate;
 
   // Active filters
-  String? _selectedBorder;
+  String? _selectedEntryPoint;
   String? _selectedVehicleType;
 
   // Available filter values
-  List<String> _availableBorders = [];
+  List<String> _availableEntryPoints = [];
   List<String> _availableVehicleTypes = [];
+
+  // User-selected entry/exit points for templates that allow selection
+  Map<String, dynamic>? _userSelectedEntryPoint;
+  Map<String, dynamic>? _userSelectedExitPoint;
+  List<Map<String, dynamic>> _availableBorders = [];
+  bool _isLoadingBorders = false;
 
   @override
   void initState() {
@@ -1902,13 +2003,13 @@ class _PassSelectionDialogState extends State<PassSelectionDialog> {
   }
 
   void _extractFilterValues() {
-    // Extract unique borders and vehicle types from templates
-    final borders = widget.passTemplates
-        .where((t) => t.borderName != null)
-        .map((t) => t.borderName!)
+    // Extract unique entry points and vehicle types from templates
+    final entryPoints = widget.passTemplates
+        .where((t) => t.entryPointName != null)
+        .map((t) => t.entryPointName!)
         .toSet()
         .toList();
-    borders.sort();
+    entryPoints.sort();
 
     final vehicleTypes = widget.passTemplates
         .where((t) => t.vehicleType != null)
@@ -1918,7 +2019,7 @@ class _PassSelectionDialogState extends State<PassSelectionDialog> {
     vehicleTypes.sort();
 
     setState(() {
-      _availableBorders = borders;
+      _availableEntryPoints = entryPoints;
       _availableVehicleTypes = vehicleTypes;
     });
   }
@@ -1927,8 +2028,9 @@ class _PassSelectionDialogState extends State<PassSelectionDialog> {
     final query = _searchController.text.toLowerCase();
     setState(() {
       _filteredTemplates = widget.passTemplates.where((template) {
-        // Apply border filter
-        if (_selectedBorder != null && template.borderName != _selectedBorder) {
+        // Apply entry point filter
+        if (_selectedEntryPoint != null &&
+            template.entryPointName != _selectedEntryPoint) {
           return false;
         }
 
@@ -1942,7 +2044,10 @@ class _PassSelectionDialogState extends State<PassSelectionDialog> {
         if (query.isNotEmpty) {
           return (template.authorityName?.toLowerCase().contains(query) ??
                   false) ||
-              (template.borderName?.toLowerCase().contains(query) ?? false) ||
+              (template.entryPointName?.toLowerCase().contains(query) ??
+                  false) ||
+              (template.exitPointName?.toLowerCase().contains(query) ??
+                  false) ||
               (template.vehicleType?.toLowerCase().contains(query) ?? false);
         }
 
@@ -1951,9 +2056,9 @@ class _PassSelectionDialogState extends State<PassSelectionDialog> {
     });
   }
 
-  void _addBorderFilter(String border) {
+  void _addEntryPointFilter(String entryPoint) {
     setState(() {
-      _selectedBorder = border;
+      _selectedEntryPoint = entryPoint;
     });
     _filterTemplates();
   }
@@ -1965,9 +2070,9 @@ class _PassSelectionDialogState extends State<PassSelectionDialog> {
     _filterTemplates();
   }
 
-  void _removeBorderFilter() {
+  void _removeEntryPointFilter() {
     setState(() {
-      _selectedBorder = null;
+      _selectedEntryPoint = null;
     });
     _filterTemplates();
   }
@@ -1981,11 +2086,81 @@ class _PassSelectionDialogState extends State<PassSelectionDialog> {
 
   void _clearAllFilters() {
     setState(() {
-      _selectedBorder = null;
+      _selectedEntryPoint = null;
       _selectedVehicleType = null;
       _searchController.clear();
     });
     _filterTemplates();
+  }
+
+  Future<void> _loadBordersForTemplate(PassTemplate template) async {
+    if (!template.allowUserSelectablePoints) {
+      setState(() {
+        _availableBorders = [];
+        _userSelectedEntryPoint = null;
+        _userSelectedExitPoint = null;
+      });
+      return;
+    }
+
+    setState(() {
+      _isLoadingBorders = true;
+      _userSelectedEntryPoint = null;
+      _userSelectedExitPoint = null;
+    });
+
+    try {
+      debugPrint('Loading borders for authority: "${template.authorityId}"');
+      debugPrint(
+          'Template details: id=${template.id}, description=${template.description}');
+      debugPrint('Authority ID length: ${template.authorityId.length}');
+
+      if (template.authorityId.isEmpty) {
+        throw Exception('Authority ID is empty for template ${template.id}');
+      }
+
+      final borders =
+          await PassService.getBordersForAuthority(template.authorityId);
+      debugPrint('Loaded ${borders.length} borders');
+
+      setState(() {
+        _availableBorders = borders
+            .map((border) => {
+                  'id': border['border_id'],
+                  'name': border['border_name'],
+                })
+            .toList();
+        _isLoadingBorders = false;
+      });
+    } catch (e) {
+      debugPrint('Error loading borders: $e');
+      setState(() {
+        _isLoadingBorders = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading borders: $e')),
+        );
+      }
+    }
+  }
+
+  void _selectTemplate(PassTemplate template) {
+    setState(() {
+      _selectedTemplate = template;
+    });
+    _loadBordersForTemplate(template);
+  }
+
+  bool _canSelectTemplate() {
+    if (_selectedTemplate == null) return false;
+
+    // If template allows user-selectable points, both entry and exit must be selected
+    if (_selectedTemplate!.allowUserSelectablePoints) {
+      return _userSelectedEntryPoint != null && _userSelectedExitPoint != null;
+    }
+
+    return true;
   }
 
   @override
@@ -2023,7 +2198,8 @@ class _PassSelectionDialogState extends State<PassSelectionDialog> {
               child: Column(
                 children: [
                   // Active filter chips inside the search box
-                  if (_selectedBorder != null || _selectedVehicleType != null)
+                  if (_selectedEntryPoint != null ||
+                      _selectedVehicleType != null)
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
@@ -2031,15 +2207,15 @@ class _PassSelectionDialogState extends State<PassSelectionDialog> {
                         spacing: 6,
                         runSpacing: 4,
                         children: [
-                          if (_selectedBorder != null)
+                          if (_selectedEntryPoint != null)
                             Chip(
                               label: Text(
-                                'Border: $_selectedBorder',
+                                'Entry Point: $_selectedEntryPoint',
                                 style: const TextStyle(fontSize: 11),
                               ),
                               backgroundColor: Colors.blue.shade100,
                               deleteIcon: const Icon(Icons.close, size: 14),
-                              onDeleted: _removeBorderFilter,
+                              onDeleted: _removeEntryPointFilter,
                               materialTapTargetSize:
                                   MaterialTapTargetSize.shrinkWrap,
                               visualDensity: VisualDensity.compact,
@@ -2072,7 +2248,7 @@ class _PassSelectionDialogState extends State<PassSelectionDialog> {
                         vertical: 12,
                       ),
                       suffixIcon: (_searchController.text.isNotEmpty ||
-                              _selectedBorder != null ||
+                              _selectedEntryPoint != null ||
                               _selectedVehicleType != null)
                           ? IconButton(
                               onPressed: _clearAllFilters,
@@ -2083,29 +2259,30 @@ class _PassSelectionDialogState extends State<PassSelectionDialog> {
                               icon: const Icon(Icons.filter_list),
                               tooltip: 'Add filters',
                               onSelected: (value) {
-                                if (value.startsWith('border:')) {
-                                  _addBorderFilter(value.substring(7));
+                                if (value.startsWith('entry:')) {
+                                  _addEntryPointFilter(value.substring(6));
                                 } else if (value.startsWith('vehicle:')) {
                                   _addVehicleTypeFilter(value.substring(8));
                                 }
                               },
                               itemBuilder: (context) => [
-                                if (_availableBorders.isNotEmpty) ...[
+                                if (_availableEntryPoints.isNotEmpty) ...[
                                   const PopupMenuItem<String>(
                                     enabled: false,
                                     child: Text(
-                                      'Filter by Border:',
+                                      'Filter by Entry Point:',
                                       style: TextStyle(
                                         fontWeight: FontWeight.bold,
                                         fontSize: 12,
                                       ),
                                     ),
                                   ),
-                                  ..._availableBorders
-                                      .map((border) => PopupMenuItem<String>(
-                                            value: 'border:$border',
-                                            enabled: _selectedBorder != border,
-                                            child: Text(border),
+                                  ..._availableEntryPoints.map(
+                                      (entryPoint) => PopupMenuItem<String>(
+                                            value: 'entry:$entryPoint',
+                                            enabled: _selectedEntryPoint !=
+                                                entryPoint,
+                                            child: Text(entryPoint),
                                           )),
                                   const PopupMenuDivider(),
                                 ],
@@ -2165,8 +2342,7 @@ class _PassSelectionDialogState extends State<PassSelectionDialog> {
                             ),
                           ),
                           child: InkWell(
-                            onTap: () =>
-                                setState(() => _selectedTemplate = template),
+                            onTap: () => _selectTemplate(template),
                             borderRadius: BorderRadius.circular(12),
                             child: Padding(
                               padding: const EdgeInsets.all(16),
@@ -2206,9 +2382,95 @@ class _PassSelectionDialogState extends State<PassSelectionDialog> {
                                     ],
                                   ),
                                   const SizedBox(height: 8),
-                                  if (template.borderName != null)
+                                  // Entry/Exit Point display or selection
+                                  if (template.allowUserSelectablePoints &&
+                                      isSelected) ...[
+                                    // Show dropdowns for user selection
+                                    if (_isLoadingBorders)
+                                      const Padding(
+                                        padding:
+                                            EdgeInsets.symmetric(vertical: 8),
+                                        child: Row(
+                                          children: [
+                                            SizedBox(
+                                              width: 16,
+                                              height: 16,
+                                              child: CircularProgressIndicator(
+                                                  strokeWidth: 2),
+                                            ),
+                                            SizedBox(width: 8),
+                                            Text('Loading borders...',
+                                                style: TextStyle(fontSize: 12)),
+                                          ],
+                                        ),
+                                      )
+                                    else ...[
+                                      // Entry Point Dropdown
+                                      DropdownButtonFormField<
+                                          Map<String, dynamic>>(
+                                        value: _userSelectedEntryPoint,
+                                        decoration: const InputDecoration(
+                                          labelText: 'Select Entry Point',
+                                          border: OutlineInputBorder(),
+                                          contentPadding: EdgeInsets.symmetric(
+                                              horizontal: 8, vertical: 4),
+                                          isDense: true,
+                                        ),
+                                        items: _availableBorders
+                                            .map((border) => DropdownMenuItem<
+                                                    Map<String, dynamic>>(
+                                                  value: border,
+                                                  child: Text(
+                                                    border['name'],
+                                                    style: const TextStyle(
+                                                        fontSize: 12),
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                  ),
+                                                ))
+                                            .toList(),
+                                        onChanged: (value) {
+                                          setState(() {
+                                            _userSelectedEntryPoint = value;
+                                          });
+                                        },
+                                      ),
+                                      const SizedBox(height: 8),
+                                      // Exit Point Dropdown
+                                      DropdownButtonFormField<
+                                          Map<String, dynamic>>(
+                                        value: _userSelectedExitPoint,
+                                        decoration: const InputDecoration(
+                                          labelText: 'Select Exit Point',
+                                          border: OutlineInputBorder(),
+                                          contentPadding: EdgeInsets.symmetric(
+                                              horizontal: 8, vertical: 4),
+                                          isDense: true,
+                                        ),
+                                        items: _availableBorders
+                                            .map((border) => DropdownMenuItem<
+                                                    Map<String, dynamic>>(
+                                                  value: border,
+                                                  child: Text(
+                                                    border['name'],
+                                                    style: const TextStyle(
+                                                        fontSize: 12),
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                  ),
+                                                ))
+                                            .toList(),
+                                        onChanged: (value) {
+                                          setState(() {
+                                            _userSelectedExitPoint = value;
+                                          });
+                                        },
+                                      ),
+                                    ],
+                                  ] else ...[
+                                    // Show fixed entry/exit points from template
                                     Text(
-                                      'Border: ${template.borderName}',
+                                      'Entry Point: ${template.entryPointName ?? 'Any Entry Point'}',
                                       style: TextStyle(
                                         fontSize: 14,
                                         color: isSelected
@@ -2218,6 +2480,19 @@ class _PassSelectionDialogState extends State<PassSelectionDialog> {
                                       overflow: TextOverflow.ellipsis,
                                       maxLines: 1,
                                     ),
+                                    if (template.exitPointName != null)
+                                      Text(
+                                        'Exit Point: ${template.exitPointName}',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color: isSelected
+                                              ? Colors.blue.shade700
+                                              : Colors.grey.shade600,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                        maxLines: 1,
+                                      ),
+                                  ],
                                   Text(
                                     'Vehicle Type: ${template.vehicleType ?? 'Any'}',
                                     style: TextStyle(
@@ -2282,8 +2557,16 @@ class _PassSelectionDialogState extends State<PassSelectionDialog> {
                 ),
                 const SizedBox(width: 8),
                 ElevatedButton(
-                  onPressed: _selectedTemplate != null
-                      ? () => Navigator.of(context).pop(_selectedTemplate)
+                  onPressed: _canSelectTemplate()
+                      ? () {
+                          // Pass the selected template along with user-selected entry/exit points
+                          final result = {
+                            'template': _selectedTemplate,
+                            'userSelectedEntryPoint': _userSelectedEntryPoint,
+                            'userSelectedExitPoint': _userSelectedExitPoint,
+                          };
+                          Navigator.of(context).pop(result);
+                        }
                       : null,
                   child: const Text('Select'),
                 ),

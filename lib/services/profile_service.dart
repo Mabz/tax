@@ -51,7 +51,7 @@ class ProfileService {
       );
 
       if (result == null || (result as List).isEmpty) return null;
-      
+
       // The function returns a list, get the first item
       final profileData = result.first;
       return Profile.fromJson(profileData);
@@ -62,7 +62,8 @@ class ProfileService {
   }
 
   /// Get profiles by country using the database function
-  static Future<List<Map<String, dynamic>>> getProfilesByCountry(String countryId) async {
+  static Future<List<Map<String, dynamic>>> getProfilesByCountry(
+      String countryId) async {
     try {
       final result = await _supabase.rpc(
         AppConstants.getProfilesByCountryFunction,
@@ -72,7 +73,7 @@ class ProfileService {
       );
 
       if (result == null) return [];
-      
+
       return List<Map<String, dynamic>>.from(result);
     } catch (e) {
       debugPrint('❌ ProfileService.getProfilesByCountry error: $e');

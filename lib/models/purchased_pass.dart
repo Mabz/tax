@@ -2,7 +2,8 @@ class PurchasedPass {
   final String passId;
   final String vehicleDescription;
   final String passDescription;
-  final String? borderName;
+  final String? entryPointName; // Renamed from borderName
+  final String? exitPointName; // New field for exit point
   final int entryLimit;
   final int entriesRemaining;
   final DateTime issuedAt;
@@ -19,7 +20,8 @@ class PurchasedPass {
   final String? authorityId;
   final String? authorityName;
   final String? countryName;
-  final String? borderId;
+  final String? entryPointId; // Renamed from borderId
+  final String? exitPointId; // New field for exit point ID
   final String? vehicleNumberPlate;
   final String? vehicleVin;
   final String? secureCode;
@@ -29,7 +31,8 @@ class PurchasedPass {
     required this.passId,
     required this.vehicleDescription,
     required this.passDescription,
-    this.borderName,
+    this.entryPointName,
+    this.exitPointName,
     required this.entryLimit,
     required this.entriesRemaining,
     required this.issuedAt,
@@ -45,7 +48,8 @@ class PurchasedPass {
     this.authorityId,
     this.authorityName,
     this.countryName,
-    this.borderId,
+    this.entryPointId,
+    this.exitPointId,
     this.vehicleNumberPlate,
     this.vehicleVin,
     this.secureCode,
@@ -83,13 +87,16 @@ class PurchasedPass {
       currency = template['currency_code']?.toString() ?? '';
     }
 
-    // Extract border name from nested data if not already flattened
-    String? borderName = json['border_name']?.toString();
-    if (borderName == null && json['pass_templates'] != null) {
+    // Extract entry and exit point names from nested data if not already flattened
+    String? entryPointName = json['entry_point_name']?.toString() ??
+        json['border_name']?.toString(); // Support legacy border_name
+    String? exitPointName = json['exit_point_name']?.toString();
+
+    if (entryPointName == null && json['pass_templates'] != null) {
       final template = json['pass_templates'] as Map<String, dynamic>;
       if (template['borders'] != null) {
         final border = template['borders'] as Map<String, dynamic>;
-        borderName = border['name']?.toString();
+        entryPointName = border['name']?.toString();
       }
     }
 
@@ -97,7 +104,8 @@ class PurchasedPass {
       passId: json['pass_id']?.toString() ?? json['id']?.toString() ?? '',
       vehicleDescription: json['vehicle_description']?.toString() ?? '',
       passDescription: json['pass_description']?.toString() ?? '',
-      borderName: borderName,
+      entryPointName: entryPointName,
+      exitPointName: exitPointName,
       entryLimit: entryLimit,
       entriesRemaining:
           (json['entries_remaining'] as num?)?.toInt() ?? entryLimit,
@@ -117,7 +125,9 @@ class PurchasedPass {
       authorityId: json['authority_id']?.toString(),
       authorityName: json['authority_name']?.toString(),
       countryName: json['country_name']?.toString(),
-      borderId: json['border_id']?.toString(),
+      entryPointId: json['entry_point_id']?.toString() ??
+          json['border_id']?.toString(), // Support legacy border_id
+      exitPointId: json['exit_point_id']?.toString(),
       vehicleNumberPlate: json['vehicle_number_plate']?.toString(),
       vehicleVin: json['vehicle_vin']?.toString(),
       secureCode: json['secure_code']?.toString(),
@@ -131,7 +141,8 @@ class PurchasedPass {
     return {
       'pass_id': passId,
       'pass_description': passDescription,
-      'border_name': borderName,
+      'entry_point_name': entryPointName,
+      'exit_point_name': exitPointName,
       'entry_limit': entryLimit,
       'entries_remaining': entriesRemaining,
       'issued_at': issuedAt.toIso8601String(),
@@ -147,7 +158,8 @@ class PurchasedPass {
       'authority_id': authorityId,
       'authority_name': authorityName,
       'country_name': countryName,
-      'border_id': borderId,
+      'entry_point_id': entryPointId,
+      'exit_point_id': exitPointId,
       'vehicle_description': vehicleDescription,
       'vehicle_number_plate': vehicleNumberPlate,
       'vehicle_vin': vehicleVin,
@@ -318,7 +330,8 @@ class PurchasedPass {
         other.passId == passId &&
         other.vehicleDescription == vehicleDescription &&
         other.passDescription == passDescription &&
-        other.borderName == borderName &&
+        other.entryPointName == entryPointName &&
+        other.exitPointName == exitPointName &&
         other.entryLimit == entryLimit &&
         other.entriesRemaining == entriesRemaining &&
         other.issuedAt == issuedAt &&
@@ -333,7 +346,8 @@ class PurchasedPass {
         other.authorityId == authorityId &&
         other.authorityName == authorityName &&
         other.countryName == countryName &&
-        other.borderId == borderId &&
+        other.entryPointId == entryPointId &&
+        other.exitPointId == exitPointId &&
         other.vehicleNumberPlate == vehicleNumberPlate &&
         other.vehicleVin == vehicleVin;
   }
@@ -344,7 +358,8 @@ class PurchasedPass {
       passId,
       vehicleDescription,
       passDescription,
-      borderName,
+      entryPointName,
+      exitPointName,
       entryLimit,
       entriesRemaining,
       issuedAt,
@@ -359,7 +374,8 @@ class PurchasedPass {
       authorityId,
       authorityName,
       countryName,
-      borderId,
+      entryPointId,
+      exitPointId,
       vehicleNumberPlate,
       vehicleVin,
     ]);

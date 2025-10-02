@@ -184,6 +184,9 @@ class PassService {
     String? vehicleDescription,
     String? vehicleNumberPlate,
     String? vehicleVin,
+    // User-selected entry/exit points for templates that allow selection
+    String? userSelectedEntryPointId,
+    String? userSelectedExitPointId,
   }) async {
     final user = _supabase.auth.currentUser;
     if (user == null) {
@@ -200,9 +203,42 @@ class PassService {
               code,
               country_id,
               countries(name, country_code)
-            ),
-            borders(name)
+            )
           ''').eq('id', passTemplateId).eq('is_active', true).single();
+
+      // Get border information separately if needed
+      Map<String, dynamic>? entryBorderData;
+      Map<String, dynamic>? exitBorderData;
+
+      // Get entry point border data
+      final entryPointId =
+          userSelectedEntryPointId ?? templateResponse['entry_point_id'];
+      if (entryPointId != null) {
+        try {
+          entryBorderData = await _supabase
+              .from('borders')
+              .select('name')
+              .eq('id', entryPointId)
+              .single();
+        } catch (e) {
+          debugPrint('Could not fetch entry border data: $e');
+        }
+      }
+
+      // Get exit point border data
+      final exitPointId =
+          userSelectedExitPointId ?? templateResponse['exit_point_id'];
+      if (exitPointId != null) {
+        try {
+          exitBorderData = await _supabase
+              .from('borders')
+              .select('name')
+              .eq('id', exitPointId)
+              .single();
+        } catch (e) {
+          debugPrint('Could not fetch exit border data: $e');
+        }
+      }
 
       // Generate pass verification data
       final now = DateTime.now();
@@ -219,7 +255,7 @@ class PassService {
       // Extract related data from template response first (needed for QR data)
       final authorityData =
           templateResponse['authorities'] as Map<String, dynamic>?;
-      final borderData = templateResponse['borders'] as Map<String, dynamic>?;
+      // borderData is now fetched separately above
       final countryData = authorityData?['countries'] as Map<String, dynamic>?;
 
       // Determine vehicle data to store
@@ -267,8 +303,12 @@ class PassService {
         // Authority and location data
         'authority_id': templateResponse['authority_id'],
         'authority_name': authorityData?['name'] ?? '',
-        'border_id': templateResponse['border_id'],
-        'border_name': borderData?['name'] ?? '',
+        'entry_point_id':
+            userSelectedEntryPointId ?? templateResponse['entry_point_id'],
+        'exit_point_id':
+            userSelectedExitPointId ?? templateResponse['exit_point_id'],
+        'entry_point_name': entryBorderData?['name'] ?? '',
+        'exit_point_name': exitBorderData?['name'] ?? '',
         'country_id': countryData?['id'] ?? templateResponse['country_id'],
         'country_name': countryData?['name'] ?? '',
 
@@ -276,7 +316,8 @@ class PassService {
         'pass_description': _buildPassDescription(
           templateResponse,
           authorityData,
-          borderData,
+          entryBorderData,
+          exitBorderData,
           countryData,
           finalVehicleDescription,
           finalVehicleNumberPlate,
@@ -315,7 +356,8 @@ class PassService {
         'pass_description': _buildPassDescription(
           templateResponse,
           authorityData,
-          borderData,
+          entryBorderData,
+          exitBorderData,
           countryData,
           finalVehicleDescription,
           finalVehicleNumberPlate,
@@ -324,7 +366,10 @@ class PassService {
         ),
         'authority_id': templateResponse['authority_id'],
         'country_id': countryData?['id'] ?? templateResponse['country_id'],
-        'border_id': templateResponse['border_id'],
+        'entry_point_id':
+            userSelectedEntryPointId ?? templateResponse['entry_point_id'],
+        'exit_point_id':
+            userSelectedExitPointId ?? templateResponse['exit_point_id'],
 
         // Individual vehicle fields (NO vehicle_desc)
         'vehicle_description': finalVehicleDescription,
@@ -334,7 +379,8 @@ class PassService {
         // Store denormalized data for faster queries
         'authority_name': authorityData?['name'],
         'country_name': countryData?['name'],
-        'border_name': borderData?['name'],
+        'entry_point_name': entryBorderData?['name'],
+        'exit_point_name': exitBorderData?['name'],
       };
 
       // Insert the pass and get the generated ID
@@ -367,8 +413,10 @@ class PassService {
         // Authority and location data
         'authority_id': templateResponse['authority_id'],
         'authority_name': authorityData?['name'] ?? '',
-        'border_id': templateResponse['border_id'],
-        'border_name': borderData?['name'] ?? '',
+        'entry_point_id': userSelectedEntryPointId ?? templateResponse['entry_point_id'],
+        'exit_point_id': userSelectedExitPointId ?? templateResponse['exit_point_id'],
+        'entry_point_name': entryBorderData?['name'] ?? '',
+        'exit_point_name': exitBorderData?['name'] ?? '',
         'country_id': countryData?['id'] ?? templateResponse['country_id'],
         'country_name': countryData?['name'] ?? '',
 
@@ -438,12 +486,9 @@ class PassService {
               tax_amount,
               currency_code,
               authority_id,
-              border_id,
-              is_active,
-              borders(
-                id,
-                name
-              )
+              entry_point_id,
+              exit_point_id,
+              is_active
             ),
             authorities(
               id,
@@ -473,6 +518,10 @@ class PassService {
 
         debugPrint('🔍 Raw pass data keys: ${passData.keys}');
         debugPrint('🔍 Pass templates data: ${passData['pass_templates']}');
+        debugPrint(
+            '🔍 Entry point data: entry_point_id=${passData['entry_point_id']}, entry_point_name=${passData['entry_point_name']}');
+        debugPrint(
+            '🔍 Exit point data: exit_point_id=${passData['exit_point_id']}, exit_point_name=${passData['exit_point_name']}');
 
         // Flatten pass_templates data into the main object
         if (passData['pass_templates'] != null) {
@@ -558,9 +607,13 @@ class PassService {
     if (response == null) return [];
 
     final List<dynamic> data = response as List<dynamic>;
-    return data
-        .map((json) => PassTemplate.fromJson(json as Map<String, dynamic>))
-        .toList();
+    return data.map((json) {
+      // Add the authority_id to the JSON since the database function doesn't return it
+      final jsonWithAuthority =
+          Map<String, dynamic>.from(json as Map<String, dynamic>);
+      jsonWithAuthority['authority_id'] = authorityId;
+      return PassTemplate.fromJson(jsonWithAuthority);
+    }).toList();
   }
 
   // =====================================================
@@ -592,6 +645,51 @@ class PassService {
     }
 
     return countryMap.values.toList();
+  }
+
+  /// Gets borders for an authority (for user-selectable entry/exit points)
+  static Future<List<Map<String, dynamic>>> getBordersForAuthority(
+      String authorityId) async {
+    try {
+      // Try using the RPC function first
+      final response =
+          await _supabase.rpc('get_borders_for_authority', params: {
+        'target_authority_id': authorityId,
+      });
+
+      if (response == null) return [];
+
+      return (response as List)
+          .map((item) => {
+                'border_id': item['border_id'],
+                'border_name': item['border_name'],
+                'border_type': item['border_type'] ?? '',
+              })
+          .toList();
+    } catch (e) {
+      debugPrint('RPC function failed, trying direct query: $e');
+
+      // Fallback to direct table query if RPC function doesn't exist
+      try {
+        final response = await _supabase
+            .from('borders')
+            .select('id, name, border_type_id')
+            .eq('authority_id', authorityId)
+            .eq('is_active', true)
+            .order('name');
+
+        return (response as List)
+            .map((item) => {
+                  'border_id': item['id'],
+                  'border_name': item['name'],
+                  'border_type':
+                      item['border_type_id']?.toString() ?? 'Unknown',
+                })
+            .toList();
+      } catch (fallbackError) {
+        throw Exception('Failed to get borders for authority: $fallbackError');
+      }
+    }
   }
 
   /// Gets pass templates for a specific country (BRIDGE METHOD)
@@ -716,7 +814,8 @@ class PassService {
                 tax_amount,
                 currency_code,
                 authority_id,
-                border_id,
+                entry_point_id,
+                exit_point_id,
                 is_active
               ),
               authorities(
@@ -740,7 +839,8 @@ class PassService {
                 tax_amount,
                 currency_code,
                 authority_id,
-                border_id,
+                entry_point_id,
+                exit_point_id,
                 is_active
               ),
               authorities(
@@ -866,7 +966,8 @@ class PassService {
               tax_amount,
               currency_code,
               authority_id,
-              border_id,
+              entry_point_id,
+              exit_point_id,
               is_active
             ),
             authorities(
@@ -955,7 +1056,8 @@ class PassService {
               tax_amount,
               currency_code,
               authority_id,
-              border_id,
+              entry_point_id,
+              exit_point_id,
               is_active
             ),
             authorities(
@@ -978,7 +1080,8 @@ class PassService {
   static String _buildPassDescription(
     Map<String, dynamic> templateResponse,
     Map<String, dynamic>? authorityData,
-    Map<String, dynamic>? borderData,
+    Map<String, dynamic>? entryBorderData,
+    Map<String, dynamic>? exitBorderData,
     Map<String, dynamic>? countryData,
     String? vehicleDescription,
     String? vehicleNumberPlate,
@@ -1000,9 +1103,15 @@ class PassService {
     }
 
     // Add border information if available
-    final borderName = borderData?['name']?.toString();
-    if (borderName != null && borderName.isNotEmpty) {
-      descriptionParts.add('Border: $borderName');
+    final entryBorderName = entryBorderData?['name']?.toString();
+    final exitBorderName = exitBorderData?['name']?.toString();
+
+    if (entryBorderName != null && entryBorderName.isNotEmpty) {
+      descriptionParts.add('Entry: $entryBorderName');
+    }
+
+    if (exitBorderName != null && exitBorderName.isNotEmpty) {
+      descriptionParts.add('Exit: $exitBorderName');
     }
 
     // Add activation date

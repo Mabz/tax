@@ -18,6 +18,9 @@ import 'border_management_screen.dart';
 import 'border_official_management_screen.dart';
 import 'audit_management_screen.dart';
 import 'country_user_management_screen.dart';
+import 'bi/bi_dashboard_screen.dart';
+import 'bi/pass_analytics_screen.dart';
+import 'bi/revenue_analytics_screen.dart';
 import 'invitation_management_screen.dart';
 import 'invitation_dashboard_screen.dart';
 import 'vehicle_tax_rate_management_screen.dart';
@@ -40,6 +43,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isCountryAdmin = false;
   bool _isCountryAuditor = false;
   bool _isBorderOfficial = false;
+  bool _isBusinessIntelligence = false;
   bool _isLocalAuthority = false;
 
   // Authority selection state
@@ -90,6 +94,8 @@ class _HomeScreenState extends State<HomeScreen> {
       final isCountryAdmin = await RoleService.hasAdminRole();
       final isCountryAuditor = await RoleService.hasAuditorRole();
       final isBorderOfficial = await RoleService.hasBorderOfficialRole();
+      final isBusinessIntelligence =
+          await RoleService.hasBusinessIntelligenceRole();
       final isLocalAuthority = await RoleService.hasLocalAuthorityRole();
 
       // Additional debugging - check country admin countries
@@ -107,6 +113,7 @@ class _HomeScreenState extends State<HomeScreen> {
           _isCountryAdmin = isCountryAdmin;
           _isCountryAuditor = isCountryAuditor;
           _isBorderOfficial = isBorderOfficial;
+          _isBusinessIntelligence = isBusinessIntelligence;
           _isLocalAuthority = isLocalAuthority;
           _isLoadingRoles = false;
         });
@@ -116,15 +123,17 @@ class _HomeScreenState extends State<HomeScreen> {
       debugPrint('🌍 Country Admin check: $_isCountryAdmin');
       debugPrint('🔍 Country Auditor check: $_isCountryAuditor');
       debugPrint('🛡️ Border Official check: $_isBorderOfficial');
+      debugPrint('📊 Business Intelligence check: $_isBusinessIntelligence');
       debugPrint('🏛️ Local Authority check: $_isLocalAuthority');
       debugPrint(
           '🎯 Should load authorities: ${isSuperuser || isCountryAdmin || isCountryAuditor}');
 
-      // Load authorities if user has admin, auditor, superuser, border official, or local authority role
+      // Load authorities if user has admin, auditor, superuser, border official, business intelligence, or local authority role
       if (isSuperuser ||
           isCountryAdmin ||
           isCountryAuditor ||
           isBorderOfficial ||
+          isBusinessIntelligence ||
           isLocalAuthority) {
         debugPrint('✅ Loading authorities...');
         await _loadAuthorities();
@@ -145,6 +154,7 @@ class _HomeScreenState extends State<HomeScreen> {
           _isCountryAdmin = false;
           _isCountryAuditor = false;
           _isBorderOfficial = false;
+          _isBusinessIntelligence = false;
           _isLocalAuthority = false;
           _isLoadingRoles = false;
         });
@@ -218,8 +228,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 '  - ${authority.name} (${authority.code}) - ${authority.countryName}');
           }
         }
-      } else if (_isBorderOfficial || _isLocalAuthority) {
-        // Border officials and local authorities get their assigned authorities
+      } else if (_isBorderOfficial ||
+          _isBusinessIntelligence ||
+          _isLocalAuthority) {
+        // Border officials, business intelligence, and local authorities get their assigned authorities
         debugPrint(
             '🛡️ Loading operational authorities for border official/local authority...');
         authorities = await AuthorityService.getOperationalAuthorities();
@@ -454,7 +466,7 @@ class _HomeScreenState extends State<HomeScreen> {
         '🎯 Drawer build - Superuser: $_isSuperuser, Country Admin: $_isCountryAdmin, Country Auditor: $_isCountryAuditor');
     debugPrint('🎯 Authorities count: ${_authorities.length}');
     debugPrint(
-        '🎯 Should show authority selection: ${(_isSuperuser || _isCountryAdmin || _isCountryAuditor || _isBorderOfficial || _isLocalAuthority) && _authorities.isNotEmpty}');
+        '🎯 Should show authority selection: ${(_isSuperuser || _isCountryAdmin || _isCountryAuditor || _isBorderOfficial || _isBusinessIntelligence || _isLocalAuthority) && _authorities.isNotEmpty}');
 
     return SafeArea(
         child: Drawer(
@@ -606,6 +618,23 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               )
+            else if (_isBusinessIntelligence)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.teal.shade100,
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: Colors.teal.shade300),
+                ),
+                child: Text(
+                  'BUSINESS INTELLIGENCE',
+                  style: TextStyle(
+                    color: Colors.teal.shade700,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+              )
             else if (_isLocalAuthority)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -699,6 +728,7 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 2),
               Text(
                 'Border Official: ${_isBorderOfficial ? "Yes" : "No"} • '
+                'Business Intelligence: ${_isBusinessIntelligence ? "Yes" : "No"} • '
                 'Local Authority: ${_isLocalAuthority ? "Yes" : "No"}',
                 style: TextStyle(
                   color: Colors.purple.shade600,
@@ -743,6 +773,7 @@ class _HomeScreenState extends State<HomeScreen> {
               _isCountryAdmin ||
               _isCountryAuditor ||
               _isBorderOfficial ||
+              _isBusinessIntelligence ||
               _isLocalAuthority) &&
           _authorities.isNotEmpty) ...[
         const Divider(),
@@ -829,6 +860,25 @@ class _HomeScreenState extends State<HomeScreen> {
                   currentAuthorityId: _selectedAuthority?.id,
                   currentCountryId: _selectedAuthority?.countryId,
                 ),
+              ),
+            );
+          },
+        ),
+      ],
+      if (_selectedAuthority != null && _isBusinessIntelligence) ...[
+        // Business Intelligence - only for business_intelligence
+        ListTile(
+          leading: const Icon(Icons.analytics, color: Colors.teal),
+          title: const Text('Business Intelligence'),
+          subtitle: Text(
+            'View insights and analytics for ${_selectedAuthority!.name}',
+          ),
+          onTap: () async {
+            Navigator.of(context).pop();
+            // TODO: Navigate to Business Intelligence dashboard
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Business Intelligence dashboard coming soon!'),
               ),
             );
           },
@@ -1259,6 +1309,77 @@ class _HomeScreenState extends State<HomeScreen> {
                     'authority_id': _selectedAuthority!.id,
                     'authority_name': _selectedAuthority!.name,
                   },
+                ),
+              ),
+            );
+          },
+        ),
+      ],
+
+      // Business Intelligence functions
+      if ((_isBusinessIntelligence || _isSuperuser) &&
+          _selectedAuthority != null) ...[
+        // Section Header
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            children: [
+              Icon(Icons.analytics, color: Colors.green.shade600, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'Business Intelligence',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.green.shade700,
+                ),
+              ),
+            ],
+          ),
+        ),
+        ListTile(
+          leading: const Icon(Icons.dashboard, color: Colors.green),
+          title: const Text('Dashboard Overview'),
+          subtitle:
+              Text('Key metrics and insights for ${_selectedAuthority!.name}'),
+          onTap: () {
+            Navigator.of(context).pop();
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => BiDashboardScreen(
+                  authority: _selectedAuthority!,
+                ),
+              ),
+            );
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.analytics, color: Colors.green),
+          title: const Text('Pass Analytics'),
+          subtitle: Text(
+              'Pass trends and non-compliance detection for ${_selectedAuthority!.name}'),
+          onTap: () {
+            Navigator.of(context).pop();
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => PassAnalyticsScreen(
+                  authority: _selectedAuthority!,
+                ),
+              ),
+            );
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.attach_money, color: Colors.green),
+          title: const Text('Revenue Analytics'),
+          subtitle: Text(
+              'Revenue insights and financial analytics for ${_selectedAuthority!.name}'),
+          onTap: () {
+            Navigator.of(context).pop();
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => RevenueAnalyticsScreen(
+                  authority: _selectedAuthority!,
                 ),
               ),
             );

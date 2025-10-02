@@ -2,7 +2,8 @@ class PassTemplate {
   final String id;
   final String authorityId;
   final String countryId;
-  final String? borderId;
+  final String? entryPointId; // Renamed from borderId
+  final String? exitPointId; // New field for exit point
   final String createdByProfileId;
   final String vehicleTypeId;
   final String description;
@@ -12,11 +13,14 @@ class PassTemplate {
   final double taxAmount;
   final String currencyCode;
   final bool isActive;
+  final bool
+      allowUserSelectablePoints; // New field for user-selectable entry/exit
   final DateTime createdAt;
   final DateTime updatedAt;
 
   // Additional fields from JOIN queries
-  final String? borderName;
+  final String? entryPointName; // Renamed from borderName
+  final String? exitPointName; // New field for exit point name
   final String? vehicleType;
   final String? authorityName;
 
@@ -24,7 +28,8 @@ class PassTemplate {
     required this.id,
     required this.authorityId,
     required this.countryId,
-    this.borderId,
+    this.entryPointId,
+    this.exitPointId,
     required this.createdByProfileId,
     required this.vehicleTypeId,
     required this.description,
@@ -34,9 +39,11 @@ class PassTemplate {
     required this.taxAmount,
     required this.currencyCode,
     required this.isActive,
+    required this.allowUserSelectablePoints,
     required this.createdAt,
     required this.updatedAt,
-    this.borderName,
+    this.entryPointName,
+    this.exitPointName,
     this.vehicleType,
     this.authorityName,
   });
@@ -46,7 +53,9 @@ class PassTemplate {
       id: json['id']?.toString() ?? '',
       authorityId: json['authority_id']?.toString() ?? '',
       countryId: json['country_id']?.toString() ?? '',
-      borderId: json['border_id']?.toString(),
+      entryPointId: json['entry_point_id']?.toString() ??
+          json['border_id']?.toString(), // Support legacy border_id
+      exitPointId: json['exit_point_id']?.toString(),
       createdByProfileId: json['created_by_profile_id']?.toString() ?? '',
       vehicleTypeId: json['vehicle_type_id']?.toString() ?? '',
       description: json['description']?.toString() ?? '',
@@ -56,11 +65,14 @@ class PassTemplate {
       taxAmount: (json['tax_amount'] as num?)?.toDouble() ?? 0.0,
       currencyCode: json['currency_code']?.toString() ?? '',
       isActive: json['is_active'] == true,
+      allowUserSelectablePoints: json['allow_user_selectable_points'] == true,
       createdAt: DateTime.parse(
           json['created_at']?.toString() ?? DateTime.now().toIso8601String()),
       updatedAt: DateTime.parse(
           json['updated_at']?.toString() ?? DateTime.now().toIso8601String()),
-      borderName: json['border_name']?.toString(),
+      entryPointName: json['entry_point_name']?.toString() ??
+          json['border_name']?.toString(), // Support legacy border_name
+      exitPointName: json['exit_point_name']?.toString(),
       vehicleType: json['vehicle_type']?.toString(),
       authorityName: json['authority_name']?.toString(),
     );
@@ -71,7 +83,8 @@ class PassTemplate {
       'id': id,
       'authority_id': authorityId,
       'country_id': countryId,
-      'border_id': borderId,
+      'entry_point_id': entryPointId,
+      'exit_point_id': exitPointId,
       'created_by_profile_id': createdByProfileId,
       'vehicle_type_id': vehicleTypeId,
       'description': description,
@@ -81,9 +94,11 @@ class PassTemplate {
       'tax_amount': taxAmount,
       'currency_code': currencyCode,
       'is_active': isActive,
+      'allow_user_selectable_points': allowUserSelectablePoints,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
-      'border_name': borderName,
+      'entry_point_name': entryPointName,
+      'exit_point_name': exitPointName,
       'vehicle_type': vehicleType,
       'authority_name': authorityName,
     };
@@ -93,7 +108,8 @@ class PassTemplate {
     String? id,
     String? authorityId,
     String? countryId,
-    String? borderId,
+    String? entryPointId,
+    String? exitPointId,
     String? createdByProfileId,
     String? vehicleTypeId,
     String? description,
@@ -103,9 +119,11 @@ class PassTemplate {
     double? taxAmount,
     String? currencyCode,
     bool? isActive,
+    bool? allowUserSelectablePoints,
     DateTime? createdAt,
     DateTime? updatedAt,
-    String? borderName,
+    String? entryPointName,
+    String? exitPointName,
     String? vehicleType,
     String? authorityName,
   }) {
@@ -113,7 +131,8 @@ class PassTemplate {
       id: id ?? this.id,
       authorityId: authorityId ?? this.authorityId,
       countryId: countryId ?? this.countryId,
-      borderId: borderId ?? this.borderId,
+      entryPointId: entryPointId ?? this.entryPointId,
+      exitPointId: exitPointId ?? this.exitPointId,
       createdByProfileId: createdByProfileId ?? this.createdByProfileId,
       vehicleTypeId: vehicleTypeId ?? this.vehicleTypeId,
       description: description ?? this.description,
@@ -123,9 +142,12 @@ class PassTemplate {
       taxAmount: taxAmount ?? this.taxAmount,
       currencyCode: currencyCode ?? this.currencyCode,
       isActive: isActive ?? this.isActive,
+      allowUserSelectablePoints:
+          allowUserSelectablePoints ?? this.allowUserSelectablePoints,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
-      borderName: borderName ?? this.borderName,
+      entryPointName: entryPointName ?? this.entryPointName,
+      exitPointName: exitPointName ?? this.exitPointName,
       vehicleType: vehicleType ?? this.vehicleType,
       authorityName: authorityName ?? this.authorityName,
     );

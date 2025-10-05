@@ -110,8 +110,8 @@ class ProfileManagementService {
       }
 
       await _supabase.rpc('update_pass_confirmation_preference', params: {
-        'pass_confirmation_type': backendType,
-        'static_confirmation_code': staticPin,
+        'new_pass_confirmation_type': backendType,
+        'new_static_confirmation_code': staticPin,
       });
     } catch (e) {
       throw Exception('Failed to update pass confirmation preference: $e');

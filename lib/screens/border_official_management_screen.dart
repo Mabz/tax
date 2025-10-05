@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
-import '../models/border_assignment.dart';
 import '../models/border_official.dart';
-import '../models/border.dart' as border_model;
 import '../services/border_official_service.dart';
 import '../services/enhanced_border_service.dart';
 import '../widgets/enhanced_border_assignment_dialog.dart';
@@ -24,8 +22,6 @@ class _BorderOfficialManagementScreenState
   bool _isLoading = true;
   String? _error;
   List<BorderOfficial> _borderOfficials = [];
-  List<BorderAssignment> _borderAssignments = [];
-  List<border_model.Border> _availableBorders = [];
 
   String get _countryId => widget.selectedCountry['id'] as String;
   String get _countryName => widget.selectedCountry['name'] as String;
@@ -45,16 +41,11 @@ class _BorderOfficialManagementScreenState
         _error = null;
       });
 
-      final futures = await Future.wait([
-        BorderOfficialService.getBorderOfficialsForCountry(_countryId),
-        BorderOfficialService.getAssignedBorders(countryId: _countryId),
-        BorderOfficialService.getBordersForCountry(_countryId),
-      ]);
+      final borderOfficials =
+          await BorderOfficialService.getBorderOfficialsForCountry(_countryId);
 
       setState(() {
-        _borderOfficials = futures[0] as List<BorderOfficial>;
-        _borderAssignments = futures[1] as List<BorderAssignment>;
-        _availableBorders = futures[2] as List<border_model.Border>;
+        _borderOfficials = borderOfficials;
         _isLoading = false;
       });
     } catch (e) {
@@ -90,17 +81,6 @@ class _BorderOfficialManagementScreenState
         );
       }
     }
-  }
-
-  // Silent versions for batch operations (no snackbars, no reload)
-  Future<void> _assignOfficialToBorderSilent(
-      String officialId, String borderId) async {
-    await BorderOfficialService.assignOfficialToBorder(officialId, borderId);
-  }
-
-  Future<void> _revokeOfficialFromBorderSilent(
-      String officialId, String borderId) async {
-    await BorderOfficialService.revokeOfficialFromBorder(officialId, borderId);
   }
 
   void _showBorderAssignmentDialog() async {
@@ -389,53 +369,7 @@ class _BorderOfficialManagementScreenState
                             ),
                           ),
                           const SizedBox(height: 8),
-                          official.assignedBordersList.isEmpty
-                              ? Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      vertical: 12, horizontal: 16),
-                                  decoration: BoxDecoration(
-                                    color: Colors.grey.shade100,
-                                    borderRadius: BorderRadius.circular(8),
-                                    border:
-                                        Border.all(color: Colors.grey.shade300),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        Icons.info_outline,
-                                        color: Colors.grey.shade600,
-                                        size: 16,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        'No borders assigned',
-                                        style: TextStyle(
-                                          color: Colors.grey.shade600,
-                                          fontSize: 14,
-                                          fontStyle: FontStyle.italic,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                )
-                              : Wrap(
-                                  spacing: 8,
-                                  runSpacing: 4,
-                                  children: official.assignedBordersList
-                                      .map((borderName) {
-                                    return Chip(
-                                      label: Text(
-                                        borderName,
-                                        style: const TextStyle(fontSize: 12),
-                                        overflow: TextOverflow.ellipsis,
-                                        maxLines: 1,
-                                      ),
-                                      backgroundColor: Colors.orange.shade50,
-                                      side: BorderSide(
-                                          color: Colors.orange.shade200),
-                                    );
-                                  }).toList(),
-                                ),
+                          _buildOfficialAssignedBorders(official),
                         ],
                       ),
                     ),
@@ -606,35 +540,6 @@ class _BorderOfficialManagementScreenState
     );
   }
 
-  void _showRevokeConfirmation(BorderAssignment assignment) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Revoke Assignment'),
-        content: Text(
-          'Are you sure you want to revoke ${assignment.officialName} from ${assignment.borderName}?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              _revokeOfficialFromBorder(
-                assignment.officialProfileId,
-                assignment.borderId,
-              );
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Revoke', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _showEnhancedRevokeConfirmation(
       BorderAssignmentWithPermissions assignment) {
     showDialog(
@@ -747,6 +652,177 @@ class _BorderOfficialManagementScreenState
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildOfficialAssignedBorders(BorderOfficial official) {
+    if (official.assignedBordersList.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.info_outline,
+              color: Colors.grey.shade600,
+              size: 16,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'No borders assigned',
+              style: TextStyle(
+                color: Colors.grey.shade600,
+                fontSize: 14,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return FutureBuilder<List<BorderAssignmentWithPermissions>>(
+      future:
+          EnhancedBorderService.getBorderAssignmentsWithPermissions(_countryId),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Padding(
+            padding: EdgeInsets.all(16),
+            child: Center(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.orange,
+                ),
+              ),
+            ),
+          );
+        }
+
+        if (snapshot.hasError || !snapshot.hasData) {
+          // Fallback to simple border names if detailed data fails
+          return Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: official.assignedBordersList.map((borderName) {
+              return Chip(
+                label: Text(
+                  borderName,
+                  style: const TextStyle(fontSize: 12),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                ),
+                backgroundColor: Colors.orange.shade50,
+                side: BorderSide(color: Colors.orange.shade200),
+              );
+            }).toList(),
+          );
+        }
+
+        // Filter assignments for this specific official
+        final officialAssignments = snapshot.data!
+            .where((assignment) => assignment.profileId == official.profileId)
+            .toList();
+
+        if (officialAssignments.isEmpty) {
+          return Container(
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.grey.shade300),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.info_outline,
+                  color: Colors.grey.shade600,
+                  size: 16,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'No borders assigned',
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontSize: 14,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return Column(
+          children: officialAssignments.map((assignment) {
+            return Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.orange.shade200),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.location_on,
+                        size: 16,
+                        color: Colors.orange.shade700,
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          assignment.borderName,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                            color: Colors.orange.shade800,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Text(
+                        'Permissions: ',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                      _buildPermissionChip(
+                        'Check-In',
+                        assignment.canCheckIn,
+                        Colors.green,
+                      ),
+                      const SizedBox(width: 6),
+                      _buildPermissionChip(
+                        'Check-Out',
+                        assignment.canCheckOut,
+                        Colors.blue,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+        );
+      },
     );
   }
 }

@@ -58,7 +58,8 @@ class Authority {
           : DateTime.now(),
       defaultPassAdvanceDays:
           (json['default_pass_advance_days'] as num?)?.toInt(),
-      defaultCurrencyCode: json['default_currency_code']?.toString(),
+      defaultCurrencyCode: json['default_currency_code']?.toString() ??
+          json['default_currency']?.toString(),
       // Try nested countries data first, then fall back to direct fields
       countryName:
           countryData?['name']?.toString() ?? json['country_name']?.toString(),

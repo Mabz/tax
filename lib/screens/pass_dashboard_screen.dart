@@ -36,48 +36,73 @@ class _PassDashboardScreenState extends State<PassDashboardScreen>
 
   @override
   void dispose() {
-    PassService.unsubscribeFromPassUpdates();
+    // Only unsubscribe if realtime was actually set up
+    try {
+      PassService.unsubscribeFromPassUpdates();
+    } catch (e) {
+      debugPrint('🔄 Error unsubscribing from pass updates: $e');
+    }
     _tabController.dispose();
     _pageController.dispose();
     super.dispose();
   }
 
   void _setupRealtimeSubscription() {
+    debugPrint('🔄 Setting up realtime subscriptions for secure code updates');
+
     try {
       PassService.subscribeToPassUpdates(
         onPassChanged: (pass, eventType) {
           if (mounted) {
+            debugPrint('🔄 Pass $eventType received: ${pass.passId}');
+            debugPrint('🔄 Secure code in update: ${pass.secureCode}');
+
             setState(() {
               switch (eventType) {
                 case 'INSERT':
-                  // Add new pass to the list
                   _passes.add(pass);
-                  // Sort passes by issued date (newest first)
                   _passes.sort((a, b) => b.issuedAt.compareTo(a.issuedAt));
+                  debugPrint('🔄 Added new pass: ${pass.passId}');
                   break;
-
                 case 'UPDATE':
-                  // Find and update existing pass
                   final index =
                       _passes.indexWhere((p) => p.passId == pass.passId);
                   if (index != -1) {
+                    final oldSecureCode = _passes[index].secureCode;
                     _passes[index] = pass;
+                    debugPrint('🔄 Updated pass: ${pass.passId}');
+                    debugPrint(
+                        '🔄 Secure code changed: $oldSecureCode -> ${pass.secureCode}');
+
+                    // Show a snackbar if secure code was added
+                    if (oldSecureCode != pass.secureCode &&
+                        pass.secureCode != null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                              'Secure code updated for ${pass.passDescription}'),
+                          backgroundColor: Colors.green,
+                          duration: const Duration(seconds: 3),
+                        ),
+                      );
+                    }
+                  } else {
+                    // Pass not found in list, add it
+                    _passes.add(pass);
+                    _passes.sort((a, b) => b.issuedAt.compareTo(a.issuedAt));
+                    debugPrint('🔄 Added missing pass: ${pass.passId}');
                   }
                   break;
-
                 case 'DELETE':
-                  // Remove pass from list
                   _passes.removeWhere((p) => p.passId == pass.passId);
-                  // Reset page index if current index is out of bounds
                   if (_currentPassIndex >= _passes.length &&
                       _passes.isNotEmpty) {
                     _currentPassIndex = 0;
-                    _pageController.animateToPage(
-                      0,
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeInOut,
-                    );
+                    _pageController.animateToPage(0,
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeInOut);
                   }
+                  debugPrint('🔄 Removed pass: ${pass.passId}');
                   break;
               }
               _isLoadingPasses = false;
@@ -85,26 +110,31 @@ class _PassDashboardScreenState extends State<PassDashboardScreen>
           }
         },
         onError: (error) {
-          // Only show error messages for non-connection issues
-          if (mounted &&
-              !error.toLowerCase().contains('connection') &&
-              !error.toLowerCase().contains('network') &&
-              !error.toLowerCase().contains('websocket')) {
+          debugPrint('🔄 Realtime error: $error');
+          // Show error to user if needed
+          if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Realtime update error: $error'),
+                content: Text('Real-time updates error: $error'),
                 backgroundColor: Colors.orange,
-                duration: const Duration(seconds: 3),
+                duration: const Duration(seconds: 5),
               ),
             );
           }
-          // Log all errors for debugging but don't show connection errors to users
-          debugPrint('🔄 Realtime error (will retry): $error');
         },
       );
     } catch (e) {
       debugPrint('🔄 Failed to setup realtime subscription: $e');
-      // App continues to work without realtime updates
+      // Show error to user
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to setup real-time updates: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
     }
   }
 
@@ -156,7 +186,8 @@ class _PassDashboardScreenState extends State<PassDashboardScreen>
     );
 
     if (result == true) {
-      _loadPasses();
+      // Reload passes after successful purchase
+      await _loadPasses();
     }
   }
 
@@ -355,7 +386,7 @@ class _PassDashboardScreenState extends State<PassDashboardScreen>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            CircularProgressIndicator(),
+            LinearProgressIndicator(),
             SizedBox(height: 16),
             Text(
               'Loading your passes...',
@@ -583,36 +614,73 @@ class _PassDashboardScreenState extends State<PassDashboardScreen>
       PurchasedPass pass, PassVerificationMethod method) {
     switch (method) {
       case PassVerificationMethod.secureCode:
-        // Show secure code logic (existing behavior)
+        // Show secure code logic with enhanced status indication
         if (pass.hasValidSecureCode) {
+          // Check if pass has been recently processed (checked in/out)
+          final bool isRecentlyProcessed = pass.currentStatus == 'checked_in' || pass.currentStatus == 'checked_out';
+          final bool isCheckedIn = pass.currentStatus == 'checked_in';
+          
           return Column(
             children: [
               Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 decoration: BoxDecoration(
-                  color: Colors.green.shade50,
+                  color: isRecentlyProcessed ? Colors.blue.shade50 : Colors.green.shade50,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.green.shade200),
+                  border: Border.all(color: isRecentlyProcessed ? Colors.blue.shade200 : Colors.green.shade200),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Text(
-                      'Secure Code',
-                      style: TextStyle(
-                        color: Colors.green.shade800,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
+                    if (isRecentlyProcessed) ...[
+                      // Show scan status for recently processed passes
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            isCheckedIn ? Icons.login : Icons.logout,
+                            color: Colors.blue.shade700,
+                            size: 16,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            isCheckedIn ? 'Checked In' : 'Checked Out',
+                            style: TextStyle(
+                              color: Colors.blue.shade800,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Border Verification Code',
+                        style: TextStyle(
+                          color: Colors.blue.shade700,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ] else ...[
+                      // Show normal secure code header for unused passes
+                      Text(
+                        'Border Verification Code',
+                        style: TextStyle(
+                          color: Colors.green.shade800,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 4),
                     Text(
                       pass.secureCode ?? '',
                       style: TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.w900,
-                        color: Colors.green.shade900,
+                        color: isRecentlyProcessed ? Colors.blue.shade900 : Colors.green.shade900,
                         fontFamily: 'Courier',
                         letterSpacing: 3,
                         height: 1.2,
@@ -622,10 +690,56 @@ class _PassDashboardScreenState extends State<PassDashboardScreen>
                     Text(
                       'Expires in ${pass.secureCodeMinutesRemaining} min',
                       style: TextStyle(
-                        color: Colors.green.shade700,
+                        color: isRecentlyProcessed ? Colors.blue.shade700 : Colors.green.shade700,
                         fontSize: 12,
                       ),
                     ),
+                    if (isRecentlyProcessed) ...[
+                      const SizedBox(height: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade100,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          'Scanned by border official',
+                          style: TextStyle(
+                            color: Colors.blue.shade800,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ] else ...[
+                      const SizedBox(height: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.green.shade100,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.info_outline,
+                              size: 12,
+                              color: Colors.green.shade700,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Show this code to the border official when asked',
+                              style: TextStyle(
+                                color: Colors.green.shade700,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -897,6 +1011,10 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
       final vehicles = await VehicleService.getVehiclesForUser();
       setState(() {
         _vehicles = vehicles;
+        // Default to first registered vehicle if available
+        if (vehicles.isNotEmpty && _selectedVehicle == null) {
+          _selectedVehicle = vehicles.first;
+        }
         _isLoadingVehicles = false;
       });
     } catch (e) {
@@ -934,50 +1052,25 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
     }
   }
 
-  Future<void> _loadBordersForTemplate(PassTemplate template) async {
-    if (!template.allowUserSelectablePoints) return;
-
-    try {
-      // Get the authority ID from the template and load its borders
-      debugPrint(
-          'Main screen: Loading borders for authority: ${template.authorityId}');
-      final borders =
-          await PassService.getBordersForAuthority(template.authorityId);
-      debugPrint('Main screen: Loaded ${borders.length} borders');
-
-      setState(() {
-        _availableBorders = borders
-            .map((border) => {
-                  'id': border['border_id'],
-                  'name': border['border_name'],
-                })
-            .toList();
-        _selectedEntryPoint = null;
-        _selectedExitPoint = null;
-      });
-    } catch (e) {
-      debugPrint('Main screen: Error loading borders: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading borders: $e')),
-        );
-      }
-    }
-  }
-
   Future<void> _purchasePass() async {
     if (_selectedPassTemplate == null || _selectedActivationDate == null) {
       return;
     }
 
-    // Show confirmation dialog if no vehicle is selected
+    // Show confirmation dialog if no vehicle is selected (but make it more positive)
     if (_selectedVehicle == null) {
       final shouldProceed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('No Vehicle Selected'),
+          title: Row(
+            children: [
+              Icon(Icons.directions_walk, color: Colors.green.shade600),
+              const SizedBox(width: 8),
+              const Text('Pedestrian/General Pass'),
+            ],
+          ),
           content: const Text(
-            'You haven\'t selected a specific vehicle for this pass. \n\nAre you sure you want to continue?',
+            'This pass will be issued without a specific vehicle and can be used for:\n\n• Pedestrian border crossings\n• General border passes\n• Any vehicle (if allowed by the authority)\n\nProceed with purchase?',
           ),
           actions: [
             TextButton(
@@ -990,7 +1083,7 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
                 backgroundColor: Colors.green,
                 foregroundColor: Colors.white,
               ),
-              child: const Text('Continue'),
+              child: const Text('Continue Purchase'),
             ),
           ],
         ),
@@ -1204,7 +1297,7 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
 
   Widget _buildCountrySelection() {
     if (_isLoadingCountries) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(child: LinearProgressIndicator());
     }
 
     if (_countries.isEmpty) {
@@ -1297,7 +1390,7 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
     }
 
     if (_isLoadingTemplates) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(child: LinearProgressIndicator());
     }
 
     if (_passTemplates.isEmpty) {
@@ -1390,21 +1483,31 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
                   ),
                   const SizedBox(height: 6),
                   // Entry/Exit Point display (selection now happens in dialog)
-                  if (_selectedPassTemplate!.allowUserSelectablePoints) ...[
+                  if (_selectedPassTemplate!.allowUserSelectableEntryPoint ||
+                      _selectedPassTemplate!.allowUserSelectableExitPoint) ...[
                     // Show user-selected entry/exit points
-                    _buildDetailRow('Entry Point',
-                        _selectedEntryPoint?['name'] ?? 'Not selected'),
-                    _buildDetailRow('Exit Point',
-                        _selectedExitPoint?['name'] ?? 'Not selected'),
+                    _buildDetailRow(
+                        'Entry Point',
+                        _selectedPassTemplate!.allowUserSelectableEntryPoint
+                            ? (_selectedEntryPoint?['name'] ?? 'Not selected')
+                            : (_selectedPassTemplate!.entryPointName ??
+                                'Any Entry Point')),
+                    _buildDetailRow(
+                        'Exit Point',
+                        _selectedPassTemplate!.allowUserSelectableExitPoint
+                            ? (_selectedExitPoint?['name'] ?? 'Not selected')
+                            : (_selectedPassTemplate!.exitPointName ??
+                                'Any Exit Point')),
                   ] else ...[
                     // Show fixed entry/exit points from template
                     _buildDetailRow(
                         'Entry Point',
                         _selectedPassTemplate!.entryPointName ??
                             'Any Entry Point'),
-                    if (_selectedPassTemplate!.exitPointName != null)
-                      _buildDetailRow(
-                          'Exit Point', _selectedPassTemplate!.exitPointName!),
+                    _buildDetailRow(
+                        'Exit Point',
+                        _selectedPassTemplate!.exitPointName ??
+                            'Any Exit Point'),
                   ],
                   _buildDetailRow('Vehicle Type',
                       _selectedPassTemplate!.vehicleType ?? 'Any'),
@@ -1479,8 +1582,8 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
         _selectedPassTemplate = template;
         _selectedEntryPoint = userSelectedEntryPoint;
         _selectedExitPoint = userSelectedExitPoint;
-        // Set activation date to now by default, regardless of advance days
-        // The advance days setting controls the maximum future date allowed, not the default
+        // Set activation date to today by default
+        // The date picker will show the allowed range based on advance days
         _selectedActivationDate = DateTime.now();
 
         // Auto-advance to step 3 (vehicle selection) when pass template is selected
@@ -1490,7 +1593,8 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
       });
 
       // Load borders if the template allows user-selectable points (they should already be loaded from the dialog)
-      if (template.allowUserSelectablePoints &&
+      if ((template.allowUserSelectableEntryPoint ||
+              template.allowUserSelectableExitPoint) &&
           userSelectedEntryPoint != null &&
           userSelectedExitPoint != null) {
         // Borders are already selected, no need to load again
@@ -1504,20 +1608,72 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
 
   Widget _buildVehicleSelection() {
     if (_isLoadingVehicles) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(child: LinearProgressIndicator());
     }
 
     if (_vehicles.isEmpty) {
       return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('You need to register a vehicle first.'),
-          const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.of(context).pop(false);
-              // Navigate to vehicle management
-            },
-            child: const Text('Register Vehicle'),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.blue.shade50,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.blue.shade200),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.info_outline,
+                        color: Colors.blue.shade600, size: 20),
+                    const SizedBox(width: 8),
+                    Text(
+                      'No Vehicle Required',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue.shade800,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'This pass can be used without a specific vehicle (e.g., for pedestrians or general border crossings).',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.blue.shade700,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'If you have a vehicle you\'d like to register for future passes:',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.blue.shade600,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.of(context).pop(false);
+                    // Navigate to vehicle management
+                  },
+                  icon: const Icon(Icons.add, size: 16),
+                  label: const Text('Register Vehicle (Optional)'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue.shade600,
+                    foregroundColor: Colors.white,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    textStyle: const TextStyle(fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       );
@@ -1527,14 +1683,90 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Tap to select, tap again to deselect',
+          'Select a vehicle (optional) - you can also proceed without a vehicle',
           style: TextStyle(
             fontSize: 12,
-            color: Colors.grey.shade500,
-            fontStyle: FontStyle.italic,
+            color: Colors.grey.shade600,
+            fontWeight: FontWeight.w500,
           ),
         ),
         const SizedBox(height: 12),
+
+        // "No Vehicle" option
+        Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          decoration: BoxDecoration(
+            color: _selectedVehicle == null
+                ? Colors.green.shade50
+                : Colors.grey.shade50,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: _selectedVehicle == null
+                  ? Colors.green.shade300
+                  : Colors.grey.shade300,
+              width: _selectedVehicle == null ? 2 : 1,
+            ),
+          ),
+          child: InkWell(
+            onTap: () => setState(() {
+              _selectedVehicle = null;
+            }),
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Pedestrian Pass',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            color: _selectedVehicle == null
+                                ? Colors.green.shade800
+                                : Colors.grey.shade800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (_selectedVehicle == null)
+                    Icon(
+                      Icons.check_circle,
+                      color: Colors.green.shade600,
+                      size: 24,
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+
+        // Divider
+        if (_vehicles.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(child: Divider(color: Colors.grey.shade300)),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Text(
+                  'OR SELECT A VEHICLE',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: Colors.grey.shade500,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              Expanded(child: Divider(color: Colors.grey.shade300)),
+            ],
+          ),
+          const SizedBox(height: 8),
+        ],
         ...(_vehicles.map((vehicle) {
           final isSelected = _selectedVehicle?.id == vehicle.id;
           return Container(
@@ -1562,7 +1794,7 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            vehicle.numberPlate,
+                            vehicle.displayName,
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 16,
@@ -1573,7 +1805,11 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            vehicle.description,
+                            vehicle.displayRegistration != 'No Registration'
+                                ? vehicle.displayRegistration
+                                : (vehicle.vinNumber?.isNotEmpty == true
+                                    ? 'VIN: ${vehicle.vinNumber}'
+                                    : 'No registration info'),
                             style: TextStyle(
                               fontSize: 14,
                               color: isSelected
@@ -1581,7 +1817,7 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
                                   : Colors.grey.shade600,
                             ),
                             overflow: TextOverflow.ellipsis,
-                            maxLines: 2,
+                            maxLines: 1,
                           ),
                         ],
                       ),
@@ -1682,35 +1918,36 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
             ),
           ],
         ),
-        const SizedBox(height: 12),
-        _buildSummaryRow('Country', _selectedCountry?['name'] ?? ''),
-        _buildSummaryRow(
-            'Authority', _selectedPassTemplate?.authorityName ?? ''),
-        // Entry/Exit Point summary
-        if (_selectedPassTemplate?.allowUserSelectablePoints == true) ...[
-          _buildSummaryRow(
-              'Entry Point', _selectedEntryPoint?['name'] ?? 'Not selected'),
-          _buildSummaryRow(
-              'Exit Point', _selectedExitPoint?['name'] ?? 'Not selected'),
-        ] else ...[
-          _buildSummaryRow('Entry Point',
-              _selectedPassTemplate?.entryPointName ?? 'Any Entry Point'),
-          if (_selectedPassTemplate?.exitPointName != null)
-            _buildSummaryRow(
-                'Exit Point', _selectedPassTemplate!.exitPointName!),
-        ],
-        _buildSummaryRow(
-            'Vehicle Type', _selectedPassTemplate?.vehicleType ?? ''),
-        _buildSummaryRow(
-            'Entries', '${_selectedPassTemplate?.entryLimit ?? 0}'),
-        _buildSummaryRow(
-            'Valid for', '${_selectedPassTemplate?.expirationDays ?? 0} days'),
-        if (_selectedActivationDate != null) ...[
-          _buildSummaryRow(
-              'Activation Date', _formatDate(_selectedActivationDate!)),
-          _buildSummaryRow(
-              'Expiration Date', _formatDate(_calculateExpirationDate())),
-        ],
+        const SizedBox(height: 16),
+
+        // Responsive layout for Pass Details and Vehicle Details
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final isMobile = constraints.maxWidth < 600;
+
+            if (isMobile) {
+              // Single column layout for mobile
+              return Column(
+                children: [
+                  _buildPassDetailsCard(),
+                  const SizedBox(height: 12),
+                  _buildVehicleDetailsCard(),
+                ],
+              );
+            } else {
+              // Two-column layout for desktop
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(flex: 1, child: _buildPassDetailsCard()),
+                  const SizedBox(width: 12),
+                  Expanded(flex: 1, child: _buildVehicleDetailsCard()),
+                ],
+              );
+            }
+          },
+        ),
+
         const SizedBox(height: 12),
         Container(
           width: double.infinity,
@@ -1743,7 +1980,160 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
             ],
           ),
         ),
+
+        // Space for purchase button
+        const SizedBox(height: 80),
       ],
+    );
+  }
+
+  Widget _buildPassDetailsCard() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.blue.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.blue.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.receipt_long, color: Colors.blue.shade600, size: 16),
+              const SizedBox(width: 6),
+              Text(
+                'Pass Details',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blue.shade800,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          _buildCompactSummaryRow('Country', _selectedCountry?['name'] ?? ''),
+          _buildCompactSummaryRow(
+              'Authority', _selectedPassTemplate?.authorityName ?? ''),
+          // Entry/Exit Point summary
+          if (_selectedPassTemplate?.allowUserSelectableEntryPoint == true ||
+              _selectedPassTemplate?.allowUserSelectableExitPoint == true) ...[
+            _buildCompactSummaryRow(
+                'Entry Point',
+                _selectedPassTemplate?.allowUserSelectableEntryPoint == true
+                    ? (_selectedEntryPoint?['name'] ?? 'Not selected')
+                    : (_selectedPassTemplate?.entryPointName ??
+                        'Any Entry Point')),
+            _buildCompactSummaryRow(
+                'Exit Point',
+                _selectedPassTemplate?.allowUserSelectableExitPoint == true
+                    ? (_selectedExitPoint?['name'] ?? 'Not selected')
+                    : (_selectedPassTemplate?.exitPointName ??
+                        'Any Exit Point')),
+          ] else ...[
+            _buildCompactSummaryRow('Entry Point',
+                _selectedPassTemplate?.entryPointName ?? 'Any Entry Point'),
+            _buildCompactSummaryRow('Exit Point',
+                _selectedPassTemplate?.exitPointName ?? 'Any Exit Point'),
+          ],
+          _buildCompactSummaryRow('Vehicle Type',
+              _selectedPassTemplate?.vehicleType ?? 'Any Vehicle Type'),
+          _buildCompactSummaryRow(
+              'Entries', '${_selectedPassTemplate?.entryLimit ?? 0}'),
+          _buildCompactSummaryRow('Valid for',
+              '${_selectedPassTemplate?.expirationDays ?? 0} days'),
+          if (_selectedActivationDate != null) ...[
+            _buildCompactSummaryRow(
+                'Activation Date', _formatDate(_selectedActivationDate!)),
+            _buildCompactSummaryRow(
+                'Expiration Date', _formatDate(_calculateExpirationDate())),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVehicleDetailsCard() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: _selectedVehicle != null
+            ? Colors.orange.shade50
+            : Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: _selectedVehicle != null
+              ? Colors.orange.shade200
+              : Colors.grey.shade300,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                _selectedVehicle != null
+                    ? Icons.directions_car
+                    : Icons.directions_walk,
+                color: _selectedVehicle != null
+                    ? Colors.orange.shade600
+                    : Colors.grey.shade600,
+                size: 16,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Vehicle Details',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: _selectedVehicle != null
+                      ? Colors.orange.shade800
+                      : Colors.grey.shade700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (_selectedVehicle != null) ...[
+            _buildCompactSummaryRow('Make & Model',
+                '${_selectedVehicle!.make} ${_selectedVehicle!.model}'),
+            _buildCompactSummaryRow('Year', '${_selectedVehicle!.year}'),
+            _buildCompactSummaryRow(
+                'Color', _selectedVehicle!.color ?? 'Not specified'),
+            if (_selectedVehicle!.registrationNumber?.isNotEmpty == true)
+              _buildCompactSummaryRow(
+                  'Number Plate', _selectedVehicle!.registrationNumber!),
+            if (_selectedVehicle!.vinNumber?.isNotEmpty == true)
+              _buildCompactSummaryRow('VIN', _selectedVehicle!.vinNumber!),
+          ] else ...[
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.green.shade100,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Column(
+                children: [
+                  Icon(Icons.directions_walk,
+                      color: Colors.green.shade600, size: 20),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Pedestrian Pass',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.green.shade700,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
@@ -1771,6 +2161,43 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
             ),
             overflow: TextOverflow.ellipsis,
             maxLines: 2,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCompactSummaryRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            flex: 2,
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                color: Colors.grey.shade600,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          Expanded(
+            flex: 3,
+            child: Text(
+              value,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey.shade800,
+              ),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 2,
+              textAlign: TextAlign.right,
+            ),
           ),
         ],
       ),
@@ -1811,10 +2238,15 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
       return false;
     }
 
-    // If template allows user-selectable points, both entry and exit must be selected
+    // If template allows user-selectable points, check that required points are selected
     // (This should already be validated in the dialog, but double-check here)
-    if (_selectedPassTemplate!.allowUserSelectablePoints) {
-      return _selectedEntryPoint != null && _selectedExitPoint != null;
+    if (_selectedPassTemplate!.allowUserSelectableEntryPoint &&
+        _selectedEntryPoint == null) {
+      return false;
+    }
+    if (_selectedPassTemplate!.allowUserSelectableExitPoint &&
+        _selectedExitPoint == null) {
+      return false;
     }
 
     return true;
@@ -1836,7 +2268,7 @@ class _PassPurchaseDialogState extends State<PassPurchaseDialog> {
 
     final selectedDate = await showDatePicker(
       context: context,
-      initialDate: _selectedActivationDate ?? now,
+      initialDate: now, // Always default to today
       firstDate: minDate,
       lastDate: maxDate,
       helpText: templateAdvanceDays > 0
@@ -2094,7 +2526,8 @@ class _PassSelectionDialogState extends State<PassSelectionDialog> {
   }
 
   Future<void> _loadBordersForTemplate(PassTemplate template) async {
-    if (!template.allowUserSelectablePoints) {
+    if (!template.allowUserSelectableEntryPoint &&
+        !template.allowUserSelectableExitPoint) {
       setState(() {
         _availableBorders = [];
         _userSelectedEntryPoint = null;
@@ -2155,9 +2588,14 @@ class _PassSelectionDialogState extends State<PassSelectionDialog> {
   bool _canSelectTemplate() {
     if (_selectedTemplate == null) return false;
 
-    // If template allows user-selectable points, both entry and exit must be selected
-    if (_selectedTemplate!.allowUserSelectablePoints) {
-      return _userSelectedEntryPoint != null && _userSelectedExitPoint != null;
+    // If template allows user-selectable points, check that required points are selected
+    if (_selectedTemplate!.allowUserSelectableEntryPoint &&
+        _userSelectedEntryPoint == null) {
+      return false;
+    }
+    if (_selectedTemplate!.allowUserSelectableExitPoint &&
+        _userSelectedExitPoint == null) {
+      return false;
     }
 
     return true;
@@ -2383,116 +2821,10 @@ class _PassSelectionDialogState extends State<PassSelectionDialog> {
                                   ),
                                   const SizedBox(height: 8),
                                   // Entry/Exit Point display or selection
-                                  if (template.allowUserSelectablePoints &&
-                                      isSelected) ...[
-                                    // Show dropdowns for user selection
-                                    if (_isLoadingBorders)
-                                      const Padding(
-                                        padding:
-                                            EdgeInsets.symmetric(vertical: 8),
-                                        child: Row(
-                                          children: [
-                                            SizedBox(
-                                              width: 16,
-                                              height: 16,
-                                              child: CircularProgressIndicator(
-                                                  strokeWidth: 2),
-                                            ),
-                                            SizedBox(width: 8),
-                                            Text('Loading borders...',
-                                                style: TextStyle(fontSize: 12)),
-                                          ],
-                                        ),
-                                      )
-                                    else ...[
-                                      // Entry Point Dropdown
-                                      DropdownButtonFormField<
-                                          Map<String, dynamic>>(
-                                        value: _userSelectedEntryPoint,
-                                        decoration: const InputDecoration(
-                                          labelText: 'Select Entry Point',
-                                          border: OutlineInputBorder(),
-                                          contentPadding: EdgeInsets.symmetric(
-                                              horizontal: 8, vertical: 4),
-                                          isDense: true,
-                                        ),
-                                        items: _availableBorders
-                                            .map((border) => DropdownMenuItem<
-                                                    Map<String, dynamic>>(
-                                                  value: border,
-                                                  child: Text(
-                                                    border['name'],
-                                                    style: const TextStyle(
-                                                        fontSize: 12),
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-                                                  ),
-                                                ))
-                                            .toList(),
-                                        onChanged: (value) {
-                                          setState(() {
-                                            _userSelectedEntryPoint = value;
-                                          });
-                                        },
-                                      ),
-                                      const SizedBox(height: 8),
-                                      // Exit Point Dropdown
-                                      DropdownButtonFormField<
-                                          Map<String, dynamic>>(
-                                        value: _userSelectedExitPoint,
-                                        decoration: const InputDecoration(
-                                          labelText: 'Select Exit Point',
-                                          border: OutlineInputBorder(),
-                                          contentPadding: EdgeInsets.symmetric(
-                                              horizontal: 8, vertical: 4),
-                                          isDense: true,
-                                        ),
-                                        items: _availableBorders
-                                            .map((border) => DropdownMenuItem<
-                                                    Map<String, dynamic>>(
-                                                  value: border,
-                                                  child: Text(
-                                                    border['name'],
-                                                    style: const TextStyle(
-                                                        fontSize: 12),
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-                                                  ),
-                                                ))
-                                            .toList(),
-                                        onChanged: (value) {
-                                          setState(() {
-                                            _userSelectedExitPoint = value;
-                                          });
-                                        },
-                                      ),
-                                    ],
-                                  ] else ...[
-                                    // Show fixed entry/exit points from template
-                                    Text(
-                                      'Entry Point: ${template.entryPointName ?? 'Any Entry Point'}',
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        color: isSelected
-                                            ? Colors.blue.shade700
-                                            : Colors.grey.shade600,
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
-                                      maxLines: 1,
-                                    ),
-                                    if (template.exitPointName != null)
-                                      Text(
-                                        'Exit Point: ${template.exitPointName}',
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          color: isSelected
-                                              ? Colors.blue.shade700
-                                              : Colors.grey.shade600,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
-                                        maxLines: 1,
-                                      ),
-                                  ],
+                                  _buildEntryPointDisplay(template, isSelected),
+                                  const SizedBox(height: 8),
+                                  _buildExitPointDisplay(template, isSelected),
+
                                   Text(
                                     'Vehicle Type: ${template.vehicleType ?? 'Any'}',
                                     style: TextStyle(
@@ -2576,5 +2908,257 @@ class _PassSelectionDialogState extends State<PassSelectionDialog> {
         ),
       ),
     );
+  }
+
+  Widget _buildEntryPointDisplay(PassTemplate template, bool isSelected) {
+    // Priority: Fixed Border > User Selectable > Any Entry Point
+    if (template.entryPointId != null) {
+      // Fixed border - show the specific border name
+      final entryPointName = template.entryPointName ?? 'Fixed Entry Point';
+      debugPrint(
+          '🔍 Entry Point - ID: ${template.entryPointId}, Name: $entryPointName');
+
+      return Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: Colors.green.shade50,
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: Colors.green.shade200),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.location_on, size: 16, color: Colors.green.shade600),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                entryPointName,
+                style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.green.shade700,
+                    fontWeight: FontWeight.w500),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      );
+    } else if (template.allowUserSelectableEntryPoint) {
+      // User selectable entry point
+      if (isSelected) {
+        if (_isLoadingBorders) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Loading entry points...',
+                          style: TextStyle(fontSize: 12)),
+                      SizedBox(height: 4),
+                      LinearProgressIndicator(minHeight: 2),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+        return DropdownButtonFormField<Map<String, dynamic>>(
+          value: _userSelectedEntryPoint,
+          decoration: const InputDecoration(
+            labelText: 'Select Entry Point',
+            border: OutlineInputBorder(),
+            contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            isDense: true,
+          ),
+          items: _availableBorders
+              .map((border) => DropdownMenuItem<Map<String, dynamic>>(
+                    value: border,
+                    child: Text(border['name'],
+                        style: const TextStyle(fontSize: 12),
+                        overflow: TextOverflow.ellipsis),
+                  ))
+              .toList(),
+          onChanged: (value) {
+            setState(() {
+              _userSelectedEntryPoint = value;
+            });
+          },
+        );
+      } else {
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.blue.shade50,
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: Colors.blue.shade200),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.person_pin_circle,
+                  size: 16, color: Colors.blue.shade600),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'You will select entry point during purchase',
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.blue.shade700,
+                      fontWeight: FontWeight.w500),
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+    } else {
+      // Any entry point (null entry_point_id and not user selectable)
+      return Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.location_on, size: 16, color: Colors.grey.shade600),
+            const SizedBox(width: 6),
+            Text(
+              'Entry: Any Entry Point',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
+  Widget _buildExitPointDisplay(PassTemplate template, bool isSelected) {
+    // Priority: Fixed Border > User Selectable > Any Exit Point
+    if (template.exitPointId != null) {
+      // Fixed border - show the specific border name
+      final exitPointName = template.exitPointName ?? 'Fixed Exit Point';
+      debugPrint(
+          '🔍 Exit Point - ID: ${template.exitPointId}, Name: $exitPointName');
+
+      return Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: Colors.red.shade50,
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: Colors.red.shade200),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.location_off, size: 16, color: Colors.red.shade600),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                exitPointName,
+                style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.red.shade700,
+                    fontWeight: FontWeight.w500),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      );
+    } else if (template.allowUserSelectableExitPoint) {
+      // User selectable exit point
+      if (isSelected) {
+        if (_isLoadingBorders) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Loading exit points...',
+                          style: TextStyle(fontSize: 12)),
+                      SizedBox(height: 4),
+                      LinearProgressIndicator(minHeight: 2),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+        return DropdownButtonFormField<Map<String, dynamic>>(
+          value: _userSelectedExitPoint,
+          decoration: const InputDecoration(
+            labelText: 'Select Exit Point',
+            border: OutlineInputBorder(),
+            contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            isDense: true,
+          ),
+          items: _availableBorders
+              .map((border) => DropdownMenuItem<Map<String, dynamic>>(
+                    value: border,
+                    child: Text(border['name'],
+                        style: const TextStyle(fontSize: 12),
+                        overflow: TextOverflow.ellipsis),
+                  ))
+              .toList(),
+          onChanged: (value) {
+            setState(() {
+              _userSelectedExitPoint = value;
+            });
+          },
+        );
+      } else {
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.blue.shade50,
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: Colors.blue.shade200),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.person_pin_circle,
+                  size: 16, color: Colors.blue.shade600),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'You will select exit point during purchase',
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.blue.shade700,
+                      fontWeight: FontWeight.w500),
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+    } else {
+      // Any exit point (null exit_point_id and not user selectable)
+      return Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.location_off, size: 16, color: Colors.grey.shade600),
+            const SizedBox(width: 6),
+            Text(
+              'Exit: Any Exit Point',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+            ),
+          ],
+        ),
+      );
+    }
   }
 }

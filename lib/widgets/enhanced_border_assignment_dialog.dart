@@ -231,7 +231,7 @@ class _EnhancedBorderAssignmentDialogState
                 const SizedBox(width: 12),
                 const Expanded(
                   child: Text(
-                    'Enhanced Border Assignment',
+                    'Border Assignment',
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
@@ -489,7 +489,7 @@ class _EnhancedBorderAssignmentDialogState
                     color: Colors.white,
                   ),
                 )
-              : const Text('Save Assignments'),
+              : const Text('Save'),
         ),
       ],
     );

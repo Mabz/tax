@@ -22,8 +22,12 @@ class PurchasedPass {
   final String? countryName;
   final String? entryPointId; // Renamed from borderId
   final String? exitPointId; // New field for exit point ID
-  final String? vehicleNumberPlate;
+  final String? vehicleRegistrationNumber;
   final String? vehicleVin;
+  final String? vehicleMake;
+  final String? vehicleModel;
+  final int? vehicleYear;
+  final String? vehicleColor;
   final String? secureCode;
   final DateTime? secureCodeExpiresAt;
 
@@ -50,8 +54,12 @@ class PurchasedPass {
     this.countryName,
     this.entryPointId,
     this.exitPointId,
-    this.vehicleNumberPlate,
+    this.vehicleRegistrationNumber,
     this.vehicleVin,
+    this.vehicleMake,
+    this.vehicleModel,
+    this.vehicleYear,
+    this.vehicleColor,
     this.secureCode,
     this.secureCodeExpiresAt,
   });
@@ -128,8 +136,16 @@ class PurchasedPass {
       entryPointId: json['entry_point_id']?.toString() ??
           json['border_id']?.toString(), // Support legacy border_id
       exitPointId: json['exit_point_id']?.toString(),
-      vehicleNumberPlate: json['vehicle_number_plate']?.toString(),
+      vehicleRegistrationNumber:
+          json['vehicle_registration_number']?.toString() ??
+              json['vehicle_number_plate']?.toString(),
       vehicleVin: json['vehicle_vin']?.toString(),
+      vehicleMake: json['vehicle_make']?.toString(),
+      vehicleModel: json['vehicle_model']?.toString(),
+      vehicleYear: json['vehicle_year'] != null
+          ? int.tryParse(json['vehicle_year'].toString())
+          : null,
+      vehicleColor: json['vehicle_color']?.toString(),
       secureCode: json['secure_code']?.toString(),
       secureCodeExpiresAt: json['secure_code_expires_at'] != null
           ? DateTime.parse(json['secure_code_expires_at'].toString())
@@ -161,8 +177,12 @@ class PurchasedPass {
       'entry_point_id': entryPointId,
       'exit_point_id': exitPointId,
       'vehicle_description': vehicleDescription,
-      'vehicle_number_plate': vehicleNumberPlate,
+      'vehicle_registration_number': vehicleRegistrationNumber,
       'vehicle_vin': vehicleVin,
+      'vehicle_make': vehicleMake,
+      'vehicle_model': vehicleModel,
+      'vehicle_year': vehicleYear,
+      'vehicle_color': vehicleColor,
       'secure_code': secureCode,
       'secure_code_expires_at': secureCodeExpiresAt?.toIso8601String(),
     };
@@ -172,16 +192,24 @@ class PurchasedPass {
   String get displayVehicleDescription {
     final List<String> parts = [];
 
-    if (vehicleDescription.isNotEmpty) {
+    // Use make/model/year if available, otherwise fall back to description
+    if (vehicleMake != null && vehicleModel != null) {
+      String makeModel = '$vehicleMake $vehicleModel';
+      if (vehicleYear != null) {
+        makeModel += ' ($vehicleYear)';
+      }
+      parts.add(makeModel);
+    } else if (vehicleDescription.isNotEmpty) {
       parts.add(vehicleDescription);
     }
 
-    if (vehicleNumberPlate != null && vehicleNumberPlate!.isNotEmpty) {
-      parts.add('Plate: $vehicleNumberPlate');
+    if (vehicleRegistrationNumber != null &&
+        vehicleRegistrationNumber!.isNotEmpty) {
+      parts.add('Reg: $vehicleRegistrationNumber');
     }
 
-    if (vehicleVin != null && vehicleVin!.isNotEmpty) {
-      parts.add('VIN: $vehicleVin');
+    if (vehicleColor != null && vehicleColor!.isNotEmpty) {
+      parts.add('Color: $vehicleColor');
     }
 
     if (parts.isEmpty) {
@@ -194,8 +222,11 @@ class PurchasedPass {
   // Check if this pass has vehicle information
   bool get hasVehicleInfo {
     return (vehicleDescription.isNotEmpty) ||
-        (vehicleNumberPlate != null && vehicleNumberPlate!.isNotEmpty) ||
-        (vehicleVin != null && vehicleVin!.isNotEmpty);
+        (vehicleRegistrationNumber != null &&
+            vehicleRegistrationNumber!.isNotEmpty) ||
+        (vehicleVin != null && vehicleVin!.isNotEmpty) ||
+        (vehicleMake != null && vehicleMake!.isNotEmpty) ||
+        (vehicleModel != null && vehicleModel!.isNotEmpty);
   }
 
   bool get isExpired {
@@ -226,12 +257,7 @@ class PurchasedPass {
     final activationDateOnly =
         DateTime(activationDate.year, activationDate.month, activationDate.day);
 
-    // Check if no entries remaining (Consumed takes precedence over expired)
-    if (!hasEntriesRemaining) {
-      return 'Consumed';
-    }
-
-    // Check if expired by date (but has entries remaining)
+    // Check if expired by date first
     if (nowDate.isAfter(expiryDate)) {
       return 'Expired';
     }
@@ -241,17 +267,29 @@ class PurchasedPass {
       return 'Pending Activation';
     }
 
-    // If we're between activation and expiration dates with entries remaining
-    if (status == 'active' &&
-        (nowDate.isAfter(activationDateOnly) ||
-            nowDate.isAtSameMomentAs(activationDateOnly)) &&
-        (nowDate.isBefore(expiryDate) ||
-            nowDate.isAtSameMomentAs(expiryDate)) &&
-        hasEntriesRemaining) {
-      return 'Active';
+    // Check if pass is not active
+    if (status != 'active') {
+      return status.toUpperCase();
     }
 
-    return status.toUpperCase();
+    // IMPORTANT FIX: Check vehicle status first, then entries
+    // If vehicle is in country, pass is still "Active" even with 0 entries
+    if (currentStatus == 'checked_in') {
+      return 'Active'; // Vehicle in country, can still check out
+    }
+
+    // If vehicle has checked out and no entries remaining, then it's consumed
+    if (currentStatus == 'checked_out' && !hasEntriesRemaining) {
+      return 'Consumed';
+    }
+
+    // If vehicle hasn't entered and no entries remaining, it's consumed
+    if ((currentStatus == null || currentStatus == 'unused') && !hasEntriesRemaining) {
+      return 'Consumed';
+    }
+
+    // Otherwise, it's active
+    return 'Active';
   }
 
   /// Get the color that should be used for displaying this pass status
@@ -263,12 +301,7 @@ class PurchasedPass {
     final activationDateOnly =
         DateTime(activationDate.year, activationDate.month, activationDate.day);
 
-    // Red for consumed (no entries remaining)
-    if (!hasEntriesRemaining) {
-      return 'red';
-    }
-
-    // Red for expired (but has entries remaining)
+    // Red for expired
     if (nowDate.isAfter(expiryDate)) {
       return 'red';
     }
@@ -278,13 +311,24 @@ class PurchasedPass {
       return 'yellow';
     }
 
-    // Green for active passes
-    if (status == 'active' &&
-        (nowDate.isAfter(activationDateOnly) ||
-            nowDate.isAtSameMomentAs(activationDateOnly)) &&
-        (nowDate.isBefore(expiryDate) ||
-            nowDate.isAtSameMomentAs(expiryDate)) &&
-        hasEntriesRemaining) {
+    // Check if pass is not active
+    if (status != 'active') {
+      return 'red';
+    }
+
+    // IMPORTANT FIX: Check vehicle status first, then entries
+    // If vehicle is in country, pass is still "Active" (green) even with 0 entries
+    if (currentStatus == 'checked_in') {
+      return 'green'; // Vehicle in country, can still check out
+    }
+
+    // Red for consumed (vehicle checked out or never entered, and no entries)
+    if ((currentStatus == 'checked_out' || currentStatus == null || currentStatus == 'unused') && !hasEntriesRemaining) {
+      return 'red';
+    }
+
+    // Green for active passes with entries
+    if (hasEntriesRemaining) {
       return 'green';
     }
 
@@ -348,8 +392,12 @@ class PurchasedPass {
         other.countryName == countryName &&
         other.entryPointId == entryPointId &&
         other.exitPointId == exitPointId &&
-        other.vehicleNumberPlate == vehicleNumberPlate &&
-        other.vehicleVin == vehicleVin;
+        other.vehicleRegistrationNumber == vehicleRegistrationNumber &&
+        other.vehicleVin == vehicleVin &&
+        other.vehicleMake == vehicleMake &&
+        other.vehicleModel == vehicleModel &&
+        other.vehicleYear == vehicleYear &&
+        other.vehicleColor == vehicleColor;
   }
 
   @override
@@ -376,8 +424,12 @@ class PurchasedPass {
       countryName,
       entryPointId,
       exitPointId,
-      vehicleNumberPlate,
+      vehicleRegistrationNumber,
       vehicleVin,
+      vehicleMake,
+      vehicleModel,
+      vehicleYear,
+      vehicleColor,
     ]);
   }
 

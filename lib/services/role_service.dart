@@ -144,6 +144,112 @@ class RoleService {
 
   /// Get countries where current user has country admin role
   static Future<List<Map<String, dynamic>>> getCountryAdminCountries() async {
+    return _getCountriesForRole(AppConstants.roleCountryAdmin);
+  }
+
+  /// Get countries where current user has country auditor role
+  static Future<List<Map<String, dynamic>>> getCountryAuditorCountries() async {
+    return _getCountriesForRole(AppConstants.roleCountryAuditor);
+  }
+
+  /// Get countries where current user has border official role
+  static Future<List<Map<String, dynamic>>> getBorderOfficialCountries() async {
+    return _getCountriesForRole(AppConstants.roleBorderOfficial);
+  }
+
+  /// Get countries where current user has business intelligence role
+  static Future<List<Map<String, dynamic>>>
+      getBusinessIntelligenceCountries() async {
+    return _getCountriesForRole(AppConstants.roleBusinessIntelligence);
+  }
+
+  /// Get countries where current user has local authority role
+  static Future<List<Map<String, dynamic>>> getLocalAuthorityCountries() async {
+    return _getCountriesForRole(AppConstants.roleLocalAuthority);
+  }
+
+  /// Get all countries where current user has any country-specific role
+  static Future<List<Map<String, dynamic>>> getAllUserCountries() async {
+    try {
+      final currentUser = _supabase.auth.currentUser;
+      if (currentUser == null) {
+        debugPrint('❌ No authenticated user');
+        return [];
+      }
+
+      debugPrint('🔍 Fetching all countries for user: ${currentUser.id}');
+
+      final response = await _supabase
+          .from(AppConstants.tableProfileRoles)
+          .select('''
+            ${AppConstants.fieldProfileRoleAuthorityId},
+            ${AppConstants.tableAuthorities}!inner(
+              ${AppConstants.fieldAuthorityCountryId},
+              ${AppConstants.tableCountries}!inner(
+                ${AppConstants.fieldId},
+                ${AppConstants.fieldCountryName},
+                ${AppConstants.fieldCountryCode},
+                ${AppConstants.fieldCountryIsActive},
+                ${AppConstants.fieldCountryIsGlobal},
+                ${AppConstants.fieldCreatedAt},
+                ${AppConstants.fieldUpdatedAt}
+              )
+            ),
+            ${AppConstants.tableRoles}!inner(
+              ${AppConstants.fieldRoleName}
+            )
+          ''')
+          .eq(AppConstants.fieldProfileRoleProfileId, currentUser.id)
+          .inFilter(
+              '${AppConstants.tableRoles}.${AppConstants.fieldRoleName}', [
+            AppConstants.roleCountryAdmin,
+            AppConstants.roleCountryAuditor,
+            AppConstants.roleBorderOfficial,
+            AppConstants.roleBusinessIntelligence,
+            AppConstants.roleLocalAuthority,
+          ])
+          .eq(AppConstants.fieldProfileRoleIsActive, true)
+          .eq('${AppConstants.tableAuthorities}.${AppConstants.fieldAuthorityIsActive}',
+              true)
+          .eq('${AppConstants.tableAuthorities}.${AppConstants.tableCountries}.${AppConstants.fieldCountryIsActive}',
+              true);
+
+      debugPrint('✅ Retrieved ${response.length} country role assignments');
+
+      // Remove duplicates by country ID
+      final Map<String, Map<String, dynamic>> uniqueCountries = {};
+
+      for (final item in response) {
+        final authority = item[AppConstants.tableAuthorities];
+        final country = authority[AppConstants.tableCountries];
+        final countryId = country[AppConstants.fieldId];
+
+        if (!uniqueCountries.containsKey(countryId)) {
+          uniqueCountries[countryId] = {
+            AppConstants.fieldId: country[AppConstants.fieldId],
+            AppConstants.fieldCountryName:
+                country[AppConstants.fieldCountryName],
+            AppConstants.fieldCountryCode:
+                country[AppConstants.fieldCountryCode],
+            AppConstants.fieldCountryIsActive:
+                country[AppConstants.fieldCountryIsActive],
+            AppConstants.fieldCountryIsGlobal:
+                country[AppConstants.fieldCountryIsGlobal],
+            AppConstants.fieldCreatedAt: country[AppConstants.fieldCreatedAt],
+            AppConstants.fieldUpdatedAt: country[AppConstants.fieldUpdatedAt],
+          };
+        }
+      }
+
+      return uniqueCountries.values.toList();
+    } catch (e) {
+      debugPrint('❌ Error fetching all user countries: $e');
+      return [];
+    }
+  }
+
+  /// Get user's roles for a specific country
+  static Future<List<String>> getUserRolesForCountry(String countryId) async {
     try {
       final currentUser = _supabase.auth.currentUser;
       if (currentUser == null) {
@@ -152,7 +258,47 @@ class RoleService {
       }
 
       debugPrint(
-          '🔍 Fetching country admin countries for user: ${currentUser.id}');
+          '🔍 Fetching roles for user ${currentUser.id} in country $countryId');
+
+      final response = await _supabase
+          .from(AppConstants.tableProfileRoles)
+          .select('''
+            ${AppConstants.tableRoles}!inner(
+              ${AppConstants.fieldRoleName}
+            ),
+            ${AppConstants.tableAuthorities}!inner(
+              ${AppConstants.fieldAuthorityCountryId}
+            )
+          ''')
+          .eq(AppConstants.fieldProfileRoleProfileId, currentUser.id)
+          .eq('${AppConstants.tableAuthorities}.${AppConstants.fieldAuthorityCountryId}',
+              countryId)
+          .eq(AppConstants.fieldProfileRoleIsActive, true);
+
+      final roles = response.map<String>((item) {
+        final role = item[AppConstants.tableRoles];
+        return role[AppConstants.fieldRoleName] as String;
+      }).toList();
+
+      debugPrint('✅ Found roles for country $countryId: $roles');
+      return roles;
+    } catch (e) {
+      debugPrint('❌ Error fetching user roles for country: $e');
+      return [];
+    }
+  }
+
+  /// Private helper method to get countries for a specific role
+  static Future<List<Map<String, dynamic>>> _getCountriesForRole(
+      String roleName) async {
+    try {
+      final currentUser = _supabase.auth.currentUser;
+      if (currentUser == null) {
+        debugPrint('❌ No authenticated user');
+        return [];
+      }
+
+      debugPrint('🔍 Fetching $roleName countries for user: ${currentUser.id}');
 
       final response = await _supabase
           .from(AppConstants.tableProfileRoles)
@@ -176,14 +322,14 @@ class RoleService {
           ''')
           .eq(AppConstants.fieldProfileRoleProfileId, currentUser.id)
           .eq('${AppConstants.tableRoles}.${AppConstants.fieldRoleName}',
-              AppConstants.roleCountryAdmin)
+              roleName)
           .eq(AppConstants.fieldProfileRoleIsActive, true)
           .eq('${AppConstants.tableAuthorities}.${AppConstants.fieldAuthorityIsActive}',
               true)
           .eq('${AppConstants.tableAuthorities}.${AppConstants.tableCountries}.${AppConstants.fieldCountryIsActive}',
               true);
 
-      debugPrint('✅ Retrieved ${response.length} country admin assignments');
+      debugPrint('✅ Retrieved ${response.length} $roleName assignments');
 
       return response.map<Map<String, dynamic>>((item) {
         final authority = item[AppConstants.tableAuthorities];
@@ -201,7 +347,7 @@ class RoleService {
         };
       }).toList();
     } catch (e) {
-      debugPrint('❌ Error fetching country admin countries: $e');
+      debugPrint('❌ Error fetching $roleName countries: $e');
       return [];
     }
   }

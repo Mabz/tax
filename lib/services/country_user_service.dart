@@ -61,6 +61,28 @@ class CountryUserService {
     }
   }
 
+  /// Get all users in a specific authority
+  static Future<List<CountryUserProfile>> getProfilesByAuthority(
+      String authorityId) async {
+    try {
+      debugPrint('🔍 Fetching profiles for authority: $authorityId');
+
+      final response =
+          await _supabase.rpc('get_profiles_by_authority', params: {
+        'target_authority_id': authorityId,
+      });
+
+      debugPrint('✅ Fetched ${response.length} profiles for authority');
+
+      return response
+          .map<CountryUserProfile>((json) => CountryUserProfile.fromJson(json))
+          .toList();
+    } catch (e) {
+      debugPrint('❌ Error fetching profiles by authority: $e');
+      rethrow;
+    }
+  }
+
   /// Get detailed profile information for role management
   static Future<Profile?> getProfileDetails(String profileId) async {
     try {
@@ -70,7 +92,12 @@ class CountryUserService {
           .from(AppConstants.tableProfiles)
           .select()
           .eq(AppConstants.fieldId, profileId)
-          .single();
+          .maybeSingle(); // Use maybeSingle() instead of single() to handle missing records
+
+      if (response == null) {
+        debugPrint('⚠️ Profile not found: $profileId');
+        return null;
+      }
 
       debugPrint('✅ Fetched profile details');
       return Profile.fromJson(response);

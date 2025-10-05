@@ -196,7 +196,7 @@ class _VehicleTaxRateManagementScreenState
         backgroundColor: Colors.orange,
         foregroundColor: Colors.white,
       ),
-      body: _buildBody(),
+      body: SafeArea(child: _buildBody()),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showTaxRateDialog(),
         backgroundColor: Colors.orange,
@@ -312,49 +312,93 @@ class _VehicleTaxRateManagementScreenState
         final taxRate = _taxRates[index];
         return Card(
           margin: const EdgeInsets.only(bottom: 12),
-          child: ListTile(
-            leading: CircleAvatar(
-              backgroundColor: Colors.orange.shade100,
-              child: Icon(
-                Icons.local_taxi,
-                color: Colors.orange.shade700,
-              ),
-            ),
-            title: Text(
-              taxRate.vehicleType,
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-            subtitle: Column(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Scope: ${taxRate.displayScope}'),
-                Text(
-                  '${taxRate.taxAmount.toStringAsFixed(2)} ${taxRate.currency}',
-                  style: TextStyle(
-                    color: Colors.orange.shade700,
-                    fontWeight: FontWeight.w500,
-                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        taxRate.vehicleType,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ),
+                    PopupMenuButton<String>(
+                      onSelected: (value) {
+                        switch (value) {
+                          case 'edit':
+                            _showTaxRateDialog(taxRate: taxRate);
+                            break;
+                          case 'delete':
+                            _deleteTaxRate(taxRate);
+                            break;
+                        }
+                      },
+                      itemBuilder: (context) => [
+                        const PopupMenuItem(
+                          value: 'edit',
+                          child: Row(
+                            children: [
+                              Icon(Icons.edit, size: 20),
+                              SizedBox(width: 8),
+                              Text('Edit'),
+                            ],
+                          ),
+                        ),
+                        const PopupMenuItem(
+                          value: 'delete',
+                          child: Row(
+                            children: [
+                              Icon(Icons.delete, size: 20, color: Colors.red),
+                              SizedBox(width: 8),
+                              Text('Delete',
+                                  style: TextStyle(color: Colors.red)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  onPressed: () => _showTaxRateDialog(taxRate: taxRate),
-                  icon: const Icon(Icons.edit),
-                  tooltip: 'Edit tax rate',
-                ),
-                IconButton(
-                  onPressed: () => _deleteTaxRate(taxRate),
-                  icon: Icon(Icons.delete, color: Colors.red.shade600),
-                  tooltip: 'Delete tax rate',
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 4,
+                  children: [
+                    _buildTaxInfoChip('Scope', taxRate.displayScope),
+                    _buildTaxInfoChip('Amount',
+                        '${taxRate.taxAmount.toStringAsFixed(2)} ${taxRate.currency}'),
+                  ],
                 ),
               ],
             ),
           ),
         );
       },
+    );
+  }
+
+  Widget _buildTaxInfoChip(String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.orange.shade200),
+      ),
+      child: Text(
+        '$label: $value',
+        style: TextStyle(
+          fontSize: 12,
+          color: Colors.orange.shade700,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
     );
   }
 }

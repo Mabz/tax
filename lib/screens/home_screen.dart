@@ -11,6 +11,8 @@ import '../services/role_service.dart';
 import '../services/authority_service.dart';
 import '../services/invitation_service.dart';
 import 'authority_management_screen.dart';
+import 'single_authority_management_screen.dart';
+import 'edit_authority_screen.dart';
 import 'country_management_screen.dart';
 import 'profile_management_screen.dart';
 import 'border_type_management_screen.dart';
@@ -50,6 +52,7 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Authority> _authorities = [];
   Authority? _selectedAuthority;
   bool _isLoadingAuthorities = false;
+  RealtimeChannel? _authorityRealtimeChannel;
 
   // Invitation state
   int _pendingInvitationsCount = 0;
@@ -62,6 +65,10 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isLoadingProfile = true;
   bool _isAccountDisabled = false;
   RealtimeChannel? _profileRealtimeChannel;
+  RealtimeChannel? _profileRolesRealtimeChannel;
+
+  // Current authority's country roles
+  List<String> _currentCountryRoles = [];
 
   @override
   void initState() {
@@ -74,6 +81,8 @@ class _HomeScreenState extends State<HomeScreen> {
   void dispose() {
     _invitationRealtimeChannel?.unsubscribe();
     _profileRealtimeChannel?.unsubscribe();
+    _authorityRealtimeChannel?.unsubscribe();
+    _profileRolesRealtimeChannel?.unsubscribe();
     super.dispose();
   }
 
@@ -146,6 +155,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
       // Setup real-time subscription for invitation changes
       _setupInvitationRealtimeSubscription();
+
+      // Setup real-time subscription for authority changes
+      _setupAuthorityRealtimeSubscription();
+
+      // Setup real-time subscription for profile role changes
+      _setupProfileRolesRealtimeSubscription();
     } catch (e) {
       debugPrint('❌ Error checking user roles: $e');
       if (mounted) {
@@ -184,6 +199,83 @@ class _HomeScreenState extends State<HomeScreen> {
           },
         )
         .subscribe();
+  }
+
+  void _setupAuthorityRealtimeSubscription() {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) return;
+
+    // Only set up subscription if user has roles that can see authorities
+    if (!(_isSuperuser ||
+        _isCountryAdmin ||
+        _isCountryAuditor ||
+        _isBorderOfficial ||
+        _isBusinessIntelligence ||
+        _isLocalAuthority)) {
+      debugPrint('🔄 User has no roles that require authority subscription');
+      return;
+    }
+
+    debugPrint('🔄 Setting up authority real-time subscription...');
+
+    _authorityRealtimeChannel = Supabase.instance.client
+        .channel('home_authority_changes')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'authorities',
+          callback: (payload) {
+            debugPrint(
+                '🔄 Real-time authority change detected: ${payload.eventType}');
+            debugPrint(
+                '   Authority ID: ${payload.newRecord['id'] ?? payload.oldRecord['id'] ?? 'unknown'}');
+
+            // Reload authorities when changes occur
+            _loadAuthorities();
+          },
+        )
+        .subscribe();
+
+    debugPrint('✅ Authority real-time subscription set up successfully');
+  }
+
+  void _setupProfileRolesRealtimeSubscription() {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) return;
+
+    debugPrint('🔄 Setting up profile roles real-time subscription...');
+
+    _profileRolesRealtimeChannel = Supabase.instance.client
+        .channel('home_profile_roles_changes')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'profile_roles',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'profile_id',
+            value: user.id,
+          ),
+          callback: (payload) async {
+            debugPrint(
+                '🔄 Real-time profile role change detected: ${payload.eventType}');
+            debugPrint('   Role change for user: ${user.id}');
+
+            // Reload user roles and authorities when role assignments change
+            await _checkSuperuserStatus();
+
+            // Also reload country roles for the selected authority to update menu items
+            if (_selectedAuthority != null) {
+              await _loadAuthorityCountryRoles();
+            }
+
+            debugPrint(
+                '🔄 Profile role change processing complete, UI should update');
+          },
+        )
+        .subscribe();
+
+    debugPrint('✅ Profile roles real-time subscription set up successfully');
   }
 
   Future<void> _loadAuthorities() async {
@@ -264,6 +356,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
           if (_authorities.isNotEmpty && _selectedAuthority == null) {
             _selectedAuthority = _authorities.first;
+            // Load roles for the selected authority's country
+            _loadAuthorityCountryRoles();
           }
           _isLoadingAuthorities = false;
         });
@@ -291,12 +385,43 @@ class _HomeScreenState extends State<HomeScreen> {
             setState(() {
               _selectedAuthority = authority;
             });
+            _loadAuthorityCountryRoles();
             debugPrint(
                 '🏛️ Selected authority: ${authority.name} (${authority.countryName})');
           },
         );
       },
     );
+  }
+
+  Future<void> _loadAuthorityCountryRoles() async {
+    if (_selectedAuthority?.countryId == null) {
+      setState(() {
+        _currentCountryRoles = [];
+      });
+      return;
+    }
+
+    try {
+      final roles = await RoleService.getUserRolesForCountry(
+          _selectedAuthority!.countryId);
+      if (mounted) {
+        setState(() {
+          _currentCountryRoles = roles;
+        });
+      }
+      debugPrint(
+          '🎭 Loaded roles for ${_selectedAuthority!.countryName}: $roles');
+      debugPrint(
+          '🔄 Country roles updated, drawer should rebuild with new menu items');
+    } catch (e) {
+      debugPrint('❌ Error loading authority country roles: $e');
+      if (mounted) {
+        setState(() {
+          _currentCountryRoles = [];
+        });
+      }
+    }
   }
 
   Future<void> _loadPendingInvitations() async {
@@ -460,6 +585,31 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  // Helper methods to check country-specific roles for selected authority
+  bool _hasCountryRole(String roleName) {
+    return _currentCountryRoles.contains(roleName);
+  }
+
+  bool _isCountryAdminForSelected() {
+    return _hasCountryRole(AppConstants.roleCountryAdmin);
+  }
+
+  bool _isCountryAuditorForSelected() {
+    return _hasCountryRole(AppConstants.roleCountryAuditor);
+  }
+
+  bool _isBorderOfficialForSelected() {
+    return _hasCountryRole(AppConstants.roleBorderOfficial);
+  }
+
+  bool _isBusinessIntelligenceForSelected() {
+    return _hasCountryRole(AppConstants.roleBusinessIntelligence);
+  }
+
+  bool _isLocalAuthorityForSelected() {
+    return _hasCountryRole(AppConstants.roleLocalAuthority);
+  }
+
   Widget _buildDrawer() {
     // Debug logging for authority selection visibility
     debugPrint(
@@ -467,11 +617,17 @@ class _HomeScreenState extends State<HomeScreen> {
     debugPrint('🎯 Authorities count: ${_authorities.length}');
     debugPrint(
         '🎯 Should show authority selection: ${(_isSuperuser || _isCountryAdmin || _isCountryAuditor || _isBorderOfficial || _isBusinessIntelligence || _isLocalAuthority) && _authorities.isNotEmpty}');
+    debugPrint(
+        '🎭 Current country roles for selected authority: $_currentCountryRoles');
+    debugPrint(
+        '🏛️ Selected authority: ${_selectedAuthority?.name} (${_selectedAuthority?.countryName})');
 
     return SafeArea(
         child: Drawer(
             child: ListView(padding: EdgeInsets.zero, children: [
-      DrawerHeader(
+      Container(
+        height: 140, // Reduced from default DrawerHeader height (164)
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
         decoration: BoxDecoration(
           color: Colors.blue.shade700,
         ),
@@ -549,7 +705,70 @@ class _HomeScreenState extends State<HomeScreen> {
                 'No user information',
                 style: TextStyle(color: Colors.white70, fontSize: 12),
               ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
+
+            // Authority selection dropdown for users with operational roles
+            if ((_isSuperuser ||
+                    _isCountryAdmin ||
+                    _isCountryAuditor ||
+                    _isBorderOfficial ||
+                    _isBusinessIntelligence ||
+                    _isLocalAuthority) &&
+                _authorities.isNotEmpty) ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(4),
+                  border:
+                      Border.all(color: Colors.white.withValues(alpha: 0.3)),
+                ),
+                child: InkWell(
+                  onTap: _showAuthoritySelectionDialog,
+                  child: Row(
+                    children: [
+                      const Icon(Icons.account_balance,
+                          color: Colors.white, size: 16),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _selectedAuthority?.name ?? 'Select Authority',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
+                            if (_selectedAuthority != null)
+                              Text(
+                                _selectedAuthority!.countryName ??
+                                    'Unknown Country',
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 10,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
+                              ),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.arrow_drop_down,
+                          color: Colors.white, size: 16),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
+            ],
+
+            // Role badges - using Wrap to prevent overflow
             if (_isSuperuser)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -567,7 +786,110 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               )
-            else if (_isCountryAdmin)
+            else if (_selectedAuthority != null) ...[
+              // Show country-specific role badges for selected authority's country
+              Wrap(
+                spacing: 2,
+                runSpacing: 1,
+                children: [
+                  if (_isCountryAdminForSelected())
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 4, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.shade100,
+                        borderRadius: BorderRadius.circular(3),
+                        border: Border.all(
+                            color: Colors.orange.shade300, width: 0.5),
+                      ),
+                      child: Text(
+                        'ADMIN',
+                        style: TextStyle(
+                          color: Colors.orange.shade700,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 8,
+                        ),
+                      ),
+                    ),
+                  if (_isCountryAuditorForSelected())
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 4, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: Colors.purple.shade100,
+                        borderRadius: BorderRadius.circular(3),
+                        border: Border.all(
+                            color: Colors.purple.shade300, width: 0.5),
+                      ),
+                      child: Text(
+                        'AUDITOR',
+                        style: TextStyle(
+                          color: Colors.purple.shade700,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 8,
+                        ),
+                      ),
+                    ),
+                  if (_isBorderOfficialForSelected())
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 4, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade100,
+                        borderRadius: BorderRadius.circular(3),
+                        border:
+                            Border.all(color: Colors.red.shade300, width: 0.5),
+                      ),
+                      child: Text(
+                        'BORDER',
+                        style: TextStyle(
+                          color: Colors.red.shade700,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 8,
+                        ),
+                      ),
+                    ),
+                  if (_isBusinessIntelligenceForSelected())
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 4, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: Colors.green.shade100,
+                        borderRadius: BorderRadius.circular(3),
+                        border: Border.all(
+                            color: Colors.green.shade300, width: 0.5),
+                      ),
+                      child: Text(
+                        'BI',
+                        style: TextStyle(
+                          color: Colors.green.shade700,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 8,
+                        ),
+                      ),
+                    ),
+                  if (_isLocalAuthorityForSelected())
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 4, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade100,
+                        borderRadius: BorderRadius.circular(3),
+                        border:
+                            Border.all(color: Colors.blue.shade300, width: 0.5),
+                      ),
+                      child: Text(
+                        'LOCAL',
+                        style: TextStyle(
+                          color: Colors.blue.shade700,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 8,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ] else if (_isCountryAdmin)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
@@ -605,14 +927,14 @@ class _HomeScreenState extends State<HomeScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.blue.shade100,
+                  color: Colors.red.shade100,
                   borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: Colors.blue.shade300),
+                  border: Border.all(color: Colors.red.shade300),
                 ),
                 child: Text(
                   'BORDER OFFICIAL',
                   style: TextStyle(
-                    color: Colors.blue.shade700,
+                    color: Colors.red.shade700,
                     fontWeight: FontWeight.bold,
                     fontSize: 12,
                   ),
@@ -622,14 +944,14 @@ class _HomeScreenState extends State<HomeScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.teal.shade100,
+                  color: Colors.green.shade100,
                   borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: Colors.teal.shade300),
+                  border: Border.all(color: Colors.green.shade300),
                 ),
                 child: Text(
                   'BUSINESS INTELLIGENCE',
                   style: TextStyle(
-                    color: Colors.teal.shade700,
+                    color: Colors.green.shade700,
                     fontWeight: FontWeight.bold,
                     fontSize: 12,
                   ),
@@ -639,14 +961,14 @@ class _HomeScreenState extends State<HomeScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.green.shade100,
+                  color: Colors.blue.shade100,
                   borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: Colors.green.shade300),
+                  border: Border.all(color: Colors.blue.shade300),
                 ),
                 child: Text(
                   'LOCAL AUTHORITY',
                   style: TextStyle(
-                    color: Colors.green.shade700,
+                    color: Colors.blue.shade700,
                     fontWeight: FontWeight.bold,
                     fontSize: 12,
                   ),
@@ -658,176 +980,261 @@ class _HomeScreenState extends State<HomeScreen> {
 
       // Superuser functions
       if (_isSuperuser) ...[
-        ListTile(
-          leading: const Icon(Icons.public, color: Colors.red),
-          title: const Text('Manage Countries'),
-          subtitle: const Text('Add, edit, or remove countries'),
-          onTap: () {
-            Navigator.of(context).pop();
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (context) => const CountryManagementScreen(),
-              ),
-            );
-          },
-        ),
-        ListTile(
-          leading: const Icon(Icons.people, color: Colors.red),
-          title: const Text('Manage Users'),
-          subtitle: const Text('Search and manage user profiles'),
-          onTap: () {
-            Navigator.of(context).pop();
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (context) => const ProfileManagementScreen(),
-              ),
-            );
-          },
-        ),
-        ListTile(
-          leading: const Icon(Icons.border_all, color: Colors.red),
-          title: const Text('Manage Border Types'),
-          subtitle: const Text('Configure border crossing types'),
-          onTap: () {
-            Navigator.of(context).pop();
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (context) => const BorderTypeManagementScreen(),
-              ),
-            );
-          },
-        ),
-        const Divider(),
-      ],
-
-      // DEBUG: Manual authority loading button
-      Container(
-        color: Colors.purple.shade50,
-        child: ListTile(
-          leading:
-              Icon(Icons.admin_panel_settings, color: Colors.purple.shade700),
-          title: Text(
-            'System Status & Refresh',
-            style: TextStyle(
-              color: Colors.purple.shade800,
-              fontWeight: FontWeight.w500,
+        // System Status (Debug info)
+        Container(
+          color: Colors.purple.shade50,
+          child: ListTile(
+            title: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'System Status',
+                    style: TextStyle(
+                      color: Colors.purple.shade800,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+                _isLoadingAuthorities
+                    ? SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                              Colors.purple.shade600),
+                        ),
+                      )
+                    : Icon(Icons.refresh,
+                        color: Colors.purple.shade600, size: 20),
+              ],
             ),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 4),
+                RichText(
+                  text: TextSpan(
+                    style:
+                        TextStyle(color: Colors.purple.shade600, fontSize: 11),
+                    children: [
+                      TextSpan(
+                          text: 'Superuser: ',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
+                      TextSpan(text: _isSuperuser ? "Yes" : "No"),
+                    ],
+                  ),
+                ),
+                RichText(
+                  text: TextSpan(
+                    style:
+                        TextStyle(color: Colors.purple.shade600, fontSize: 11),
+                    children: [
+                      TextSpan(
+                          text: 'Country Admin: ',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
+                      TextSpan(text: _isCountryAdmin ? "Yes" : "No"),
+                    ],
+                  ),
+                ),
+                RichText(
+                  text: TextSpan(
+                    style:
+                        TextStyle(color: Colors.purple.shade600, fontSize: 11),
+                    children: [
+                      TextSpan(
+                          text: 'Country Auditor: ',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
+                      TextSpan(text: _isCountryAuditor ? "Yes" : "No"),
+                    ],
+                  ),
+                ),
+                RichText(
+                  text: TextSpan(
+                    style:
+                        TextStyle(color: Colors.purple.shade600, fontSize: 11),
+                    children: [
+                      TextSpan(
+                          text: 'Border Official: ',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
+                      TextSpan(text: _isBorderOfficial ? "Yes" : "No"),
+                    ],
+                  ),
+                ),
+                RichText(
+                  text: TextSpan(
+                    style:
+                        TextStyle(color: Colors.purple.shade600, fontSize: 11),
+                    children: [
+                      TextSpan(
+                          text: 'Business Intelligence: ',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
+                      TextSpan(text: _isBusinessIntelligence ? "Yes" : "No"),
+                    ],
+                  ),
+                ),
+                RichText(
+                  text: TextSpan(
+                    style:
+                        TextStyle(color: Colors.purple.shade600, fontSize: 11),
+                    children: [
+                      TextSpan(
+                          text: 'Local Authority: ',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
+                      TextSpan(text: _isLocalAuthority ? "Yes" : "No"),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 2),
+                RichText(
+                  text: TextSpan(
+                    style:
+                        TextStyle(color: Colors.purple.shade600, fontSize: 11),
+                    children: [
+                      TextSpan(
+                          text: 'Authorities: ',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
+                      TextSpan(text: '${_authorities.length} loaded'),
+                    ],
+                  ),
+                ),
+                if (_selectedAuthority != null) ...[
+                  RichText(
+                    text: TextSpan(
+                      style: TextStyle(
+                          color: Colors.purple.shade600, fontSize: 11),
+                      children: [
+                        TextSpan(
+                            text: 'Selected: ',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
+                        TextSpan(text: '${_selectedAuthority!.countryName}'),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            onTap: _isLoadingAuthorities
+                ? null
+                : () async {
+                    debugPrint('🔄 Manual refresh requested...');
+                    await _loadAuthorities();
+                    await _checkSuperuserStatus();
+                    setState(() {});
+                  },
           ),
-          subtitle: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        ),
+
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
             children: [
+              Icon(Icons.admin_panel_settings,
+                  color: Colors.purple.shade600, size: 20),
+              const SizedBox(width: 8),
               Text(
-                'Superuser: ${_isSuperuser ? "Yes" : "No"} • '
-                'Country Admin: ${_isCountryAdmin ? "Yes" : "No"} • '
-                'Country Auditor: ${_isCountryAuditor ? "Yes" : "No"}',
+                'System Administration',
                 style: TextStyle(
-                  color: Colors.purple.shade600,
-                  fontSize: 11,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                'Border Official: ${_isBorderOfficial ? "Yes" : "No"} • '
-                'Business Intelligence: ${_isBusinessIntelligence ? "Yes" : "No"} • '
-                'Local Authority: ${_isLocalAuthority ? "Yes" : "No"}',
-                style: TextStyle(
-                  color: Colors.purple.shade600,
-                  fontSize: 11,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                '${_authorities.length} ${_authorities.length == 1 ? "authority" : "authorities"} loaded',
-                style: TextStyle(
-                  color: Colors.purple.shade600,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500,
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.purple.shade700,
                 ),
               ),
             ],
           ),
-          trailing: _isLoadingAuthorities
-              ? SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor:
-                        AlwaysStoppedAnimation<Color>(Colors.purple.shade600),
-                  ),
-                )
-              : Icon(Icons.refresh, color: Colors.purple.shade600),
-          onTap: _isLoadingAuthorities
-              ? null
-              : () async {
-                  debugPrint('🔄 Manual authority refresh requested...');
-                  await _loadAuthorities();
-                  await _checkSuperuserStatus(); // Also refresh roles
-                  setState(() {}); // Force rebuild to update subtitle
-                },
         ),
-      ),
-
-      // Authority Selection (for Superusers, Country Admins, Auditors, Border Officials, and Local Authorities)
-      if ((_isSuperuser ||
-              _isCountryAdmin ||
-              _isCountryAuditor ||
-              _isBorderOfficial ||
-              _isBusinessIntelligence ||
-              _isLocalAuthority) &&
-          _authorities.isNotEmpty) ...[
-        const Divider(),
         Container(
-          color: Colors.orange.shade100,
+          color: Colors.purple.shade50,
           child: ListTile(
-            leading: Icon(
-              Icons.public,
-              color: Colors.orange.shade800,
-            ),
-            title: Text(
-              _authorities.length == 1
-                  ? 'Select Authority'
-                  : 'Select Authority',
-              style: TextStyle(
-                color: Colors.orange.shade800,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            subtitle: Text(
-              _selectedAuthority != null
-                  ? '${_selectedAuthority!.name} - ${_selectedAuthority!.countryName ?? "Unknown"}'
-                  : _authorities.length == 1
-                      ? 'Choose your authority'
-                      : 'Choose from ${_authorities.length} authorities',
-              style: TextStyle(
-                color: Colors.orange.shade700,
-              ),
-              overflow: TextOverflow.ellipsis,
-              maxLines: 2,
-            ),
-            trailing: Icon(
-              Icons.arrow_drop_down,
-              color: Colors.orange.shade800,
-            ),
+            leading: const Icon(Icons.public, color: Colors.purple),
+            title: const Text('Manage Countries'),
+            subtitle: const Text('Add, edit, or remove countries'),
             onTap: () {
-              _showAuthoritySelectionDialog();
+              Navigator.of(context).pop();
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const CountryManagementScreen(),
+                ),
+              );
             },
           ),
         ),
-        const Divider(),
+        Container(
+          color: Colors.purple.shade50,
+          child: ListTile(
+            leading: const Icon(Icons.people, color: Colors.purple),
+            title: const Text('Manage Users'),
+            subtitle: const Text('Search and manage user profiles'),
+            onTap: () {
+              Navigator.of(context).pop();
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const ProfileManagementScreen(),
+                ),
+              );
+            },
+          ),
+        ),
+        Container(
+          color: Colors.purple.shade50,
+          child: ListTile(
+            leading: const Icon(Icons.account_balance, color: Colors.purple),
+            title: const Text('Manage Authorities'),
+            subtitle: const Text('Create and manage revenue authorities'),
+            onTap: () {
+              Navigator.of(context).pop();
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const AuthorityManagementScreen(),
+                ),
+              );
+            },
+          ),
+        ),
+        Container(
+          color: Colors.purple.shade50,
+          child: ListTile(
+            leading: const Icon(Icons.border_all, color: Colors.purple),
+            title: const Text('Manage Border Types'),
+            subtitle: const Text('Configure border crossing types'),
+            onTap: () {
+              Navigator.of(context).pop();
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const BorderTypeManagementScreen(),
+                ),
+              );
+            },
+          ),
+        ),
       ],
-      // Operational screens (role-gated, require selected authority)
-      if (_selectedAuthority != null && _isBorderOfficial) ...[
-        // Border Control - only for border_official
+
+      // Border Control (Border Officials)
+      if (_selectedAuthority != null && _isBorderOfficialForSelected()) ...[
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            children: [
+              Icon(Icons.shield, color: Colors.red.shade600, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'Border Control',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.red.shade700,
+                ),
+              ),
+            ],
+          ),
+        ),
         ListTile(
-          leading: const Icon(Icons.shield, color: Colors.blue),
-          title: const Text('Border Control'),
+          leading: const Icon(Icons.shield, color: Colors.red),
+          title: const Text('Validate Passes'),
           subtitle: Text(
             'Validate passes at ${_selectedAuthority!.name}',
           ),
           onTap: () async {
-            // Border Official role is authority-based, not country-based
-            // If user has the role and authority is selected, they can access
             Navigator.of(context).pop();
             Navigator.of(context).push(
               MaterialPageRoute(
@@ -841,17 +1248,33 @@ class _HomeScreenState extends State<HomeScreen> {
           },
         ),
       ],
-      if (_selectedAuthority != null && _isLocalAuthority) ...[
-        // Local Authority Validation - only for local_authority
+
+      // Local Authority Control (Local Authorities)
+      if (_selectedAuthority != null && _isLocalAuthorityForSelected()) ...[
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            children: [
+              Icon(Icons.verified, color: Colors.blue.shade600, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'Local Authority Control',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blue.shade700,
+                ),
+              ),
+            ],
+          ),
+        ),
         ListTile(
-          leading: const Icon(Icons.verified, color: Colors.green),
-          title: const Text('Local Authority Validation'),
+          leading: const Icon(Icons.verified, color: Colors.blue),
+          title: const Text('Validate Passes'),
           subtitle: Text(
             'Validate passes for ${_selectedAuthority!.name}',
           ),
           onTap: () async {
-            // Local Authority role is authority-based, not country-based
-            // If user has the role and authority is selected, they can access
             Navigator.of(context).pop();
             Navigator.of(context).push(
               MaterialPageRoute(
@@ -860,25 +1283,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   currentAuthorityId: _selectedAuthority?.id,
                   currentCountryId: _selectedAuthority?.countryId,
                 ),
-              ),
-            );
-          },
-        ),
-      ],
-      if (_selectedAuthority != null && _isBusinessIntelligence) ...[
-        // Business Intelligence - only for business_intelligence
-        ListTile(
-          leading: const Icon(Icons.analytics, color: Colors.teal),
-          title: const Text('Business Intelligence'),
-          subtitle: Text(
-            'View insights and analytics for ${_selectedAuthority!.name}',
-          ),
-          onTap: () async {
-            Navigator.of(context).pop();
-            // TODO: Navigate to Business Intelligence dashboard
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Business Intelligence dashboard coming soon!'),
               ),
             );
           },
@@ -931,11 +1335,29 @@ class _HomeScreenState extends State<HomeScreen> {
             );
           },
         ),
-        const Divider(),
       ],
 
-      // Country Admin functions
-      if (_isCountryAdmin) ...[
+      // Country Admin functions (only show if user is admin for selected authority's country)
+      if (_isSuperuser ||
+          (_selectedAuthority != null && _isCountryAdminForSelected())) ...[
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            children: [
+              Icon(Icons.account_balance,
+                  color: Colors.orange.shade600, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'Authority Management',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.orange.shade700,
+                ),
+              ),
+            ],
+          ),
+        ),
         ListTile(
           leading: const Icon(Icons.mail, color: Colors.orange),
           title: const Text('Manage Invitations'),
@@ -976,8 +1398,8 @@ class _HomeScreenState extends State<HomeScreen> {
           leading: const Icon(Icons.admin_panel_settings, color: Colors.orange),
           title: const Text('Manage Authority'),
           subtitle: Text(_selectedAuthority != null
-              ? 'Edit details for ${_selectedAuthority!.name}'
-              : 'Edit authority details'),
+              ? 'Manage ${_selectedAuthority!.name}'
+              : 'Manage authority details'),
           onTap: () async {
             if (_selectedAuthority == null) {
               ScaffoldMessenger.of(context).showSnackBar(
@@ -991,8 +1413,8 @@ class _HomeScreenState extends State<HomeScreen> {
             Navigator.of(context).pop();
             final result = await Navigator.of(context).push(
               MaterialPageRoute(
-                builder: (context) => AuthorityManagementScreen(
-                  selectedAuthority: _selectedAuthority!,
+                builder: (context) => SingleAuthorityManagementScreen(
+                  authority: _selectedAuthority!,
                 ),
               ),
             );
@@ -1187,138 +1609,17 @@ class _HomeScreenState extends State<HomeScreen> {
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (context) => PassTemplateManagementScreen(
-                  country: {
-                    'id': _selectedAuthority!.countryId,
-                    'name': _selectedAuthority!.countryName ?? 'Unknown',
-                    'country_code': _selectedAuthority!.countryCode ?? '',
-                    'authority_id': _selectedAuthority!.id,
-                    'authority_name': _selectedAuthority!.name,
-                    'default_pass_advance_days':
-                        _selectedAuthority!.defaultPassAdvanceDays,
-                  },
+                  authorityId: _selectedAuthority!.id,
+                  authorityName: _selectedAuthority!.name,
                 ),
               ),
             );
           },
         ),
       ],
-      // User functions (available to all authenticated users)
-      const Divider(),
-      Container(
-        color: Colors.blue.shade50,
-        child: ListTile(
-          leading: Icon(
-            Icons.person,
-            color: Colors.blue.shade700,
-          ),
-          title: Text(
-            'My Account',
-            style: TextStyle(
-              color: Colors.blue.shade700,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          subtitle: Text(
-            'Manage your personal information',
-            style: TextStyle(
-              color: Colors.blue.shade600,
-            ),
-          ),
-        ),
-      ),
-
-      ListTile(
-        leading: const Icon(Icons.receipt_long, color: Colors.blue),
-        title: const Text('My Passes'),
-        subtitle: const Text('Purchase and manage border passes'),
-        onTap: () {
-          Navigator.of(context).pop();
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (context) => const PassDashboardScreen(),
-            ),
-          );
-        },
-      ),
-      ListTile(
-        leading: const Icon(Icons.directions_car, color: Colors.blue),
-        title: const Text('My Vehicles'),
-        subtitle: const Text('Register and manage your vehicles'),
-        onTap: () {
-          Navigator.of(context).pop();
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (context) => const VehicleManagementScreen(),
-            ),
-          );
-        },
-      ),
-      ListTile(
-        leading: const Icon(Icons.lock, color: Colors.blue),
-        title: const Text('Account & Security'),
-        subtitle: const Text('Change password, enable 2FA'),
-        onTap: () {
-          Navigator.of(context).pop();
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (context) => const AccountSecurityScreen(),
-            ),
-          );
-        },
-      ),
-      ListTile(
-        leading: const Icon(Icons.person_outline, color: Colors.blue),
-        title: const Text('Profile Settings'),
-        subtitle: const Text('Manage identity, payment & preferences'),
-        onTap: () {
-          Navigator.of(context).pop();
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (context) => const ProfileSettingsScreen(),
-            ),
-          );
-        },
-      ),
-
-      // Country Auditor functions (for auditors who are not admins)
-      if (_isCountryAuditor && !_isCountryAdmin) ...[
-        ListTile(
-          leading: const Icon(Icons.history, color: Colors.purple),
-          title: const Text('Audit Logs'),
-          subtitle: Text(_selectedAuthority != null
-              ? 'View logs for ${_selectedAuthority!.name}'
-              : 'View audit trail and activity logs'),
-          onTap: () {
-            if (_selectedAuthority == null) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Please select an authority first'),
-                  backgroundColor: Colors.purple,
-                ),
-              );
-              return;
-            }
-            Navigator.of(context).pop();
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (context) => AuditManagementScreen(
-                  selectedCountry: {
-                    'id': _selectedAuthority!.countryId,
-                    'name': _selectedAuthority!.countryName ?? 'Unknown',
-                    'country_code': _selectedAuthority!.countryCode ?? '',
-                    'authority_id': _selectedAuthority!.id,
-                    'authority_name': _selectedAuthority!.name,
-                  },
-                ),
-              ),
-            );
-          },
-        ),
-      ],
-
-      // Business Intelligence functions
-      if ((_isBusinessIntelligence || _isSuperuser) &&
-          _selectedAuthority != null) ...[
+      // Business Intelligence functions (only show if user has BI role for selected country)
+      if (_selectedAuthority != null &&
+          (_isSuperuser || _isBusinessIntelligenceForSelected())) ...[
         // Section Header
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -1386,6 +1687,133 @@ class _HomeScreenState extends State<HomeScreen> {
           },
         ),
       ],
+
+      // Country Auditor functions (for auditors who are not admins for selected authority's country)
+      if (_selectedAuthority != null &&
+          _isCountryAuditorForSelected() &&
+          !_isCountryAdminForSelected()) ...[
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            children: [
+              Icon(Icons.fact_check, color: Colors.purple.shade600, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'Audit & Compliance',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.purple.shade700,
+                ),
+              ),
+            ],
+          ),
+        ),
+        ListTile(
+          leading: const Icon(Icons.history, color: Colors.purple),
+          title: const Text('Audit Logs'),
+          subtitle: Text(_selectedAuthority != null
+              ? 'View logs for ${_selectedAuthority!.name}'
+              : 'View audit trail and activity logs'),
+          onTap: () {
+            if (_selectedAuthority == null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Please select an authority first'),
+                  backgroundColor: Colors.purple,
+                ),
+              );
+              return;
+            }
+            Navigator.of(context).pop();
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => AuditManagementScreen(
+                  selectedCountry: {
+                    'id': _selectedAuthority!.countryId,
+                    'name': _selectedAuthority!.countryName ?? 'Unknown',
+                    'country_code': _selectedAuthority!.countryCode ?? '',
+                    'authority_id': _selectedAuthority!.id,
+                    'authority_name': _selectedAuthority!.name,
+                  },
+                ),
+              ),
+            );
+          },
+        ),
+      ],
+
+      // User functions (available to all authenticated users)
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
+          children: [
+            Icon(Icons.person, color: Colors.blue.shade600, size: 20),
+            const SizedBox(width: 8),
+            Text(
+              'My Account',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: Colors.blue.shade700,
+              ),
+            ),
+          ],
+        ),
+      ),
+
+      ListTile(
+        leading: const Icon(Icons.receipt_long, color: Colors.blue),
+        title: const Text('My Passes'),
+        subtitle: const Text('Purchase and manage border passes'),
+        onTap: () {
+          Navigator.of(context).pop();
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => const PassDashboardScreen(),
+            ),
+          );
+        },
+      ),
+      ListTile(
+        leading: const Icon(Icons.directions_car, color: Colors.blue),
+        title: const Text('My Vehicles'),
+        subtitle: const Text('Register and manage your vehicles'),
+        onTap: () {
+          Navigator.of(context).pop();
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => const VehicleManagementScreen(),
+            ),
+          );
+        },
+      ),
+      ListTile(
+        leading: const Icon(Icons.lock, color: Colors.blue),
+        title: const Text('Account & Security'),
+        subtitle: const Text('Change password, enable 2FA'),
+        onTap: () {
+          Navigator.of(context).pop();
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => const AccountSecurityScreen(),
+            ),
+          );
+        },
+      ),
+      ListTile(
+        leading: const Icon(Icons.person_outline, color: Colors.blue),
+        title: const Text('Profile Settings'),
+        subtitle: const Text('Manage identity, payment & preferences'),
+        onTap: () {
+          Navigator.of(context).pop();
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => const ProfileSettingsScreen(),
+            ),
+          );
+        },
+      ),
 
       // Sign out option at the bottom
       const Divider(),
@@ -1573,7 +2001,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(height: 12),
                     SizedBox(
-                      height: 160,
+                      height: 170,
                       child: ListView.builder(
                         scrollDirection: Axis.horizontal,
                         padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -1589,10 +2017,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Container(
-                                constraints: const BoxConstraints(
-                                  minHeight: 180,
-                                  maxHeight: 200,
-                                ),
                                 decoration: BoxDecoration(
                                   color: Colors.blue.shade50,
                                   borderRadius: BorderRadius.circular(12),
@@ -1603,198 +2027,184 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                                 child: Padding(
                                   padding: const EdgeInsets.all(16),
-                                  child: SingleChildScrollView(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Row(
-                                          children: [
-                                            Container(
-                                              padding: const EdgeInsets.all(8),
-                                              decoration: BoxDecoration(
-                                                color: Colors.blue.shade200,
-                                                borderRadius:
-                                                    BorderRadius.circular(8),
-                                              ),
-                                              child: Icon(
-                                                Icons.business,
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.all(8),
+                                            decoration: BoxDecoration(
+                                              color: Colors.blue.shade200,
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                            ),
+                                            child: Icon(
+                                              Icons.business,
+                                              color: Colors.blue.shade800,
+                                              size: 20,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              invitation.formattedRoleName,
+                                              style: TextStyle(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.bold,
                                                 color: Colors.blue.shade800,
-                                                size: 20,
                                               ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
                                             ),
-                                            const SizedBox(width: 8),
-                                            Expanded(
-                                              child: Text(
-                                                invitation.formattedRoleName,
-                                                style: TextStyle(
-                                                  fontSize: 16,
-                                                  fontWeight: FontWeight.bold,
-                                                  color: Colors.blue.shade800,
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        invitation.formattedAuthority,
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color: Colors.blue.shade600,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'Invited by ${invitation.inviterName ?? "Unknown"} • ${invitation.timeSinceInvited}',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.blue.shade500,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 12),
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: ElevatedButton(
+                                              onPressed: () async {
+                                                // Capture messenger BEFORE the async gap to avoid using context after await.
+                                                final messenger =
+                                                    ScaffoldMessenger.of(
+                                                        context);
+                                                try {
+                                                  await InvitationService
+                                                      .acceptInvitation(
+                                                          invitation.id);
+                                                  if (!mounted) return;
+                                                  messenger.showSnackBar(
+                                                    const SnackBar(
+                                                      content: Text(
+                                                          'Invitation accepted successfully!'),
+                                                      backgroundColor:
+                                                          Colors.green,
+                                                    ),
+                                                  );
+                                                  _loadPendingInvitations();
+                                                } catch (e) {
+                                                  if (!mounted) return;
+                                                  messenger.showSnackBar(
+                                                    SnackBar(
+                                                      content: Text(
+                                                          'Error accepting invitation: $e'),
+                                                      backgroundColor:
+                                                          Colors.red,
+                                                    ),
+                                                  );
+                                                }
+                                              },
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: Colors.green,
+                                                foregroundColor: Colors.white,
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                        vertical: 4),
+                                                minimumSize: const Size(0, 32),
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(8),
                                                 ),
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                              child: const Text(
+                                                'Accept',
+                                                style: TextStyle(
+                                                    fontSize: 12,
+                                                    fontWeight:
+                                                        FontWeight.bold),
                                               ),
                                             ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 8),
-                                        Text(
-                                          invitation.formattedAuthority,
-                                          style: TextStyle(
-                                            fontSize: 14,
-                                            color: Colors.blue.shade600,
-                                            fontWeight: FontWeight.w500,
                                           ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          'Invited by ${invitation.inviterName ?? "Unknown"}',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.blue.shade500,
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          invitation.timeSinceInvited,
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.grey.shade600,
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                        const SizedBox(height: 12),
-                                        Row(
-                                          children: [
-                                            Expanded(
-                                              child: ElevatedButton(
-                                                onPressed: () async {
-                                                  // Capture messenger BEFORE the async gap to avoid using context after await.
-                                                  final messenger =
-                                                      ScaffoldMessenger.of(
-                                                          context);
-                                                  try {
-                                                    await InvitationService
-                                                        .acceptInvitation(
-                                                            invitation.id);
-                                                    if (!mounted) return;
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: OutlinedButton(
+                                              onPressed: () async {
+                                                try {
+                                                  await InvitationService
+                                                      .declineInvitation(
+                                                          invitation.id);
+                                                  if (!mounted) return;
+                                                  if (mounted) {
+                                                    final messenger =
+                                                        ScaffoldMessenger.of(
+                                                            this.context);
                                                     messenger.showSnackBar(
                                                       const SnackBar(
                                                         content: Text(
-                                                            'Invitation accepted successfully!'),
+                                                            'Invitation declined'),
                                                         backgroundColor:
-                                                            Colors.green,
+                                                            Colors.orange,
                                                       ),
                                                     );
-                                                    _loadPendingInvitations();
-                                                  } catch (e) {
-                                                    if (!mounted) return;
+                                                  }
+                                                  _loadPendingInvitations();
+                                                } catch (e) {
+                                                  if (!mounted) return;
+                                                  if (mounted) {
+                                                    final messenger =
+                                                        ScaffoldMessenger.of(
+                                                            this.context);
                                                     messenger.showSnackBar(
                                                       SnackBar(
                                                         content: Text(
-                                                            'Error accepting invitation: $e'),
+                                                            'Error declining invitation: $e'),
                                                         backgroundColor:
                                                             Colors.red,
                                                       ),
                                                     );
                                                   }
-                                                },
-                                                style: ElevatedButton.styleFrom(
-                                                  backgroundColor: Colors.green,
-                                                  foregroundColor: Colors.white,
-                                                  padding: const EdgeInsets
-                                                      .symmetric(vertical: 4),
-                                                  minimumSize:
-                                                      const Size(0, 32),
-                                                  shape: RoundedRectangleBorder(
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                            8),
-                                                  ),
+                                                }
+                                              },
+                                              style: OutlinedButton.styleFrom(
+                                                foregroundColor: Colors.red,
+                                                side: const BorderSide(
+                                                    color: Colors.red),
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                        vertical: 4),
+                                                minimumSize: const Size(0, 32),
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(8),
                                                 ),
-                                                child: const Text(
-                                                  'Accept',
-                                                  style: TextStyle(
-                                                      fontSize: 12,
-                                                      fontWeight:
-                                                          FontWeight.bold),
+                                              ),
+                                              child: const Text(
+                                                'Decline',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.bold,
                                                 ),
                                               ),
                                             ),
-                                            const SizedBox(width: 8),
-                                            Expanded(
-                                              child: OutlinedButton(
-                                                onPressed: () async {
-                                                  try {
-                                                    await InvitationService
-                                                        .declineInvitation(
-                                                            invitation.id);
-                                                    if (!mounted) return;
-                                                    if (mounted) {
-                                                      final messenger =
-                                                          ScaffoldMessenger.of(
-                                                              this.context);
-                                                      messenger.showSnackBar(
-                                                        const SnackBar(
-                                                          content: Text(
-                                                              'Invitation declined'),
-                                                          backgroundColor:
-                                                              Colors.orange,
-                                                        ),
-                                                      );
-                                                    }
-                                                    _loadPendingInvitations();
-                                                  } catch (e) {
-                                                    if (!mounted) return;
-                                                    if (mounted) {
-                                                      final messenger =
-                                                          ScaffoldMessenger.of(
-                                                              this.context);
-                                                      messenger.showSnackBar(
-                                                        SnackBar(
-                                                          content: Text(
-                                                              'Error declining invitation: $e'),
-                                                          backgroundColor:
-                                                              Colors.red,
-                                                        ),
-                                                      );
-                                                    }
-                                                  }
-                                                },
-                                                style: OutlinedButton.styleFrom(
-                                                  foregroundColor: Colors.red,
-                                                  side: const BorderSide(
-                                                      color: Colors.red),
-                                                  padding: const EdgeInsets
-                                                      .symmetric(vertical: 4),
-                                                  minimumSize:
-                                                      const Size(0, 32),
-                                                  shape: RoundedRectangleBorder(
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                            8),
-                                                  ),
-                                                ),
-                                                child: const Text(
-                                                  'Decline',
-                                                  style: TextStyle(
-                                                    fontSize: 12,
-                                                    fontWeight: FontWeight.bold,
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ],
-                                    ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ),
@@ -2382,33 +2792,74 @@ class _AuthoritySelectionDialogState extends State<_AuthoritySelectionDialog> {
   Widget build(BuildContext context) {
     return Dialog(
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
       ),
+      elevation: 8,
       child: Container(
         width: MediaQuery.of(context).size.width * 0.9,
         height: MediaQuery.of(context).size.height * 0.7,
-        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Colors.white,
+              Colors.blue.shade50.withValues(alpha: 0.3),
+            ],
+          ),
+        ),
+        padding: const EdgeInsets.all(20),
         child: Column(
           children: [
             // Header
             Row(
               children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade100,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    Icons.account_balance,
+                    color: Colors.blue.shade700,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 16),
                 Expanded(
-                  child: Text(
-                    widget.authorities.length == 1
-                        ? 'Select Authority'
-                        : 'Select Authority',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.orange.shade800,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Select Authority',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue.shade800,
+                        ),
+                      ),
+                      Text(
+                        '${_filteredAuthorities.length} ${_filteredAuthorities.length == 1 ? "authority" : "authorities"} available',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.blue.shade600,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 IconButton(
                   onPressed: () => Navigator.of(context).pop(),
                   icon: const Icon(Icons.close),
                   color: Colors.grey.shade600,
+                  style: IconButton.styleFrom(
+                    backgroundColor: Colors.grey.shade100,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -2419,18 +2870,17 @@ class _AuthoritySelectionDialogState extends State<_AuthoritySelectionDialog> {
               controller: _searchController,
               decoration: InputDecoration(
                 hintText: 'Search authorities or countries...',
-                prefixIcon: Icon(Icons.search, color: Colors.orange.shade600),
+                prefixIcon: Icon(Icons.search, color: Colors.blue.shade600),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: Colors.orange.shade300),
+                  borderSide: BorderSide(color: Colors.blue.shade300),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide:
-                      BorderSide(color: Colors.orange.shade600, width: 2),
+                  borderSide: BorderSide(color: Colors.blue.shade600, width: 2),
                 ),
                 filled: true,
-                fillColor: Colors.orange.shade50,
+                fillColor: Colors.blue.shade50,
               ),
             ),
             const SizedBox(height: 16),
@@ -2473,18 +2923,49 @@ class _AuthoritySelectionDialogState extends State<_AuthoritySelectionDialog> {
                         final isSelected =
                             widget.selectedAuthority?.id == authority.id;
 
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          elevation: isSelected ? 4 : 1,
-                          color: isSelected ? Colors.orange.shade50 : null,
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            color:
+                                isSelected ? Colors.blue.shade50 : Colors.white,
+                            border: Border.all(
+                              color: isSelected
+                                  ? Colors.blue.shade300
+                                  : Colors.grey.shade200,
+                              width: isSelected ? 2 : 1,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.05),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
                           child: ListTile(
-                            contentPadding: const EdgeInsets.all(12),
+                            contentPadding: const EdgeInsets.all(16),
+                            leading: Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? Colors.blue.shade200
+                                    : Colors.grey.shade100,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Icon(
+                                Icons.account_balance,
+                                color: isSelected
+                                    ? Colors.blue.shade700
+                                    : Colors.grey.shade600,
+                                size: 20,
+                              ),
+                            ),
                             title: Text(
                               '${authority.name} - ${authority.countryName ?? "Unknown"}',
                               style: TextStyle(
                                 fontWeight: FontWeight.w600,
-                                color:
-                                    isSelected ? Colors.orange.shade800 : null,
+                                color: isSelected ? Colors.blue.shade800 : null,
                               ),
                               overflow: TextOverflow.ellipsis,
                               maxLines: 2,
@@ -2501,7 +2982,7 @@ class _AuthoritySelectionDialogState extends State<_AuthoritySelectionDialog> {
                                         vertical: 2,
                                       ),
                                       decoration: BoxDecoration(
-                                        color: Colors.orange.shade200,
+                                        color: Colors.blue.shade200,
                                         borderRadius: BorderRadius.circular(12),
                                       ),
                                       child: Text(
@@ -2509,7 +2990,7 @@ class _AuthoritySelectionDialogState extends State<_AuthoritySelectionDialog> {
                                         style: TextStyle(
                                           fontSize: 12,
                                           fontWeight: FontWeight.w500,
-                                          color: Colors.orange.shade800,
+                                          color: Colors.blue.shade800,
                                         ),
                                       ),
                                     ),
@@ -2540,10 +3021,17 @@ class _AuthoritySelectionDialogState extends State<_AuthoritySelectionDialog> {
                               ],
                             ),
                             trailing: isSelected
-                                ? Icon(
-                                    Icons.check_circle,
-                                    color: Colors.green.shade600,
-                                    size: 24,
+                                ? Container(
+                                    padding: const EdgeInsets.all(6),
+                                    decoration: BoxDecoration(
+                                      color: Colors.green.shade100,
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    child: Icon(
+                                      Icons.check,
+                                      color: Colors.green.shade700,
+                                      size: 16,
+                                    ),
                                   )
                                 : Icon(
                                     Icons.arrow_forward_ios,

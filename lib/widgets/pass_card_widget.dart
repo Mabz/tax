@@ -213,6 +213,12 @@ class PassCardWidget extends StatelessWidget {
             SizedBox(height: isCompact ? 16 : 24),
           ],
 
+          // Vehicle Details Section (if vehicle info is available)
+          if (showDetails && _hasVehicleDetails(pass)) ...[
+            _buildVehicleDetailsSection(isCompact),
+            SizedBox(height: isCompact ? 16 : 24),
+          ],
+
           // Pass Details Section
           if (showDetails) ...[
             Container(
@@ -265,34 +271,23 @@ class PassCardWidget extends StatelessWidget {
                   _buildVehicleStatusSection(isCompact),
                   SizedBox(height: isCompact ? 12 : 16),
 
-                  // Vehicle Info (optional)
-                  if (pass.vehicleDescription.isNotEmpty ||
-                      (pass.vehicleNumberPlate != null &&
-                          pass.vehicleNumberPlate!.isNotEmpty) ||
-                      (pass.vehicleVin != null && pass.vehicleVin!.isNotEmpty))
+                  // Authority Information
+                  _buildDetailRow(
+                    Icons.account_balance,
+                    'Authority',
+                    pass.authorityName ?? 'Unknown Authority',
+                    isCompact: isCompact,
+                  ),
+                  // Country Information (if available)
+                  if (pass.countryName != null && pass.countryName!.isNotEmpty)
                     _buildDetailRow(
-                      Icons.directions_car,
-                      'Vehicle',
-                      _getVehicleDisplayText(pass),
+                      Icons.flag,
+                      'Country',
+                      pass.countryName!,
                       isCompact: isCompact,
                     ),
-                  // Vehicle Number Plate (if available)
-                  if (pass.vehicleNumberPlate != null &&
-                      pass.vehicleNumberPlate!.isNotEmpty)
-                    _buildDetailRow(
-                      Icons.confirmation_num,
-                      'Number Plate',
-                      pass.vehicleNumberPlate!,
-                      isCompact: isCompact,
-                    ),
-                  // Vehicle VIN (if available)
-                  if (pass.vehicleVin != null && pass.vehicleVin!.isNotEmpty)
-                    _buildDetailRow(
-                      Icons.fingerprint,
-                      'VIN',
-                      pass.vehicleVin!,
-                      isCompact: isCompact,
-                    ),
+
+                  // Vehicle info moved to Vehicle Details section
                   _buildDetailRow(
                     Icons.location_on,
                     'Entry Point',
@@ -358,7 +353,7 @@ class PassCardWidget extends StatelessWidget {
                       icon: const Icon(Icons.history, size: 18),
                       label: const Text('View Pass History'),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.orange,
+                        backgroundColor: Colors.blue,
                         foregroundColor: Colors.white,
                         padding: EdgeInsets.symmetric(
                           vertical: isCompact ? 12 : 14,
@@ -638,8 +633,8 @@ class PassCardWidget extends StatelessWidget {
   }
 
   String _getVehicleDisplayText(PurchasedPass pass) {
-    if (pass.vehicleNumberPlate != null &&
-        pass.vehicleNumberPlate!.isNotEmpty) {
+    if (pass.vehicleRegistrationNumber != null &&
+        pass.vehicleRegistrationNumber!.isNotEmpty) {
       return pass.vehicleDescription;
     } else {
       return pass.vehicleDescription.isNotEmpty
@@ -819,6 +814,7 @@ class PassCardWidget extends StatelessWidget {
       MaterialPageRoute(
         builder: (context) => PassHistoryWidget(
           passId: pass.passId,
+          shortCode: pass.shortCode,
         ),
       ),
     );
@@ -904,5 +900,174 @@ class PassCardWidget extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  bool _hasVehicleDetails(PurchasedPass pass) {
+    return (pass.vehicleRegistrationNumber != null &&
+            pass.vehicleRegistrationNumber!.isNotEmpty) ||
+        (pass.vehicleVin != null && pass.vehicleVin!.isNotEmpty) ||
+        (pass.vehicleMake != null && pass.vehicleMake!.isNotEmpty) ||
+        (pass.vehicleModel != null && pass.vehicleModel!.isNotEmpty) ||
+        (pass.vehicleColor != null && pass.vehicleColor!.isNotEmpty) ||
+        pass.vehicleDescription.isNotEmpty;
+  }
+
+  Widget _buildVehicleDetailsSection(bool isCompact) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(isCompact ? 16 : 20),
+      decoration: BoxDecoration(
+        color: Colors.blue.shade50,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.blue.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.directions_car,
+                color: Colors.blue.shade600,
+                size: isCompact ? 20 : 24,
+              ),
+              SizedBox(width: isCompact ? 8 : 12),
+              Text(
+                'Vehicle Details',
+                style: TextStyle(
+                  fontSize: isCompact ? 16 : 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blue.shade800,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: isCompact ? 12 : 16),
+
+          // Vehicle Make, Model, Year
+          if ((pass.vehicleMake != null && pass.vehicleMake!.isNotEmpty) ||
+              (pass.vehicleModel != null && pass.vehicleModel!.isNotEmpty) ||
+              pass.vehicleDescription.isNotEmpty) ...[
+            _buildVehicleDetailRow(
+              'Vehicle',
+              _getVehicleDisplayName(pass),
+              Icons.directions_car,
+              isCompact: isCompact,
+            ),
+            SizedBox(height: isCompact ? 8 : 12),
+          ],
+
+          // Registration Number
+          if (pass.vehicleRegistrationNumber != null &&
+              pass.vehicleRegistrationNumber!.isNotEmpty) ...[
+            _buildVehicleDetailRow(
+              'Registration Number',
+              pass.vehicleRegistrationNumber!,
+              Icons.confirmation_num,
+              isCompact: isCompact,
+            ),
+            SizedBox(height: isCompact ? 8 : 12),
+          ],
+
+          // VIN
+          if (pass.vehicleVin != null && pass.vehicleVin!.isNotEmpty) ...[
+            _buildVehicleDetailRow(
+              'VIN',
+              pass.vehicleVin!,
+              Icons.fingerprint,
+              isCompact: isCompact,
+            ),
+            SizedBox(height: isCompact ? 8 : 12),
+          ],
+
+          // Color
+          if (pass.vehicleColor != null && pass.vehicleColor!.isNotEmpty) ...[
+            _buildVehicleDetailRow(
+              'Color',
+              pass.vehicleColor!,
+              Icons.palette,
+              isCompact: isCompact,
+            ),
+            SizedBox(height: isCompact ? 8 : 12),
+          ],
+
+          // Year (if not already shown in vehicle name)
+          if (pass.vehicleYear != null &&
+              (pass.vehicleMake == null || pass.vehicleMake!.isEmpty) &&
+              (pass.vehicleModel == null || pass.vehicleModel!.isEmpty)) ...[
+            _buildVehicleDetailRow(
+              'Year',
+              pass.vehicleYear.toString(),
+              Icons.calendar_today,
+              isCompact: isCompact,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVehicleDetailRow(
+    String label,
+    String value,
+    IconData icon, {
+    bool isCompact = false,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(
+          icon,
+          size: isCompact ? 16 : 18,
+          color: Colors.blue.shade600,
+        ),
+        SizedBox(width: isCompact ? 8 : 12),
+        Expanded(
+          flex: 2,
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: isCompact ? 12 : 14,
+              fontWeight: FontWeight.w600,
+              color: Colors.blue.shade700,
+            ),
+          ),
+        ),
+        Expanded(
+          flex: 3,
+          child: Text(
+            value,
+            style: TextStyle(
+              fontSize: isCompact ? 12 : 14,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey.shade800,
+            ),
+            textAlign: TextAlign.right,
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _getVehicleDisplayName(PurchasedPass pass) {
+    // Prioritize make/model/year combination
+    if (pass.vehicleMake != null &&
+        pass.vehicleMake!.isNotEmpty &&
+        pass.vehicleModel != null &&
+        pass.vehicleModel!.isNotEmpty) {
+      String result = '${pass.vehicleMake} ${pass.vehicleModel}';
+      if (pass.vehicleYear != null) {
+        result += ' (${pass.vehicleYear})';
+      }
+      return result;
+    }
+
+    // Fall back to vehicle description
+    if (pass.vehicleDescription.isNotEmpty) {
+      return pass.vehicleDescription;
+    }
+
+    // Last resort
+    return 'Vehicle';
   }
 }

@@ -1058,7 +1058,7 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
     } else {
       validationResult = 'Processing Failed';
       validationDetails =
-          _errorMessage ?? 'Unable to process pass. Please try again.';
+          'Unable to process this pass. Please see details below.';
       resultIcon = Icons.error;
       resultColor = Colors.red.shade600;
     }
@@ -1680,7 +1680,24 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
       }
     } catch (e) {
       setState(() {
-        _errorMessage = 'Failed to process movement: $e';
+        // Provide user-friendly error messages based on the error type
+        if (e.toString().contains('Insufficient permissions') ||
+            e.toString().contains('P0001')) {
+          _errorMessage =
+              '🚫 Access Denied\n\nYou don\'t have permission to process vehicle movements at this border crossing. This could be because:\n\n• You\'re not assigned to this specific border\n• Your account lacks check-in/check-out permissions\n• The border crossing is outside your jurisdiction\n\nPlease contact your supervisor to verify your border assignments and permissions.';
+        } else if (e.toString().contains('No entries remaining')) {
+          _errorMessage =
+              '❌ Pass Exhausted\n\nThis pass has no remaining entries and cannot be used for border crossings.\n\nThe traveler will need to purchase a new pass to continue their journey.';
+        } else if (e.toString().contains('Pass has expired')) {
+          _errorMessage =
+              '⏰ Pass Expired\n\nThis pass has expired and can no longer be used for border crossings.\n\nThe traveler will need to purchase a new pass to continue their journey.';
+        } else if (e.toString().contains('Invalid pass status')) {
+          _errorMessage =
+              '⚠️ Invalid Pass Status\n\nThis pass is in an invalid state and cannot be processed at this time.\n\nPlease ask the traveler to contact customer support for assistance.';
+        } else {
+          _errorMessage =
+              '⚠️ Processing Failed\n\nUnable to process this vehicle movement due to a technical issue.\n\nPlease try again, or contact technical support if the problem persists.\n\nError details: ${e.toString().length > 100 ? e.toString().substring(0, 100) + '...' : e.toString()}';
+        }
         _currentStep = ValidationStep.completed;
         _isProcessing = false;
       });
@@ -1948,9 +1965,10 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
     return Column(
       children: [
         _buildSummaryRow('Vehicle', pass.vehicleDescription, color),
-        if (pass.vehicleNumberPlate != null &&
-            pass.vehicleNumberPlate!.isNotEmpty)
-          _buildSummaryRow('Number Plate', pass.vehicleNumberPlate!, color),
+        if (pass.vehicleRegistrationNumber != null &&
+            pass.vehicleRegistrationNumber!.isNotEmpty)
+          _buildSummaryRow(
+              'Registration Number', pass.vehicleRegistrationNumber!, color),
         if (pass.vehicleVin != null && pass.vehicleVin!.isNotEmpty)
           _buildSummaryRow('VIN', pass.vehicleVin!, color),
         if (pass.authorityName != null)
@@ -1962,7 +1980,6 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
         if (pass.exitPointName != null)
           _buildSummaryRow('Exit Point', pass.exitPointName!, color),
         _buildSummaryRow('Status', pass.statusDisplay, color),
-        _buildSummaryRow('Entries', pass.entriesDisplay, color),
       ],
     );
   }
@@ -2045,7 +2062,7 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
                 '❌ Border official not assigned to entry point: $passEntryPointId');
             setState(() {
               _errorMessage =
-                  'Access denied: You are not assigned to process passes for this specific entry point. This pass is for a border you do not have access to.';
+                  '🚫 Access Denied\n\nYou don\'t have permission to process passes for this entry point. This pass is specific to a border crossing where you\'re not currently assigned.\n\nPlease contact your supervisor or use a different border terminal.';
             });
             return false;
           }
@@ -2063,7 +2080,7 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
             debugPrint('❌ Current user has no authority assigned');
             setState(() {
               _errorMessage =
-                  'Error: Your account is not assigned to any authority. Please contact your administrator.';
+                  '⚠️ Account Setup Required\n\nYour border official account is not assigned to any authority. This is required to process passes.\n\nPlease contact your administrator to complete your account setup.';
             });
             return false;
           }
@@ -2073,7 +2090,7 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
                 '❌ Authority mismatch: ${widget.currentAuthorityId} != $passAuthorityId');
             setState(() {
               _errorMessage =
-                  'Access denied: This pass was issued by a different authority. You can only process passes from your own authority.';
+                  '🚫 Authority Mismatch\n\nThis pass was issued by a different border authority. As a border official, you can only process passes issued by your own authority.\n\nIf you believe this is an error, please contact your supervisor.';
             });
             return false;
           }
@@ -2089,7 +2106,7 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
           debugPrint('❌ Current user has no country assigned');
           setState(() {
             _errorMessage =
-                'Error: Your account is not assigned to any country. Please contact your administrator.';
+                '⚠️ Account Setup Required\n\nYour local authority account is not assigned to any country. This is required to validate passes.\n\nPlease contact your administrator to complete your account setup.';
           });
           return false;
         }
@@ -2100,7 +2117,7 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
           debugPrint('❌ Unable to get pass country information');
           setState(() {
             _errorMessage =
-                'Unable to verify pass information. The pass may be invalid.';
+                '❌ Verification Failed\n\nUnable to verify this pass information. The pass may be invalid or corrupted.\n\nPlease ask the traveler to show their backup code or try scanning again.';
           });
           return false;
         }
@@ -2111,7 +2128,7 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
               '❌ Country mismatch: ${widget.currentCountryId} != $passCountryId');
           setState(() {
             _errorMessage =
-                'Access denied: This pass was issued by an authority in a different country. Local authorities can only validate passes from their own country.';
+                '🚫 Country Jurisdiction\n\nThis pass was issued by an authority in a different country. As a local authority, you can only validate passes from your own country.\n\nPlease refer the traveler to the appropriate authority.';
           });
           return false;
         }
@@ -2126,7 +2143,7 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
       debugPrint('❌ Error during validation: $e');
       setState(() {
         _errorMessage =
-            'System error while validating permissions. Please try again or contact support.';
+            '⚠️ System Error\n\nA technical error occurred while validating your permissions. This is usually temporary.\n\nPlease try again in a moment, or contact technical support if the problem persists.';
       });
       return false;
     }

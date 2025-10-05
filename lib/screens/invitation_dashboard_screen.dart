@@ -7,7 +7,7 @@ import '../constants/app_constants.dart';
 /// Dashboard screen for users to view and respond to role invitations
 class InvitationDashboardScreen extends StatefulWidget {
   final String? countryId;
-  
+
   const InvitationDashboardScreen({super.key, this.countryId});
 
   @override
@@ -62,21 +62,24 @@ class _InvitationDashboardScreenState extends State<InvitationDashboardScreen> {
 
     try {
       List<RoleInvitation> invitations;
-      
+
       if (widget.countryId != null) {
         // Load invitations for specific country and filter for current user
-        final allInvitations = await InvitationService.getAllInvitationsForCountry(widget.countryId!);
+        final allInvitations =
+            await InvitationService.getAllInvitationsForCountry(
+                widget.countryId!);
         final currentUser = Supabase.instance.client.auth.currentUser;
-        
-        invitations = allInvitations.where((invitation) => 
-          invitation.email == currentUser?.email &&
-          invitation.status == 'pending'
-        ).toList();
+
+        invitations = allInvitations
+            .where((invitation) =>
+                invitation.email == currentUser?.email &&
+                invitation.status == 'pending')
+            .toList();
       } else {
         // Load all pending invitations for user across all countries
         invitations = await InvitationService.getPendingInvitationsForUser();
       }
-      
+
       setState(() {
         _pendingInvitations = invitations;
         _isLoading = false;
@@ -234,7 +237,9 @@ class _InvitationDashboardScreenState extends State<InvitationDashboardScreen> {
       }
 
       try {
+        debugPrint('🔄 About to accept invitation: ${invitation.id}');
         await InvitationService.acceptInvitation(invitation.id);
+        debugPrint('✅ Accept invitation completed successfully');
         if (mounted) {
           Navigator.of(context).pop(); // Close loading dialog
 
@@ -304,7 +309,10 @@ class _InvitationDashboardScreenState extends State<InvitationDashboardScreen> {
               ),
               actions: [
                 ElevatedButton(
-                  onPressed: () => Navigator.of(context).pop(),
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    _loadPendingInvitations(); // Refresh the list after accepting
+                  },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.green,
                     foregroundColor: Colors.white,
@@ -493,21 +501,23 @@ class _InvitationDashboardScreenState extends State<InvitationDashboardScreen> {
       if (mounted) {
         showDialog(
           context: context,
-        barrierDismissible: false,
-        builder: (context) => const AlertDialog(
-          content: Row(
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(width: 20),
-              Expanded(child: Text('Declining invitation...')),
-            ],
+          barrierDismissible: false,
+          builder: (context) => const AlertDialog(
+            content: Row(
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(width: 20),
+                Expanded(child: Text('Declining invitation...')),
+              ],
+            ),
           ),
-        ),
         );
       }
 
       try {
+        debugPrint('🔄 About to decline invitation: ${invitation.id}');
         await InvitationService.declineInvitation(invitation.id);
+        debugPrint('✅ Decline invitation completed successfully');
         if (mounted) {
           Navigator.of(context).pop(); // Close loading dialog
 
@@ -576,7 +586,10 @@ class _InvitationDashboardScreenState extends State<InvitationDashboardScreen> {
               ),
               actions: [
                 ElevatedButton(
-                  onPressed: () => Navigator.of(context).pop(),
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    _loadPendingInvitations(); // Refresh the list after declining
+                  },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.orange,
                     foregroundColor: Colors.white,

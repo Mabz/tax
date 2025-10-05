@@ -91,7 +91,19 @@ class BorderService {
             'A border with name "$name" already exists in this authority');
       }
 
+      // Get the country_id from the authority
+      final authorityResponse = await _supabase
+          .from(AppConstants.tableAuthorities)
+          .select(AppConstants.fieldAuthorityCountryId)
+          .eq(AppConstants.fieldId, authorityId)
+          .single();
+
+      final countryId =
+          authorityResponse[AppConstants.fieldAuthorityCountryId] as String;
+      debugPrint('🔍 Found country_id: $countryId for authority: $authorityId');
+
       final borderData = {
+        AppConstants.fieldBorderCountryId: countryId,
         AppConstants.fieldBorderAuthorityId: authorityId,
         AppConstants.fieldBorderName: name,
         AppConstants.fieldBorderTypeId: borderTypeId,

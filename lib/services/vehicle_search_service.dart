@@ -29,12 +29,7 @@ class VehicleSearchService {
               tax_amount,
               currency_code,
               authority_id,
-              border_id,
-              is_active,
-              borders(
-                id,
-                name
-              )
+              is_active
             ),
             authorities(
               id,
@@ -44,8 +39,10 @@ class VehicleSearchService {
               countries(name, country_code)
             )
           ''')
-          .ilike('vehicle_number_plate', '%$cleanedPlate%')
+          .or('vehicle_registration_number.ilike.%$cleanedPlate%,vehicle_number_plate.ilike.%$cleanedPlate%')
           .eq('status', 'active')
+          .gt('expires_at', DateTime.now().toIso8601String())
+          .gt('entries_remaining', 0)
           .order('created_at', ascending: false)
           .limit(20);
 
@@ -86,12 +83,7 @@ class VehicleSearchService {
               tax_amount,
               currency_code,
               authority_id,
-              border_id,
-              is_active,
-              borders(
-                id,
-                name
-              )
+              is_active
             ),
             authorities(
               id,
@@ -103,6 +95,8 @@ class VehicleSearchService {
           ''')
           .ilike('vehicle_vin', '%$cleanedVin%')
           .eq('status', 'active')
+          .gt('expires_at', DateTime.now().toIso8601String())
+          .gt('entries_remaining', 0)
           .order('created_at', ascending: false)
           .limit(20);
 
@@ -129,8 +123,34 @@ class VehicleSearchService {
     try {
       debugPrint('🔍 Searching passes by vehicle identifier: $searchTerm');
 
-      final cleanedTerm = searchTerm.trim().toUpperCase();
+      final cleanedTerm = searchTerm.trim();
 
+      // Try using the database function first (if available)
+      try {
+        final rpcResponse =
+            await _supabase.rpc('search_passes_by_vehicle', params: {
+          'search_term': cleanedTerm,
+        });
+
+        if (rpcResponse != null &&
+            rpcResponse is List &&
+            rpcResponse.isNotEmpty) {
+          debugPrint(
+              '🔍 Found ${rpcResponse.length} passes using RPC function');
+          return (rpcResponse as List).map((json) {
+            final passData = json as Map<String, dynamic>;
+            // Convert RPC response format to match expected format
+            passData['id'] = passData['pass_id'];
+            passData['amount'] = passData['tax_amount'];
+            passData['currency'] = passData['currency_code'];
+            return PurchasedPass.fromJson(passData);
+          }).toList();
+        }
+      } catch (rpcError) {
+        debugPrint('RPC function not available, using direct query: $rpcError');
+      }
+
+      // Fallback to direct query
       final response = await _supabase
           .from('purchased_passes')
           .select('''
@@ -143,12 +163,7 @@ class VehicleSearchService {
               tax_amount,
               currency_code,
               authority_id,
-              border_id,
-              is_active,
-              borders(
-                id,
-                name
-              )
+              is_active
             ),
             authorities(
               id,
@@ -158,8 +173,10 @@ class VehicleSearchService {
               countries(name, country_code)
             )
           ''')
-          .or('vehicle_number_plate.ilike.%$cleanedTerm%,vehicle_vin.ilike.%$cleanedTerm%')
+          .or('vehicle_registration_number.ilike.%$cleanedTerm%,vehicle_number_plate.ilike.%$cleanedTerm%,vehicle_vin.ilike.%$cleanedTerm%')
           .eq('status', 'active')
+          .gt('expires_at', DateTime.now().toIso8601String())
+          .gt('entries_remaining', 0)
           .order('created_at', ascending: false)
           .limit(20);
 
@@ -172,6 +189,11 @@ class VehicleSearchService {
       }).toList();
     } catch (e) {
       debugPrint('❌ Error searching passes by vehicle: $e');
+      if (e.toString().contains('could not embed') ||
+          e.toString().contains('more than one relationship')) {
+        throw Exception(
+            'Database relationship error. Please contact support to fix the schema configuration.');
+      }
       throw Exception('Failed to search passes by vehicle: $e');
     }
   }
@@ -185,12 +207,6 @@ class VehicleSearchService {
       passData['entry_limit'] = template['entry_limit'];
       passData['amount'] = template['tax_amount'];
       passData['currency'] = template['currency_code'];
-
-      // Flatten border information if available
-      if (template['borders'] != null) {
-        final border = template['borders'] as Map<String, dynamic>;
-        passData['border_name'] = border['name'];
-      }
     }
 
     // Flatten authorities data
@@ -205,6 +221,9 @@ class VehicleSearchService {
         passData['country_name'] = country['name'];
       }
     }
+
+    // Border information should already be denormalized in the purchased_passes table
+    // as entry_point_name and exit_point_name columns, so no need to fetch from relationships
 
     return PurchasedPass.fromJson(passData);
   }

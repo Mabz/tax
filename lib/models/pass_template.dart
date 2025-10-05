@@ -13,8 +13,8 @@ class PassTemplate {
   final double taxAmount;
   final String currencyCode;
   final bool isActive;
-  final bool
-      allowUserSelectablePoints; // New field for user-selectable entry/exit
+  final bool allowUserSelectableEntryPoint; // User can select entry point
+  final bool allowUserSelectableExitPoint; // User can select exit point
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -39,7 +39,8 @@ class PassTemplate {
     required this.taxAmount,
     required this.currencyCode,
     required this.isActive,
-    required this.allowUserSelectablePoints,
+    required this.allowUserSelectableEntryPoint,
+    required this.allowUserSelectableExitPoint,
     required this.createdAt,
     required this.updatedAt,
     this.entryPointName,
@@ -65,7 +66,10 @@ class PassTemplate {
       taxAmount: (json['tax_amount'] as num?)?.toDouble() ?? 0.0,
       currencyCode: json['currency_code']?.toString() ?? '',
       isActive: json['is_active'] == true,
-      allowUserSelectablePoints: json['allow_user_selectable_points'] == true,
+      allowUserSelectableEntryPoint:
+          json['allow_user_selectable_entry_point'] == true,
+      allowUserSelectableExitPoint:
+          json['allow_user_selectable_exit_point'] == true,
       createdAt: DateTime.parse(
           json['created_at']?.toString() ?? DateTime.now().toIso8601String()),
       updatedAt: DateTime.parse(
@@ -94,7 +98,8 @@ class PassTemplate {
       'tax_amount': taxAmount,
       'currency_code': currencyCode,
       'is_active': isActive,
-      'allow_user_selectable_points': allowUserSelectablePoints,
+      'allow_user_selectable_entry_point': allowUserSelectableEntryPoint,
+      'allow_user_selectable_exit_point': allowUserSelectableExitPoint,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
       'entry_point_name': entryPointName,
@@ -119,7 +124,8 @@ class PassTemplate {
     double? taxAmount,
     String? currencyCode,
     bool? isActive,
-    bool? allowUserSelectablePoints,
+    bool? allowUserSelectableEntryPoint,
+    bool? allowUserSelectableExitPoint,
     DateTime? createdAt,
     DateTime? updatedAt,
     String? entryPointName,
@@ -142,8 +148,10 @@ class PassTemplate {
       taxAmount: taxAmount ?? this.taxAmount,
       currencyCode: currencyCode ?? this.currencyCode,
       isActive: isActive ?? this.isActive,
-      allowUserSelectablePoints:
-          allowUserSelectablePoints ?? this.allowUserSelectablePoints,
+      allowUserSelectableEntryPoint:
+          allowUserSelectableEntryPoint ?? this.allowUserSelectableEntryPoint,
+      allowUserSelectableExitPoint:
+          allowUserSelectableExitPoint ?? this.allowUserSelectableExitPoint,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       entryPointName: entryPointName ?? this.entryPointName,

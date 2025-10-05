@@ -188,15 +188,30 @@ class EnhancedBorderService {
     try {
       debugPrint('🔍 Getting movement history for pass: $passId');
 
-      final response =
-          await _supabase.rpc('get_pass_movement_history', params: {
-        'p_pass_id': passId,
-      });
+      // Try the new audit table function first
+      try {
+        final response = await _supabase.rpc('get_pass_history', params: {
+          'p_pass_id': passId,
+        });
 
-      debugPrint('✅ Retrieved ${response.length} movement records');
-      return (response as List)
-          .map((item) => PassMovement.fromJson(item))
-          .toList();
+        debugPrint('✅ Retrieved ${response.length} audit records');
+        return (response as List)
+            .map((item) => PassMovement.fromAuditJson(item))
+            .toList();
+      } catch (auditError) {
+        debugPrint('⚠️ Audit table query failed, trying legacy: $auditError');
+
+        // Fallback to legacy movement history
+        final response =
+            await _supabase.rpc('get_pass_movement_history', params: {
+          'p_pass_id': passId,
+        });
+
+        debugPrint('✅ Retrieved ${response.length} legacy movement records');
+        return (response as List)
+            .map((item) => PassMovement.fromJson(item))
+            .toList();
+      }
     } catch (e) {
       debugPrint('❌ Error getting pass movement history: $e');
       return [];
@@ -648,6 +663,21 @@ class PassMovement {
       entriesDeducted: json['entries_deducted'] as int,
       previousStatus: json['previous_status'] as String,
       newStatus: json['new_status'] as String,
+    );
+  }
+
+  factory PassMovement.fromAuditJson(Map<String, dynamic> json) {
+    return PassMovement(
+      movementId: json['id'] as String,
+      borderName: json['border_name'] as String? ?? 'Unknown Border',
+      officialName: json['official_name'] as String? ?? 'Unknown Official',
+      movementType: json['action_type'] as String,
+      latitude: (json['latitude'] as num?)?.toDouble() ?? 0.0,
+      longitude: (json['longitude'] as num?)?.toDouble() ?? 0.0,
+      processedAt: DateTime.parse(json['performed_at'] as String),
+      entriesDeducted: json['entries_deducted'] as int? ?? 0,
+      previousStatus: json['previous_status'] as String? ?? '',
+      newStatus: json['new_status'] as String? ?? '',
     );
   }
 

@@ -279,7 +279,7 @@ class _PassProcessingWidgetState extends State<PassProcessingWidget> {
                   padding: EdgeInsets.all(24),
                   child: Column(
                     children: [
-                      CircularProgressIndicator(color: Colors.orange),
+                      LinearProgressIndicator(color: Colors.orange),
                       SizedBox(height: 16),
                       Text('Processing...'),
                     ],
@@ -429,9 +429,6 @@ class _PassProcessingWidgetState extends State<PassProcessingWidget> {
       children: [
         if (_verifiedPass!.vehicleDescription.isNotEmpty)
           Text('Vehicle: ${_verifiedPass!.vehicleDescription}'),
-        if (_verifiedPass!.vehicleNumberPlate != null &&
-            _verifiedPass!.vehicleNumberPlate!.isNotEmpty)
-          Text('Plate: ${_verifiedPass!.vehicleNumberPlate}'),
         Text('Current Status: ${_passAction!.currentStatus}'),
         Text('Entries Remaining: ${_passAction!.entriesRemaining}'),
         Text('Expires: ${_passAction!.expiresAt.toString().split(' ')[0]}'),

@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_supabase_auth/services/invitation_service.dart';
 import '../models/profile.dart';
-import '../models/country.dart';
 import '../services/country_user_service.dart';
-import '../services/invitation_service.dart';
 import '../constants/app_constants.dart';
-import 'invitation_management_screen.dart';
+import '../utils/role_colors.dart';
 
 /// Screen for country administrators to manage users in their country
 class CountryUserManagementScreen extends StatefulWidget {
@@ -25,7 +24,6 @@ class _CountryUserManagementScreenState
   bool _isLoading = true;
   List<CountryUserProfile> _users = [];
   List<CountryUserProfile> _filteredUsers = [];
-  List<Map<String, dynamic>> _invitations = [];
   String? _errorMessage;
   final TextEditingController _searchController = TextEditingController();
 
@@ -87,24 +85,15 @@ class _CountryUserManagementScreenState
         return;
       }
 
-      // Load both users and invitations
-      final results = await Future.wait([
-        CountryUserService.getProfilesByCountry(
-          widget.selectedCountry['id'] as String,
-        ),
-        CountryUserService.getAllInvitationsForAuthority(
-          widget.selectedCountry['authority_id'] as String,
-        ),
-      ]);
-
-      final users = results[0] as List<CountryUserProfile>;
-      final invitations = results[1] as List<Map<String, dynamic>>;
+      // Load users for this authority
+      final users = await CountryUserService.getProfilesByAuthority(
+        widget.selectedCountry['authority_id'] as String,
+      );
 
       if (mounted) {
         setState(() {
           _users = users;
           _filteredUsers = users;
-          _invitations = invitations;
           _isLoading = false;
         });
       }
@@ -158,21 +147,6 @@ class _CountryUserManagementScreenState
     );
   }
 
-  void _navigateToInvitationManagement() {
-    // Convert Map<String, dynamic> to Country object
-    final country = Country.fromJson(widget.selectedCountry);
-
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => InvitationManagementScreen(
-          selectedCountry: country,
-          authorityId: widget.selectedCountry['authority_id'] as String?,
-          authorityName: widget.selectedCountry['authority_name'] as String?,
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -181,15 +155,6 @@ class _CountryUserManagementScreenState
         backgroundColor: Colors.orange.shade100,
         foregroundColor: Colors.orange.shade800,
         actions: [
-          Badge(
-            label: Text('${_invitations.length}'),
-            isLabelVisible: _invitations.isNotEmpty,
-            child: IconButton(
-              onPressed: _navigateToInvitationManagement,
-              icon: const Icon(Icons.mail),
-              tooltip: 'Manage Invitations (${_invitations.length} sent)',
-            ),
-          ),
           IconButton(
             onPressed: _loadUsers,
             icon: const Icon(Icons.refresh),
@@ -318,137 +283,59 @@ class _CountryUserManagementScreenState
                             )
                           : Column(
                               children: [
-                                // Search bar
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 16),
+                                // Modern search bar with better spacing
+                                Container(
+                                  margin: const EdgeInsets.all(20),
                                   child: TextField(
                                     controller: _searchController,
                                     decoration: InputDecoration(
                                       hintText:
                                           'Search users by name, email, or role...',
-                                      prefixIcon: const Icon(Icons.search),
+                                      hintStyle: TextStyle(
+                                          color: Colors.grey.shade500),
+                                      prefixIcon: Icon(
+                                        Icons.search_rounded,
+                                        color: Colors.grey.shade600,
+                                      ),
                                       suffixIcon:
                                           _searchController.text.isNotEmpty
                                               ? IconButton(
-                                                  icon: const Icon(Icons.clear),
+                                                  icon: Icon(
+                                                    Icons.clear_rounded,
+                                                    color: Colors.grey.shade600,
+                                                  ),
                                                   onPressed: () {
                                                     _searchController.clear();
                                                   },
                                                 )
                                               : null,
                                       border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
+                                        borderRadius: BorderRadius.circular(16),
+                                        borderSide: BorderSide(
+                                            color: Colors.grey.shade300),
+                                      ),
+                                      enabledBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(16),
+                                        borderSide: BorderSide(
+                                            color: Colors.grey.shade300),
+                                      ),
+                                      focusedBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(16),
+                                        borderSide: BorderSide(
+                                            color: Colors.orange.shade400,
+                                            width: 2),
                                       ),
                                       filled: true,
-                                      fillColor: Colors.grey.shade50,
+                                      fillColor: Colors.white,
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                        horizontal: 20,
+                                        vertical: 16,
+                                      ),
                                     ),
                                   ),
                                 ),
-                                // Recent Invitations Section
-                                if (_invitations.isNotEmpty)
-                                  Container(
-                                    margin: const EdgeInsets.symmetric(
-                                        horizontal: 16),
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(
-                                      color: Colors.orange.shade50,
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(
-                                          color: Colors.orange.shade200),
-                                    ),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          children: [
-                                            Icon(
-                                              Icons.mail_outline,
-                                              size: 16,
-                                              color: Colors.orange.shade700,
-                                            ),
-                                            const SizedBox(width: 8),
-                                            Text(
-                                              'Recent Invitations (${_invitations.length})',
-                                              style: TextStyle(
-                                                fontWeight: FontWeight.w600,
-                                                color: Colors.orange.shade700,
-                                                fontSize: 14,
-                                              ),
-                                            ),
-                                            const Spacer(),
-                                            TextButton(
-                                              onPressed:
-                                                  _navigateToInvitationManagement,
-                                              child: Text(
-                                                'View All',
-                                                style: TextStyle(
-                                                  color: Colors.orange.shade700,
-                                                  fontSize: 12,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 8),
-                                        ...(_invitations
-                                            .take(3)
-                                            .map((invitation) {
-                                          final status =
-                                              invitation['status'] as String;
-                                          final email =
-                                              invitation['email'] as String;
-                                          final roleName =
-                                              invitation['role_name'] as String;
-                                          final invitedAt = DateTime.parse(
-                                              invitation['invited_at']
-                                                  as String);
 
-                                          return Padding(
-                                            padding: const EdgeInsets.only(
-                                                bottom: 4),
-                                            child: Row(
-                                              children: [
-                                                Icon(
-                                                  status == 'pending'
-                                                      ? Icons.schedule
-                                                      : status == 'accepted'
-                                                          ? Icons.check_circle
-                                                          : Icons.cancel,
-                                                  size: 12,
-                                                  color: status == 'pending'
-                                                      ? Colors.orange
-                                                      : status == 'accepted'
-                                                          ? Colors.green
-                                                          : Colors.red,
-                                                ),
-                                                const SizedBox(width: 8),
-                                                Expanded(
-                                                  child: Text(
-                                                    '$email ($roleName)',
-                                                    style: const TextStyle(
-                                                        fontSize: 12),
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-                                                  ),
-                                                ),
-                                                Text(
-                                                  '${invitedAt.day}/${invitedAt.month}',
-                                                  style: TextStyle(
-                                                    fontSize: 10,
-                                                    color: Colors.grey.shade600,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          );
-                                        }).toList()),
-                                      ],
-                                    ),
-                                  ),
-                                if (_invitations.isNotEmpty)
-                                  const SizedBox(height: 16),
                                 // User list
                                 Expanded(
                                   child: _filteredUsers.isEmpty
@@ -490,8 +377,8 @@ class _CountryUserManagementScreenState
                                       : RefreshIndicator(
                                           onRefresh: _loadUsers,
                                           child: ListView.builder(
-                                            padding: const EdgeInsets.symmetric(
-                                                horizontal: 16),
+                                            padding: const EdgeInsets.only(
+                                                bottom: 20),
                                             itemCount: _filteredUsers.length,
                                             itemBuilder: (context, index) {
                                               return _buildUserCard(
@@ -506,95 +393,178 @@ class _CountryUserManagementScreenState
           ),
         ],
       ),
-      floatingActionButton: _users.isNotEmpty
-          ? FloatingActionButton(
-              onPressed: _showInviteDialog,
-              backgroundColor: Colors.orange.shade600,
-              foregroundColor: Colors.white,
-              tooltip: 'Invite User',
-              child: const Icon(Icons.person_add),
-            )
-          : null,
     );
   }
 
   Widget _buildUserCard(CountryUserProfile user) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor:
-              user.anyActive ? Colors.green.shade100 : Colors.grey.shade100,
-          child: Icon(
-            Icons.person,
-            color:
-                user.anyActive ? Colors.green.shade700 : Colors.grey.shade600,
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      child: Card(
+        elevation: 2,
+        shadowColor: Colors.black.withOpacity(0.1),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => _showUserRoles(user),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header row with avatar and status
+                Row(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: user.anyActive
+                              ? [Colors.green.shade400, Colors.green.shade600]
+                              : [Colors.grey.shade400, Colors.grey.shade600],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        Icons.person_rounded,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            user.fullName ?? 'Unknown User',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.black87,
+                            ),
+                          ),
+                          if (user.email != null) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              user.email!,
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    // Status badge
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: user.anyActive
+                            ? Colors.green.shade50
+                            : Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: user.anyActive
+                              ? Colors.green.shade200
+                              : Colors.red.shade200,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 6,
+                            height: 6,
+                            decoration: BoxDecoration(
+                              color: user.anyActive
+                                  ? Colors.green.shade500
+                                  : Colors.red.shade500,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            user.anyActive ? 'Active' : 'Inactive',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: user.anyActive
+                                  ? Colors.green.shade700
+                                  : Colors.red.shade700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+
+                // Roles section with color coding
+                if (user.roles.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    'Roles',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey.shade700,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: user.roles.split(', ').map((role) {
+                      return _buildRoleChip(role.trim());
+                    }).toList(),
+                  ),
+                ],
+
+                // Last assigned info
+                if (user.latestAssignedAt != null) ...[
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.schedule_rounded,
+                        size: 14,
+                        color: Colors.grey.shade500,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Last assigned: ${_formatDate(user.latestAssignedAt!)}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade500,
+                        ),
+                      ),
+                      const Spacer(),
+                      Icon(
+                        Icons.arrow_forward_ios_rounded,
+                        size: 14,
+                        color: Colors.grey.shade400,
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
           ),
         ),
-        title: Text(
-          user.fullName ?? 'Unknown User',
-          style: const TextStyle(fontWeight: FontWeight.w600),
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (user.email != null)
-              Text(
-                user.email!,
-                style: TextStyle(color: Colors.grey.shade600),
-              ),
-            const SizedBox(height: 4),
-            Text(
-              'Roles: ${user.roles.isNotEmpty ? user.roles.replaceAll('_', ' ').toUpperCase() : 'No roles'}',
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.blue.shade700,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            if (user.latestAssignedAt != null)
-              Text(
-                'Last assigned: ${_formatDate(user.latestAssignedAt!)}',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Colors.grey.shade500,
-                ),
-              ),
-          ],
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: user.anyActive
-                    ? Colors.green.shade100
-                    : Colors.red.shade100,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                user.anyActive ? 'Active' : 'Inactive',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  color: user.anyActive
-                      ? Colors.green.shade700
-                      : Colors.red.shade700,
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Icon(
-              Icons.arrow_forward_ios,
-              size: 16,
-              color: Colors.grey.shade400,
-            ),
-          ],
-        ),
-        onTap: () => _showUserRoles(user),
       ),
     );
+  }
+
+  Widget _buildRoleChip(String role) {
+    return RoleColors.buildRoleChip(role);
   }
 
   String _formatDate(DateTime date) {

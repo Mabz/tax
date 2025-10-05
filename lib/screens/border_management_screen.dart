@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../constants/app_constants.dart';
 import '../models/authority.dart';
 import '../models/border.dart' as border_model;
@@ -7,6 +8,7 @@ import '../services/authority_service.dart';
 import '../services/border_service.dart';
 import '../services/border_type_service.dart';
 import '../services/role_service.dart';
+import '../widgets/platform_location_picker.dart';
 
 class BorderManagementScreen extends StatefulWidget {
   final Map<String, dynamic>? selectedCountry; // For backward compatibility
@@ -130,12 +132,14 @@ class _BorderManagementScreenState extends State<BorderManagementScreen> {
     });
 
     try {
-      debugPrint('🔍 Loading borders for authority: ${_selectedAuthority!.name}');
-      
-      final borders = await BorderService.getBordersByAuthority(_selectedAuthority!.id);
-      
+      debugPrint(
+          '🔍 Loading borders for authority: ${_selectedAuthority!.name}');
+
+      final borders =
+          await BorderService.getBordersByAuthority(_selectedAuthority!.id);
+
       debugPrint('✅ Loaded ${borders.length} borders');
-      
+
       if (mounted) {
         setState(() {
           _borders = borders;
@@ -282,50 +286,53 @@ class _BorderManagementScreenState extends State<BorderManagementScreen> {
           backgroundColor: Colors.orange.shade100,
           foregroundColor: Colors.orange.shade800,
         ),
-        body: const Center(
-          child: CircularProgressIndicator(),
+        body: const SafeArea(
+          child: Center(
+            child: CircularProgressIndicator(),
+          ),
         ),
       );
     }
 
     if (_authorities.isEmpty) {
       return Scaffold(
-        appBar: AppBar(
-          title: const Text('Border Management'),
-          backgroundColor: Colors.orange.shade100,
-          foregroundColor: Colors.orange.shade800,
-        ),
-        body: const Center(
-          child: Padding(
-            padding: EdgeInsets.all(16.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.location_off,
-                  size: 64,
-                  color: Colors.grey,
-                ),
-                SizedBox(height: 16),
-                Text(
-                  'No Authorities Assigned',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey,
-                  ),
-                ),
-                SizedBox(height: 8),
-                Text(
-                  'You are not assigned as an administrator for any authorities.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.grey),
-                ),
-              ],
-            ),
+          appBar: AppBar(
+            title: const Text('Border Management'),
+            backgroundColor: Colors.orange.shade100,
+            foregroundColor: Colors.orange.shade800,
           ),
-        ),
-      );
+          body: const SafeArea(
+            child: Center(
+              child: Padding(
+                padding: EdgeInsets.all(16.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.location_off,
+                      size: 64,
+                      color: Colors.grey,
+                    ),
+                    SizedBox(height: 16),
+                    Text(
+                      'No Authorities Assigned',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey,
+                      ),
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      'You are not assigned as an administrator for any authorities.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ));
     }
 
     return Scaffold(
@@ -459,36 +466,63 @@ class _BorderManagementScreenState extends State<BorderManagementScreen> {
                                       ),
                                     ],
                                   ),
-                                  trailing: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      IconButton(
-                                        onPressed: () =>
-                                            _toggleBorderStatus(border),
-                                        icon: Icon(
-                                          border.isActive
-                                              ? Icons.toggle_on
-                                              : Icons.toggle_off,
-                                          color: border.isActive
-                                              ? Colors.green
-                                              : Colors.grey,
+                                  trailing: PopupMenuButton<String>(
+                                    onSelected: (value) {
+                                      switch (value) {
+                                        case 'toggle':
+                                          _toggleBorderStatus(border);
+                                          break;
+                                        case 'edit':
+                                          _showEditBorderDialog(border);
+                                          break;
+                                        case 'delete':
+                                          _deleteBorder(border);
+                                          break;
+                                      }
+                                    },
+                                    itemBuilder: (context) => [
+                                      PopupMenuItem(
+                                        value: 'toggle',
+                                        child: Row(
+                                          children: [
+                                            Icon(
+                                              border.isActive
+                                                  ? Icons.toggle_off
+                                                  : Icons.toggle_on,
+                                              size: 20,
+                                              color: border.isActive
+                                                  ? Colors.grey
+                                                  : Colors.green,
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Text(border.isActive
+                                                ? 'Deactivate'
+                                                : 'Activate'),
+                                          ],
                                         ),
-                                        tooltip: border.isActive
-                                            ? 'Deactivate border'
-                                            : 'Activate border',
                                       ),
-                                      IconButton(
-                                        onPressed: () =>
-                                            _showEditBorderDialog(border),
-                                        icon: const Icon(Icons.edit,
-                                            color: Colors.blue),
-                                        tooltip: 'Edit border',
+                                      const PopupMenuItem(
+                                        value: 'edit',
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.edit, size: 20),
+                                            SizedBox(width: 8),
+                                            Text('Edit'),
+                                          ],
+                                        ),
                                       ),
-                                      IconButton(
-                                        onPressed: () => _deleteBorder(border),
-                                        icon: const Icon(Icons.delete,
-                                            color: Colors.red),
-                                        tooltip: 'Delete border',
+                                      const PopupMenuItem(
+                                        value: 'delete',
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.delete,
+                                                size: 20, color: Colors.red),
+                                            SizedBox(width: 8),
+                                            Text('Delete',
+                                                style: TextStyle(
+                                                    color: Colors.red)),
+                                          ],
+                                        ),
                                       ),
                                     ],
                                   ),
@@ -570,6 +604,44 @@ class _AddEditBorderDialogState extends State<_AddEditBorderDialog> {
     _latitudeController.dispose();
     _longitudeController.dispose();
     super.dispose();
+  }
+
+  void _selectLocationOnMap() {
+    // Get current location if available
+    LatLng? initialLocation;
+    if (_latitudeController.text.isNotEmpty &&
+        _longitudeController.text.isNotEmpty) {
+      final lat = double.tryParse(_latitudeController.text);
+      final lng = double.tryParse(_longitudeController.text);
+      if (lat != null && lng != null) {
+        initialLocation = LatLng(lat, lng);
+      }
+    }
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => PlatformLocationPicker(
+          initialLocation: initialLocation,
+          title: 'Select Border Location',
+          onLocationSelected: (LatLng location, String? address) {
+            setState(() {
+              _latitudeController.text = location.latitude.toStringAsFixed(6);
+              _longitudeController.text = location.longitude.toStringAsFixed(6);
+            });
+
+            // Show confirmation with address if available
+            if (address != null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Location selected: $address'),
+                  backgroundColor: Colors.green,
+                ),
+              );
+            }
+          },
+        ),
+      ),
+    );
   }
 
   Future<void> _saveBorder() async {
@@ -706,50 +778,118 @@ class _AddEditBorderDialogState extends State<_AddEditBorderDialog> {
                 maxLines: 3,
               ),
               const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextFormField(
-                      controller: _latitudeController,
-                      decoration: const InputDecoration(
-                        labelText: 'Latitude',
-                        border: OutlineInputBorder(),
-                      ),
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
-                      validator: (value) {
-                        if (value != null && value.trim().isNotEmpty) {
-                          final lat = double.tryParse(value.trim());
-                          if (lat == null || lat < -90 || lat > 90) {
-                            return 'Invalid latitude (-90 to 90)';
-                          }
-                        }
-                        return null;
-                      },
+              // Location section with map integration
+              Container(
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey.shade300),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Header with icon and title
+                    Row(
+                      children: [
+                        const Icon(Icons.location_on, color: Colors.orange),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Location',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: TextFormField(
-                      controller: _longitudeController,
-                      decoration: const InputDecoration(
-                        labelText: 'Longitude',
-                        border: OutlineInputBorder(),
+                    const SizedBox(height: 12),
+
+                    // Map selection button - full width
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: _selectLocationOnMap,
+                        icon: const Icon(Icons.map, size: 20),
+                        label: const Text('Select Location on Map'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
+                        ),
                       ),
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
-                      validator: (value) {
-                        if (value != null && value.trim().isNotEmpty) {
-                          final lng = double.tryParse(value.trim());
-                          if (lng == null || lng < -180 || lng > 180) {
-                            return 'Invalid longitude (-180 to 180)';
-                          }
-                        }
-                        return null;
-                      },
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 16),
+
+                    // Coordinate input fields
+                    const Text(
+                      'Coordinates (Optional)',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.grey,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: _latitudeController,
+                            decoration: const InputDecoration(
+                              labelText: 'Latitude',
+                              border: OutlineInputBorder(),
+                              isDense: true,
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                            ),
+                            keyboardType: const TextInputType.numberWithOptions(
+                                decimal: true),
+                            validator: (value) {
+                              if (value != null && value.trim().isNotEmpty) {
+                                final lat = double.tryParse(value.trim());
+                                if (lat == null || lat < -90 || lat > 90) {
+                                  return 'Invalid latitude';
+                                }
+                              }
+                              return null;
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextFormField(
+                            controller: _longitudeController,
+                            decoration: const InputDecoration(
+                              labelText: 'Longitude',
+                              border: OutlineInputBorder(),
+                              isDense: true,
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                            ),
+                            keyboardType: const TextInputType.numberWithOptions(
+                                decimal: true),
+                            validator: (value) {
+                              if (value != null && value.trim().isNotEmpty) {
+                                final lng = double.tryParse(value.trim());
+                                if (lng == null || lng < -180 || lng > 180) {
+                                  return 'Invalid longitude';
+                                }
+                              }
+                              return null;
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 16),
               SwitchListTile(

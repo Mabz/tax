@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/vehicle_tax_rate.dart';
 import '../models/vehicle_type.dart';
@@ -111,9 +112,35 @@ class VehicleTaxRateService {
   /// Get all active currencies
   static Future<List<Currency>> getActiveCurrencies() async {
     try {
-      final response = await _supabase.rpc('get_active_currencies');
+      // Try RPC function first
+      try {
+        final response = await _supabase.rpc('get_active_currencies');
+        return (response as List)
+            .map((item) => Currency.fromJson(item))
+            .toList();
+      } catch (rpcError) {
+        debugPrint('⚠️ RPC get_active_currencies failed: $rpcError');
+        debugPrint('🔄 Falling back to hardcoded currencies...');
 
-      return (response as List).map((item) => Currency.fromJson(item)).toList();
+        // Fallback to common currencies if RPC fails
+        return [
+          Currency(code: 'USD', name: 'US Dollar', symbol: '\$'),
+          Currency(code: 'EUR', name: 'Euro', symbol: '€'),
+          Currency(code: 'GBP', name: 'British Pound', symbol: '£'),
+          Currency(code: 'ZAR', name: 'South African Rand', symbol: 'R'),
+          Currency(code: 'KES', name: 'Kenyan Shilling', symbol: 'KSh'),
+          Currency(code: 'NGN', name: 'Nigerian Naira', symbol: '₦'),
+          Currency(code: 'BWP', name: 'Botswana Pula', symbol: 'P'),
+          Currency(code: 'SZL', name: 'Eswatini Lilangeni', symbol: 'L'),
+          Currency(code: 'LSL', name: 'Lesotho Loti', symbol: 'L'),
+          Currency(code: 'NAD', name: 'Namibian Dollar', symbol: 'N\$'),
+          Currency(code: 'MZN', name: 'Mozambican Metical', symbol: 'MT'),
+          Currency(code: 'ZMW', name: 'Zambian Kwacha', symbol: 'ZK'),
+          Currency(code: 'ZWL', name: 'Zimbabwean Dollar', symbol: 'Z\$'),
+          Currency(code: 'TZS', name: 'Tanzanian Shilling', symbol: 'TSh'),
+          Currency(code: 'AOA', name: 'Angolan Kwanza', symbol: 'Kz'),
+        ];
+      }
     } catch (e) {
       throw Exception('Failed to get currencies: $e');
     }

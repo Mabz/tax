@@ -80,7 +80,8 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
 
     if (next.length < 8) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Password must be at least 8 characters.')),
+        const SnackBar(
+            content: Text('Password must be at least 8 characters.')),
       );
       return;
     }
@@ -209,7 +210,8 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: Colors.red.shade200),
                   ),
-                  child: Text(_factorsError!, style: const TextStyle(color: Colors.red)),
+                  child: Text(_factorsError!,
+                      style: const TextStyle(color: Colors.red)),
                 ),
               if (_loadingFactors)
                 const Padding(
@@ -242,7 +244,8 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
                                 ),
                               ),
                               const SizedBox(height: 4),
-                              const Text('Add a TOTP authenticator for extra account protection.'),
+                              const Text(
+                                  'Add a TOTP authenticator for extra account protection.'),
                               const SizedBox(height: 8),
                               Align(
                                 alignment: Alignment.centerLeft,
@@ -274,13 +277,54 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
                     separatorBuilder: (_, __) => const Divider(height: 1),
                     itemBuilder: (context, index) {
                       final factor = _totpFactors[index];
+                      final factorData = factor as dynamic;
+                      final friendlyName = factorData.friendlyName as String?;
+                      final factorId = factorData.id as String;
+                      final isEmpty =
+                          friendlyName == null || friendlyName.isEmpty;
+
                       return ListTile(
-                        leading: const Icon(Icons.verified_user, color: Colors.green),
-                        title: Text((factor as dynamic).friendlyName ?? 'Authenticator'),
-                        subtitle: const Text('Time‑based one‑time password'),
-                        trailing: TextButton(
-                          onPressed: () => _unenroll((factor as dynamic).id as String),
-                          child: const Text('Remove'),
+                        leading: Icon(
+                          Icons.verified_user,
+                          color: isEmpty ? Colors.orange : Colors.green,
+                        ),
+                        title: Text(
+                          isEmpty ? 'Unnamed Authenticator' : friendlyName,
+                          style: TextStyle(
+                            color: isEmpty ? Colors.orange.shade700 : null,
+                          ),
+                        ),
+                        subtitle: Text(
+                          isEmpty
+                              ? 'Time‑based one‑time password (needs setup)'
+                              : 'Time‑based one‑time password',
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (isEmpty) ...[
+                              TextButton(
+                                onPressed: () async {
+                                  // Remove the broken factor and restart enrollment
+                                  await _unenroll(factorId);
+                                  if (!mounted) return;
+                                  await Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => const MfaEnrollScreen(),
+                                    ),
+                                  );
+                                  if (!mounted) return;
+                                  await _refreshFactors();
+                                },
+                                child: const Text('Fix'),
+                              ),
+                              const SizedBox(width: 8),
+                            ],
+                            TextButton(
+                              onPressed: () => _unenroll(factorId),
+                              child: const Text('Remove'),
+                            ),
+                          ],
                         ),
                       );
                     },
@@ -293,7 +337,8 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
                       label: const Text('Add another authenticator'),
                       onPressed: () async {
                         await Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => const MfaEnrollScreen()),
+                          MaterialPageRoute(
+                              builder: (_) => const MfaEnrollScreen()),
                         );
                         if (!mounted) return;
                         await _refreshFactors();

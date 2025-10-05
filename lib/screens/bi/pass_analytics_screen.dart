@@ -218,6 +218,7 @@ class _PassAnalyticsScreenState extends State<PassAnalyticsScreen>
   }
 
   String _formatDate(DateTime date) {
+    // For analytics, keep the simple format for date ranges
     return '${date.day}/${date.month}/${date.year}';
   }
 

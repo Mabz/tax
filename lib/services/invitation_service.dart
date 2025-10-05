@@ -24,14 +24,59 @@ class InvitationService {
         throw Exception('No authenticated user found');
       }
 
-      await _supabase.rpc(AppConstants.inviteProfileToRoleFunction, params: {
-        'authority_id': authorityId,
-        'invited_by_profile_id': currentUser.id,
-        'role_name': roleName,
-        'target_email': email.toLowerCase(),
-      });
+      // Try the fixed RPC function first (with prefixed parameters)
+      try {
+        await _supabase.rpc(AppConstants.inviteProfileToRoleFunction, params: {
+          'p_authority_id': authorityId,
+          'p_invited_by_profile_id': currentUser.id,
+          'p_role_name': roleName,
+          'p_target_email': email.toLowerCase(),
+        });
+        debugPrint('✅ Invitation sent successfully via fixed RPC function');
+        return;
+      } catch (rpcError) {
+        debugPrint('⚠️ Fixed RPC function failed: $rpcError');
+        debugPrint('🔄 Trying original parameter names...');
 
-      debugPrint('✅ Invitation sent successfully');
+        // Fallback to original parameter names in case the function hasn't been updated yet
+        try {
+          await _supabase
+              .rpc(AppConstants.inviteProfileToRoleFunction, params: {
+            'authority_id': authorityId,
+            'invited_by_profile_id': currentUser.id,
+            'role_name': roleName,
+            'target_email': email.toLowerCase(),
+          });
+          debugPrint(
+              '✅ Invitation sent successfully via original RPC function');
+          return;
+        } catch (originalError) {
+          debugPrint('⚠️ Original RPC function also failed: $originalError');
+
+          // Final error message with instructions
+          throw Exception(
+              'Unable to send invitation. The database functions need to be fixed.\n\n'
+              'SOLUTION: Please run this SQL command in your database:\n\n'
+              'CREATE OR REPLACE FUNCTION public.invite_profile_to_role(\n'
+              '    p_authority_id UUID,\n'
+              '    p_invited_by_profile_id UUID,\n'
+              '    p_role_name TEXT,\n'
+              '    p_target_email TEXT\n'
+              ') RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER AS \$\$\n'
+              'DECLARE v_role_id UUID;\n'
+              'BEGIN\n'
+              '    SELECT id INTO v_role_id FROM roles WHERE name = p_role_name;\n'
+              '    IF v_role_id IS NULL THEN RAISE EXCEPTION \'Role not found\';\n'
+              '    END IF;\n'
+              '    INSERT INTO role_invitations (email, role_id, authority_id, invited_by_profile_id, invited_at, status)\n'
+              '    VALUES (LOWER(p_target_email), v_role_id, p_authority_id, p_invited_by_profile_id, NOW(), \'pending\');\n'
+              'END; \$\$;\n\n'
+              'Or use the quick_fix.sql file provided.\n\n'
+              'Errors:\n'
+              '1. Fixed function: $rpcError\n'
+              '2. Original function: $originalError');
+        }
+      }
     } catch (e) {
       debugPrint('❌ Error sending invitation: $e');
       rethrow;
@@ -74,33 +119,62 @@ class InvitationService {
 
       debugPrint('✅ Fetched ${response.length} invitations for authority');
 
-      // Convert to RoleInvitation objects
+      // Debug: Log the first few raw responses to see what we're getting
+      for (int i = 0; i < response.length && i < 1; i++) {
+        debugPrint('🔍 Raw invitation $i keys: ${response[i].keys.toList()}');
+        debugPrint('🔍 Raw invitation $i data: ${response[i]}');
+        // Check for common ID field names
+        debugPrint('   id: ${response[i]['id']}');
+        debugPrint('   invitation_id: ${response[i]['invitation_id']}');
+        debugPrint('   invite_id: ${response[i]['invite_id']}');
+      }
+
+      // Convert to RoleInvitation objects - temporarily without filtering to see the data
       return response.map<RoleInvitation>((json) {
+        // Try different possible ID field names from the database function
+        final invitationId = json['invitation_id'] ??
+            json['id'] ??
+            json['invite_id'] ??
+            'temp-${DateTime.now().millisecondsSinceEpoch}-${json['email']}';
+
+        if (json['invitation_id'] == null &&
+            json['id'] == null &&
+            json['invite_id'] == null) {
+          debugPrint(
+              '⚠️ Warning: No ID field found for invitation: ${json['email']} - ${json['role_name']}');
+          debugPrint('   Available keys: ${json.keys.toList()}');
+          debugPrint('   Using temporary ID: $invitationId');
+        }
+
         // Map the database function results to RoleInvitation format
         final mapped = {
-          AppConstants.fieldId: json['invitation_id'],
-          AppConstants.fieldRoleInvitationEmail: json['email'],
-          AppConstants.fieldRoleInvitationStatus: json['status'],
-          AppConstants.fieldRoleInvitationInvitedAt: json['invited_at'],
+          AppConstants.fieldId:
+              invitationId, // Use the found ID or temporary one
+          AppConstants.fieldRoleInvitationEmail: json['email'] ?? '',
+          AppConstants.fieldRoleInvitationStatus: json['status'] ?? 'pending',
+          AppConstants.fieldRoleInvitationInvitedAt:
+              json['invited_at'] ?? DateTime.now().toIso8601String(),
           AppConstants.fieldRoleInvitationRespondedAt: json['responded_at'],
           // Required fields for RoleInvitation model
-          AppConstants.fieldRoleInvitationRoleId: json['role_id'],
+          AppConstants.fieldRoleInvitationRoleId: json['role_id'] ?? '',
           AppConstants.fieldRoleInvitationAuthorityId: authorityId,
           AppConstants.fieldRoleInvitationInvitedBy:
-              json['invited_by_profile_id'],
+              json['invited_by_profile_id'] ?? '',
           // Optional fields from the authority function
-          AppConstants.fieldRoleName: json['role_name'],
+          AppConstants.fieldRoleName: json['role_name'] ?? '',
           AppConstants.fieldRoleDisplayName:
-              json['role_display_name'] ?? json['role_name'],
-          AppConstants.fieldRoleDescription: json['role_description'],
-          'inviter_name': json['inviter_name'],
-          'inviter_email': json['inviter_email'],
-          'authority_name': json['authority_name'],
-          'country_name': json['country_name'],
+              json['role_display_name'] ?? json['role_name'] ?? '',
+          AppConstants.fieldRoleDescription: json['role_description'] ?? '',
+          'inviter_name': json['inviter_name'] ?? 'Unknown',
+          'inviter_email': json['inviter_email'] ?? '',
+          'authority_name': json['authority_name'] ?? '',
+          'country_name': json['country_name'] ?? '',
           // Add required fields for RoleInvitation model
-          AppConstants.fieldCreatedAt: json['invited_at'],
-          AppConstants.fieldUpdatedAt:
-              json['responded_at'] ?? json['invited_at'],
+          AppConstants.fieldCreatedAt:
+              json['invited_at'] ?? DateTime.now().toIso8601String(),
+          AppConstants.fieldUpdatedAt: json['responded_at'] ??
+              json['invited_at'] ??
+              DateTime.now().toIso8601String(),
         };
 
         return RoleInvitation.fromJson(mapped);
@@ -143,29 +217,32 @@ class InvitationService {
       return response.map<RoleInvitation>((json) {
         // Map the database function results to RoleInvitation format
         final mapped = {
-          AppConstants.fieldId: json['invitation_id'],
-          AppConstants.fieldRoleInvitationEmail: json['email'],
-          AppConstants.fieldRoleInvitationStatus: json['status'],
-          AppConstants.fieldRoleInvitationInvitedAt: json['invited_at'],
+          AppConstants.fieldId: json['invitation_id'] ?? '',
+          AppConstants.fieldRoleInvitationEmail: json['email'] ?? '',
+          AppConstants.fieldRoleInvitationStatus: json['status'] ?? 'pending',
+          AppConstants.fieldRoleInvitationInvitedAt:
+              json['invited_at'] ?? DateTime.now().toIso8601String(),
           AppConstants.fieldRoleInvitationRespondedAt: json['responded_at'],
           // Required fields for RoleInvitation model
-          AppConstants.fieldRoleInvitationRoleId: json['role_id'],
+          AppConstants.fieldRoleInvitationRoleId: json['role_id'] ?? '',
           AppConstants.fieldRoleInvitationCountryId: countryId,
           AppConstants.fieldRoleInvitationInvitedBy:
-              json['invited_by_profile_id'],
+              json['invited_by_profile_id'] ?? '',
           // Optional fields from the authority function
-          AppConstants.fieldRoleName: json['role_name'],
+          AppConstants.fieldRoleName: json['role_name'] ?? '',
           AppConstants.fieldRoleDisplayName:
-              json['role_display_name'] ?? json['role_name'],
-          AppConstants.fieldRoleDescription: json['role_description'],
-          'inviter_name': json['inviter_name'],
-          'inviter_email': json['inviter_email'],
-          'authority_name': json['authority_name'],
-          'country_name': json['country_name'],
+              json['role_display_name'] ?? json['role_name'] ?? '',
+          AppConstants.fieldRoleDescription: json['role_description'] ?? '',
+          'inviter_name': json['inviter_name'] ?? 'Unknown',
+          'inviter_email': json['inviter_email'] ?? '',
+          'authority_name': json['authority_name'] ?? '',
+          'country_name': json['country_name'] ?? '',
           // Add required fields for RoleInvitation model
-          AppConstants.fieldCreatedAt: json['invited_at'],
-          AppConstants.fieldUpdatedAt:
-              json['responded_at'] ?? json['invited_at'],
+          AppConstants.fieldCreatedAt:
+              json['invited_at'] ?? DateTime.now().toIso8601String(),
+          AppConstants.fieldUpdatedAt: json['responded_at'] ??
+              json['invited_at'] ??
+              DateTime.now().toIso8601String(),
         };
 
         return RoleInvitation.fromJson(mapped);
@@ -427,8 +504,9 @@ class InvitationService {
               json['invited_at'] ?? DateTime.now().toIso8601String(),
           // Use db field aliases to avoid key collisions with generic 'name'
           AppConstants.dbFieldRoleName: json['role_name'] ?? '',
-          AppConstants.fieldRoleDisplayName:
-              json['role_name'] ?? '', // Use role_name as display name
+          AppConstants.fieldRoleDisplayName: json['role_display_name'] ??
+              json['role_name'] ??
+              '', // Use display_name first, fallback to role_name
           AppConstants.dbFieldRoleDescription: json['role_description'] ?? '',
           'authority_name': json['authority_name'] ?? '',
           AppConstants.dbFieldCountryName: json['country_name'] ?? '',
@@ -447,13 +525,29 @@ class InvitationService {
   /// Accept a role invitation using database function
   static Future<void> acceptInvitation(String invitationId) async {
     try {
+      // Validate invitation ID
+      if (invitationId.isEmpty) {
+        throw Exception(
+            'Cannot accept invitation: Invalid invitation ID (empty)');
+      }
+
       debugPrint('🔍 Accepting invitation: $invitationId');
 
-      await _supabase.rpc(AppConstants.acceptRoleInvitationFunction, params: {
-        'invite_id': invitationId,
-      });
-
-      debugPrint('✅ Invitation accepted successfully');
+      // Try with invitation_id parameter first (correct parameter name)
+      try {
+        await _supabase.rpc(AppConstants.acceptRoleInvitationFunction, params: {
+          'invitation_id': invitationId,
+        });
+        debugPrint('✅ Invitation accepted successfully');
+        return;
+      } catch (e) {
+        debugPrint('⚠️ Failed with invitation_id parameter: $e');
+        // Fallback to invite_id parameter
+        await _supabase.rpc(AppConstants.acceptRoleInvitationFunction, params: {
+          'invite_id': invitationId,
+        });
+        debugPrint('✅ Invitation accepted successfully (fallback)');
+      }
     } catch (e) {
       debugPrint('❌ Error accepting invitation: $e');
       rethrow;
@@ -463,13 +557,31 @@ class InvitationService {
   /// Decline a role invitation using database function
   static Future<void> declineInvitation(String invitationId) async {
     try {
+      // Validate invitation ID
+      if (invitationId.isEmpty) {
+        throw Exception(
+            'Cannot decline invitation: Invalid invitation ID (empty)');
+      }
+
       debugPrint('🔍 Declining invitation: $invitationId');
 
-      await _supabase.rpc(AppConstants.declineRoleInvitationFunction, params: {
-        'invite_id': invitationId,
-      });
-
-      debugPrint('✅ Invitation declined successfully');
+      // Try with invitation_id parameter first (correct parameter name)
+      try {
+        await _supabase
+            .rpc(AppConstants.declineRoleInvitationFunction, params: {
+          'invitation_id': invitationId,
+        });
+        debugPrint('✅ Invitation declined successfully');
+        return;
+      } catch (e) {
+        debugPrint('⚠️ Failed with invitation_id parameter: $e');
+        // Fallback to invite_id parameter
+        await _supabase
+            .rpc(AppConstants.declineRoleInvitationFunction, params: {
+          'invite_id': invitationId,
+        });
+        debugPrint('✅ Invitation declined successfully (fallback)');
+      }
     } catch (e) {
       debugPrint('❌ Error declining invitation: $e');
       rethrow;
@@ -479,13 +591,29 @@ class InvitationService {
   /// Delete/cancel a role invitation using database function
   static Future<void> deleteInvitation(String invitationId) async {
     try {
+      // Validate invitation ID
+      if (invitationId.isEmpty) {
+        throw Exception(
+            'Cannot delete invitation: Invalid invitation ID (empty)');
+      }
+
       debugPrint('🔍 Deleting invitation: $invitationId');
 
-      await _supabase.rpc(AppConstants.deleteRoleInvitationFunction, params: {
-        'invite_id': invitationId,
-      });
-
-      debugPrint('✅ Invitation deleted successfully');
+      // Try with invitation_id parameter first (correct parameter name)
+      try {
+        await _supabase.rpc(AppConstants.deleteRoleInvitationFunction, params: {
+          'invitation_id': invitationId,
+        });
+        debugPrint('✅ Invitation deleted successfully');
+        return;
+      } catch (e) {
+        debugPrint('⚠️ Failed with invitation_id parameter: $e');
+        // Fallback to invite_id parameter
+        await _supabase.rpc(AppConstants.deleteRoleInvitationFunction, params: {
+          'invite_id': invitationId,
+        });
+        debugPrint('✅ Invitation deleted successfully (fallback)');
+      }
     } catch (e) {
       debugPrint('❌ Error deleting invitation: $e');
       rethrow;
@@ -495,13 +623,29 @@ class InvitationService {
   /// Resend a role invitation using database function
   static Future<void> resendInvitation(String invitationId) async {
     try {
+      // Validate invitation ID
+      if (invitationId.isEmpty) {
+        throw Exception(
+            'Cannot resend invitation: Invalid invitation ID (empty)');
+      }
+
       debugPrint('🔍 Resending invitation: $invitationId');
 
-      await _supabase.rpc(AppConstants.resendInvitationFunction, params: {
-        'invite_id': invitationId,
-      });
-
-      debugPrint('✅ Invitation resent successfully');
+      // Try with invitation_id parameter first (correct parameter name)
+      try {
+        await _supabase.rpc(AppConstants.resendInvitationFunction, params: {
+          'invitation_id': invitationId,
+        });
+        debugPrint('✅ Invitation resent successfully');
+        return;
+      } catch (e) {
+        debugPrint('⚠️ Failed with invitation_id parameter: $e');
+        // Fallback to invite_id parameter
+        await _supabase.rpc(AppConstants.resendInvitationFunction, params: {
+          'invite_id': invitationId,
+        });
+        debugPrint('✅ Invitation resent successfully (fallback)');
+      }
     } catch (e) {
       debugPrint('❌ Error resending invitation: $e');
       rethrow;

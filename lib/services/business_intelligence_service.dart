@@ -55,8 +55,9 @@ class BusinessIntelligenceService {
       // Vehicle count
       final uniqueVehicles = passes
           .where((p) =>
-              p.vehicleNumberPlate != null && p.vehicleNumberPlate!.isNotEmpty)
-          .map((p) => p.vehicleNumberPlate)
+              p.vehicleRegistrationNumber != null &&
+              p.vehicleRegistrationNumber!.isNotEmpty)
+          .map((p) => p.vehicleRegistrationNumber)
           .toSet()
           .length;
 
@@ -238,7 +239,7 @@ class BusinessIntelligenceService {
             .map((p) => {
                   'passId': p.passId,
                   'vehicleDescription': p.vehicleDescription,
-                  'vehicleNumberPlate': p.vehicleNumberPlate,
+                  'vehicleRegistrationNumber': p.vehicleRegistrationNumber,
                   'passDescription': p.passDescription,
                   'expiresAt': p.expiresAt.toIso8601String(),
                   'currentStatus': p.currentStatus,
@@ -477,7 +478,8 @@ class BusinessIntelligenceService {
           .map((pass) => {
                 'passId': pass.passId,
                 'vehicleDescription': pass.vehicleDescription,
-                'vehicleNumberPlate': pass.vehicleNumberPlate ?? 'N/A',
+                'vehicleRegistrationNumber':
+                    pass.vehicleRegistrationNumber ?? 'N/A',
                 'passDescription': pass.passDescription,
                 'expiresAt': pass.expiresAt,
                 'currentStatus': pass.currentStatus,

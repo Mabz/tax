@@ -5,10 +5,12 @@ import '../utils/time_utils.dart';
 /// Widget to display pass movement history
 class PassHistoryWidget extends StatefulWidget {
   final String passId;
+  final String? shortCode;
 
   const PassHistoryWidget({
     super.key,
     required this.passId,
+    this.shortCode,
   });
 
   @override
@@ -56,7 +58,9 @@ class _PassHistoryWidgetState extends State<PassHistoryWidget> {
           children: [
             const Text('Pass Movement History'),
             Text(
-              'Pass ID: ${widget.passId.substring(0, 8)}...',
+              widget.shortCode != null
+                  ? 'Backup Code: ${widget.shortCode}'
+                  : 'Pass ID: ${widget.passId.substring(0, 8)}...',
               style: const TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.normal,
@@ -64,13 +68,13 @@ class _PassHistoryWidgetState extends State<PassHistoryWidget> {
             ),
           ],
         ),
-        backgroundColor: Colors.orange,
+        backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
       ),
       body: SafeArea(
         child: _isLoading
             ? const Center(
-                child: CircularProgressIndicator(color: Colors.orange),
+                child: LinearProgressIndicator(color: Colors.blue),
               )
             : _error != null
                 ? Center(
@@ -222,7 +226,7 @@ class _PassHistoryWidgetState extends State<PassHistoryWidget> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _loadHistory,
-        backgroundColor: Colors.orange,
+        backgroundColor: Colors.blue,
         child: const Icon(Icons.refresh, color: Colors.white),
       ),
     );

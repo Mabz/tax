@@ -22,7 +22,8 @@ class PassTemplateService {
     required String currencyCode,
     String? entryPointId,
     String? exitPointId,
-    bool allowUserSelectablePoints = false,
+    bool allowUserSelectableEntryPoint = false,
+    bool allowUserSelectableExitPoint = false,
   }) async {
     try {
       debugPrint('🔄 Creating pass template...');
@@ -39,7 +40,9 @@ class PassTemplateService {
       debugPrint('  - Entry Point ID: $entryPointId');
       debugPrint('  - Exit Point ID: $exitPointId');
       debugPrint(
-          '  - Allow User Selectable Points: $allowUserSelectablePoints');
+          '  - Allow User Selectable Entry Point: $allowUserSelectableEntryPoint');
+      debugPrint(
+          '  - Allow User Selectable Exit Point: $allowUserSelectableExitPoint');
       await _supabase.rpc('create_pass_template', params: {
         'target_authority_id': authorityId,
         'creator_profile_id': creatorProfileId,
@@ -52,7 +55,8 @@ class PassTemplateService {
         'currency_code': currencyCode,
         'target_entry_point_id': entryPointId,
         'target_exit_point_id': exitPointId,
-        'allow_user_selectable_points': allowUserSelectablePoints,
+        'allow_user_selectable_entry_point': allowUserSelectableEntryPoint,
+        'allow_user_selectable_exit_point': allowUserSelectableExitPoint,
       });
 
       debugPrint('✅ Pass template created successfully');
@@ -72,9 +76,11 @@ class PassTemplateService {
     required double taxAmount,
     required String currencyCode,
     required bool isActive,
+    String? vehicleTypeId,
     String? entryPointId,
     String? exitPointId,
-    bool allowUserSelectablePoints = false,
+    bool allowUserSelectableEntryPoint = false,
+    bool allowUserSelectableExitPoint = false,
   }) async {
     try {
       debugPrint('🔄 Updating pass template...');
@@ -90,7 +96,9 @@ class PassTemplateService {
       debugPrint('  - Entry Point ID: $entryPointId');
       debugPrint('  - Exit Point ID: $exitPointId');
       debugPrint(
-          '  - Allow User Selectable Points: $allowUserSelectablePoints');
+          '  - Allow User Selectable Entry Point: $allowUserSelectableEntryPoint');
+      debugPrint(
+          '  - Allow User Selectable Exit Point: $allowUserSelectableExitPoint');
       await _supabase.rpc('update_pass_template', params: {
         'template_id': templateId,
         'new_description': description,
@@ -100,9 +108,11 @@ class PassTemplateService {
         'new_tax_amount': taxAmount,
         'new_currency_code': currencyCode,
         'new_is_active': isActive,
+        'new_vehicle_type_id': vehicleTypeId,
         'new_entry_point_id': entryPointId,
         'new_exit_point_id': exitPointId,
-        'new_allow_user_selectable_points': allowUserSelectablePoints,
+        'new_allow_user_selectable_entry_point': allowUserSelectableEntryPoint,
+        'new_allow_user_selectable_exit_point': allowUserSelectableExitPoint,
       });
 
       debugPrint('✅ Pass template updated successfully');
@@ -145,7 +155,8 @@ class PassTemplateService {
           'entry_point_id': item['entry_point_id'],
           'exit_point_id': item['exit_point_id'],
           'created_by_profile_id': '', // Not returned by function
-          'vehicle_type_id': '', // Will be handled by vehicle_type
+          'vehicle_type_id': item['vehicle_type_id']?.toString() ??
+              '', // Use actual vehicle_type_id
           'description': item['description'],
           'entry_limit': item['entry_limit'],
           'expiration_days': item['expiration_days'],
@@ -153,13 +164,17 @@ class PassTemplateService {
               item['pass_advance_days'] ?? 0, // Default to 0 if missing
           'tax_amount': item['tax_amount'],
           'currency_code': item['currency_code'],
-          'is_active': item['is_active'],
-          'allow_user_selectable_points':
-              item['allow_user_selectable_points'] ?? false,
-          'created_at':
-              DateTime.now().toIso8601String(), // Not returned by function
-          'updated_at':
-              DateTime.now().toIso8601String(), // Not returned by function
+          'is_active': item['is_active'] ?? true, // Default to true if missing
+          'allow_user_selectable_entry_point':
+              item['allow_user_selectable_entry_point'] ?? false,
+          'allow_user_selectable_exit_point':
+              item['allow_user_selectable_exit_point'] ?? false,
+          'created_at': item['created_at']?.toString() ??
+              DateTime.now()
+                  .toIso8601String(), // Use actual timestamp if available
+          'updated_at': item['updated_at']?.toString() ??
+              DateTime.now()
+                  .toIso8601String(), // Use actual timestamp if available
           'entry_point_name':
               item['entry_point_name'] ?? item['border_name'], // Support legacy
           'exit_point_name': item['exit_point_name'],

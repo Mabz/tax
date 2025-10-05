@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../constants/app_constants.dart';
 import '../models/role_invitation.dart';
 import '../models/country.dart';
@@ -27,6 +28,7 @@ class _InvitationManagementScreenState
   List<RoleInvitation> _invitations = [];
   List<Map<String, dynamic>> _roles = [];
   bool _isLoading = true;
+  RealtimeChannel? _invitationRealtimeChannel;
 
   // Helper getter for authority name
   String? get _authorityName {
@@ -42,6 +44,12 @@ class _InvitationManagementScreenState
   void initState() {
     super.initState();
     _initializeScreen();
+  }
+
+  @override
+  void dispose() {
+    _invitationRealtimeChannel?.unsubscribe();
+    super.dispose();
   }
 
   Future<void> _initializeScreen() async {
@@ -62,6 +70,9 @@ class _InvitationManagementScreenState
       }
 
       await _loadData();
+
+      // Set up real-time subscription for invitation changes
+      _setupInvitationRealtimeSubscription();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -124,6 +135,12 @@ class _InvitationManagementScreenState
 
       debugPrint(
           '✅ Loaded ${_invitations.length} invitations and ${_roles.length} roles');
+
+      // Debug: Log the first few invitations to see what we got
+      for (int i = 0; i < _invitations.length && i < 3; i++) {
+        debugPrint(
+            '   Invitation $i: ${_invitations[i].email} - ${_invitations[i].formattedRoleName} (ID: ${_invitations[i].id})');
+      }
     } catch (e) {
       setState(() => _isLoading = false);
       if (mounted) {
@@ -135,6 +152,47 @@ class _InvitationManagementScreenState
         );
       }
     }
+  }
+
+  /// Set up real-time subscription for invitation changes
+  void _setupInvitationRealtimeSubscription() {
+    debugPrint(
+        '🔄 Setting up real-time subscription for invitation management');
+    debugPrint('   Authority ID: $_authorityId');
+    debugPrint('   Country ID: ${widget.selectedCountry?.id}');
+
+    _invitationRealtimeChannel = Supabase.instance.client
+        .channel('invitation_management_changes')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: AppConstants.tableRoleInvitations,
+          // No filter - listen to ALL changes to catch accept/decline from any authority
+          callback: (payload) {
+            debugPrint(
+                '🔄 Real-time invitation change detected in management screen: ${payload.eventType}');
+            debugPrint(
+                '   Invitation ID: ${payload.newRecord?['id'] ?? payload.oldRecord?['id'] ?? 'unknown'}');
+            debugPrint(
+                '   Email: ${payload.newRecord?['email'] ?? payload.oldRecord?['email'] ?? 'unknown'}');
+            debugPrint(
+                '   Status: ${payload.newRecord?['status'] ?? payload.oldRecord?['status'] ?? 'unknown'}');
+            debugPrint(
+                '   Authority ID: ${payload.newRecord?['authority_id'] ?? payload.oldRecord?['authority_id'] ?? 'unknown'}');
+            debugPrint('   Full payload: $payload');
+
+            // Add a small delay to avoid race conditions with manual refreshes
+            Future.delayed(const Duration(milliseconds: 500), () {
+              if (mounted) {
+                debugPrint('🔄 Real-time triggered reload of invitation list');
+                _loadData();
+              }
+            });
+          },
+        )
+        .subscribe();
+
+    debugPrint('✅ Real-time subscription set up for invitation management');
   }
 
   Future<void> _showInviteDialog() async {
@@ -173,13 +231,11 @@ class _InvitationManagementScreenState
                     items: _roles.map((role) {
                       return DropdownMenuItem<String>(
                         value: role[AppConstants.fieldRoleName],
-                        child: Flexible(
-                          child: Text(
-                            role[AppConstants.fieldRoleDisplayName] ??
-                                role[AppConstants.fieldRoleName],
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 1,
-                          ),
+                        child: Text(
+                          role[AppConstants.fieldRoleDisplayName] ??
+                              role[AppConstants.fieldRoleName],
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
                         ),
                       );
                     }).toList(),
@@ -247,7 +303,11 @@ class _InvitationManagementScreenState
                               backgroundColor: Colors.green,
                             ),
                           );
-                          _loadData(); // Refresh the list
+
+                          // Refresh the list immediately
+                          debugPrint(
+                              '🔄 Manually refreshing invitation list after sending invitation');
+                          await _loadData();
                         }
                       } catch (e) {
                         if (mounted) {
@@ -499,7 +559,10 @@ class _InvitationManagementScreenState
         foregroundColor: theme.$3,
         actions: [
           IconButton(
-            onPressed: _loadData,
+            onPressed: () {
+              debugPrint('🔄 Manual refresh button pressed');
+              _loadData();
+            },
             icon: const Icon(Icons.refresh),
             tooltip: 'Refresh',
           ),

@@ -52,6 +52,10 @@
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>This app needs location access to track border crossings and verify your location during pass processing.</string>
 	
+	<!-- Google Maps API Key -->
+	<key>GMSApiKey</key>
+	<string>AIzaSyCnMdpCMX_T5gynZodWEZnPFmgQ4xEvlqk</string>
+	
 	<!-- Add this for Google Sign-In -->
 	<key>CFBundleURLTypes</key>
 	<array>

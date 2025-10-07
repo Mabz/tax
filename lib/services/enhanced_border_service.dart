@@ -139,7 +139,9 @@ class EnhancedBorderService {
 
       final currentStatus = response['current_status'] as String? ?? 'unused';
       final entriesRemaining = response['entries_remaining'] as int? ?? 0;
-      final expiresAt = DateTime.parse(response['expires_at'] as String);
+      final expiresAt = response['expires_at'] != null
+          ? DateTime.parse(response['expires_at'] as String)
+          : DateTime.now().add(const Duration(days: 30)); // Default expiry
 
       String actionType;
       String actionDescription;
@@ -201,6 +203,11 @@ class EnhancedBorderService {
       for (final item in response as List) {
         final movementData = item as Map<String, dynamic>;
 
+        // Debug: Print the movement data to see what we're getting
+        debugPrint('🔍 Movement data: ${movementData.toString()}');
+        debugPrint(
+            '🖼️ Profile image URL from DB: ${movementData['official_profile_image_url']}');
+
         // Get additional data for local authority scans
         String? scanPurpose;
         String? notes;
@@ -233,7 +240,9 @@ class EnhancedBorderService {
           movementType: movementData['movement_type'] as String,
           latitude: (movementData['latitude'] as num?)?.toDouble() ?? 0.0,
           longitude: (movementData['longitude'] as num?)?.toDouble() ?? 0.0,
-          processedAt: DateTime.parse(movementData['processed_at'] as String),
+          processedAt: movementData['processed_at'] != null
+              ? DateTime.parse(movementData['processed_at'] as String)
+              : DateTime.now(),
           entriesDeducted: movementData['entries_deducted'] as int? ?? 0,
           previousStatus: movementData['previous_status'] as String? ?? '',
           newStatus: movementData['new_status'] as String? ?? '',
@@ -612,14 +621,16 @@ class PassMovementResult {
 
   factory PassMovementResult.fromJson(Map<String, dynamic> json) {
     return PassMovementResult(
-      success: json['success'] as bool,
-      movementId: json['movement_id'] as String,
-      movementType: json['movement_type'] as String,
-      previousStatus: json['previous_status'] as String,
-      newStatus: json['new_status'] as String,
-      entriesDeducted: json['entries_deducted'] as int,
-      entriesRemaining: json['entries_remaining'] as int,
-      processedAt: DateTime.parse(json['processed_at'] as String),
+      success: json['success'] as bool? ?? false,
+      movementId: json['movement_id'] as String? ?? '',
+      movementType: json['movement_type'] as String? ?? 'unknown',
+      previousStatus: json['previous_status'] as String? ?? '',
+      newStatus: json['new_status'] as String? ?? '',
+      entriesDeducted: json['entries_deducted'] as int? ?? 0,
+      entriesRemaining: json['entries_remaining'] as int? ?? 0,
+      processedAt: json['processed_at'] != null
+          ? DateTime.parse(json['processed_at'] as String)
+          : DateTime.now(),
     );
   }
 
@@ -700,7 +711,9 @@ class PassMovement {
       movementType: json['movement_type'] as String,
       latitude: _parseNumericToDouble(json['latitude']),
       longitude: _parseNumericToDouble(json['longitude']),
-      processedAt: DateTime.parse(json['processed_at'] as String),
+      processedAt: json['processed_at'] != null
+          ? DateTime.parse(json['processed_at'] as String)
+          : DateTime.now(),
       entriesDeducted: json['entries_deducted'] as int? ?? 0,
       previousStatus: json['previous_status'] as String? ?? '',
       newStatus: json['new_status'] as String? ?? '',
@@ -731,7 +744,9 @@ class PassMovement {
       movementType: json['action_type'] as String,
       latitude: _parseNumericToDouble(json['latitude']),
       longitude: _parseNumericToDouble(json['longitude']),
-      processedAt: DateTime.parse(json['performed_at'] as String),
+      processedAt: json['performed_at'] != null
+          ? DateTime.parse(json['performed_at'] as String)
+          : DateTime.now(),
       entriesDeducted: json['entries_deducted'] as int? ?? 0,
       previousStatus: json['previous_status'] as String? ?? '',
       newStatus: json['new_status'] as String? ?? '',

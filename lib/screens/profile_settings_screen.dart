@@ -462,17 +462,6 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
                       ],
                     ),
                   ),
-                  IconButton(
-                    onPressed: () {
-                      // Focus on the full name field for editing
-                      FocusScope.of(context).requestFocus(FocusNode());
-                    },
-                    icon: Icon(
-                      Icons.edit,
-                      color: Colors.blue.shade600,
-                    ),
-                    tooltip: 'Edit full name',
-                  ),
                 ],
               ),
             ),

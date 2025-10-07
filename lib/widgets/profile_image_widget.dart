@@ -232,6 +232,9 @@ class _ProfileImageWidgetState extends State<ProfileImageWidget> {
 
   @override
   Widget build(BuildContext context) {
+    // Debug: Print the current image URL
+    debugPrint('ProfileImageWidget: currentImageUrl = $_currentImageUrl');
+
     return GestureDetector(
       onTap: widget.isEditable ? _showImageOptions : null,
       child: Stack(

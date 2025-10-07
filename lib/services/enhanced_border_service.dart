@@ -188,30 +188,62 @@ class EnhancedBorderService {
     try {
       debugPrint('🔍 Getting movement history for pass: $passId');
 
-      // Try the new audit table function first
-      try {
-        final response = await _supabase.rpc('get_pass_history', params: {
-          'p_pass_id': passId,
-        });
+      // Get basic movement history
+      final response =
+          await _supabase.rpc('get_pass_movement_history', params: {
+        'p_pass_id': passId,
+      });
 
-        debugPrint('✅ Retrieved ${response.length} audit records');
-        return (response as List)
-            .map((item) => PassMovement.fromAuditJson(item))
-            .toList();
-      } catch (auditError) {
-        debugPrint('⚠️ Audit table query failed, trying legacy: $auditError');
+      debugPrint('✅ Retrieved ${response.length} movement records');
 
-        // Fallback to legacy movement history
-        final response =
-            await _supabase.rpc('get_pass_movement_history', params: {
-          'p_pass_id': passId,
-        });
+      // Convert to PassMovement objects and enhance with additional data
+      final movements = <PassMovement>[];
+      for (final item in response as List) {
+        final movementData = item as Map<String, dynamic>;
 
-        debugPrint('✅ Retrieved ${response.length} legacy movement records');
-        return (response as List)
-            .map((item) => PassMovement.fromJson(item))
-            .toList();
+        // Get additional data for local authority scans
+        String? scanPurpose;
+        String? notes;
+        String? authorityType;
+
+        if (movementData['border_name'] == 'Local Authority') {
+          try {
+            // Get additional details from the pass_movements table
+            final detailResponse = await _supabase
+                .from('pass_movements')
+                .select('scan_purpose, notes, authority_type')
+                .eq('id', movementData['movement_id'])
+                .single();
+
+            scanPurpose = detailResponse['scan_purpose'] as String?;
+            notes = detailResponse['notes'] as String?;
+            authorityType = detailResponse['authority_type'] as String?;
+          } catch (e) {
+            debugPrint(
+                '⚠️ Could not get additional details for movement ${movementData['movement_id']}: $e');
+          }
+        }
+
+        movements.add(PassMovement(
+          movementId: movementData['movement_id'] as String,
+          borderName:
+              movementData['border_name'] as String? ?? 'Unknown Location',
+          officialName:
+              movementData['official_name'] as String? ?? 'Unknown Official',
+          movementType: movementData['movement_type'] as String,
+          latitude: (movementData['latitude'] as num?)?.toDouble() ?? 0.0,
+          longitude: (movementData['longitude'] as num?)?.toDouble() ?? 0.0,
+          processedAt: DateTime.parse(movementData['processed_at'] as String),
+          entriesDeducted: movementData['entries_deducted'] as int? ?? 0,
+          previousStatus: movementData['previous_status'] as String? ?? '',
+          newStatus: movementData['new_status'] as String? ?? '',
+          scanPurpose: scanPurpose,
+          notes: notes,
+          authorityType: authorityType,
+        ));
       }
+
+      return movements;
     } catch (e) {
       debugPrint('❌ Error getting pass movement history: $e');
       return [];
@@ -630,6 +662,7 @@ class PassMovement {
   final String movementId;
   final String borderName;
   final String officialName;
+  final String? officialProfileImageUrl;
   final String movementType;
   final double latitude;
   final double longitude;
@@ -637,11 +670,15 @@ class PassMovement {
   final int entriesDeducted;
   final String previousStatus;
   final String newStatus;
+  final String? scanPurpose;
+  final String? notes;
+  final String? authorityType;
 
   PassMovement({
     required this.movementId,
     required this.borderName,
     required this.officialName,
+    this.officialProfileImageUrl,
     required this.movementType,
     required this.latitude,
     required this.longitude,
@@ -649,35 +686,58 @@ class PassMovement {
     required this.entriesDeducted,
     required this.previousStatus,
     required this.newStatus,
+    this.scanPurpose,
+    this.notes,
+    this.authorityType,
   });
 
   factory PassMovement.fromJson(Map<String, dynamic> json) {
     return PassMovement(
       movementId: json['movement_id'] as String,
-      borderName: json['border_name'] as String,
-      officialName: json['official_name'] as String,
+      borderName: json['border_name'] as String? ?? 'Local Authority',
+      officialName: json['official_name'] as String? ?? 'Unknown Official',
+      officialProfileImageUrl: json['official_profile_image_url'] as String?,
       movementType: json['movement_type'] as String,
-      latitude: (json['latitude'] as num).toDouble(),
-      longitude: (json['longitude'] as num).toDouble(),
+      latitude: _parseNumericToDouble(json['latitude']),
+      longitude: _parseNumericToDouble(json['longitude']),
       processedAt: DateTime.parse(json['processed_at'] as String),
-      entriesDeducted: json['entries_deducted'] as int,
-      previousStatus: json['previous_status'] as String,
-      newStatus: json['new_status'] as String,
+      entriesDeducted: json['entries_deducted'] as int? ?? 0,
+      previousStatus: json['previous_status'] as String? ?? '',
+      newStatus: json['new_status'] as String? ?? '',
+      scanPurpose: json['scan_purpose'] as String?,
+      notes: json['notes'] as String?,
+      authorityType: json['authority_type'] as String?,
     );
+  }
+
+  /// Helper method to safely parse numeric values to double
+  static double _parseNumericToDouble(dynamic value) {
+    if (value == null) return 0.0;
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is String) {
+      return double.tryParse(value) ?? 0.0;
+    }
+    if (value is num) return value.toDouble();
+    return 0.0;
   }
 
   factory PassMovement.fromAuditJson(Map<String, dynamic> json) {
     return PassMovement(
       movementId: json['id'] as String,
-      borderName: json['border_name'] as String? ?? 'Unknown Border',
+      borderName: json['border_name'] as String? ?? 'Local Authority',
       officialName: json['official_name'] as String? ?? 'Unknown Official',
+      officialProfileImageUrl: json['official_profile_image_url'] as String?,
       movementType: json['action_type'] as String,
-      latitude: (json['latitude'] as num?)?.toDouble() ?? 0.0,
-      longitude: (json['longitude'] as num?)?.toDouble() ?? 0.0,
+      latitude: _parseNumericToDouble(json['latitude']),
+      longitude: _parseNumericToDouble(json['longitude']),
       processedAt: DateTime.parse(json['performed_at'] as String),
       entriesDeducted: json['entries_deducted'] as int? ?? 0,
       previousStatus: json['previous_status'] as String? ?? '',
       newStatus: json['new_status'] as String? ?? '',
+      scanPurpose: json['scan_purpose'] as String?,
+      notes: json['notes'] as String?,
+      authorityType: json['authority_type'] as String?,
     );
   }
 
@@ -687,10 +747,41 @@ class PassMovement {
         return 'Checked-In';
       case 'check_out':
         return 'Checked-Out';
+      case 'local_authority_scan':
+        return scanPurpose != null
+            ? _formatScanPurpose(scanPurpose!)
+            : 'Authority Scan';
       default:
-        return movementType;
+        return movementType
+            .replaceAll('_', ' ')
+            .split(' ')
+            .map((word) => word[0].toUpperCase() + word.substring(1))
+            .join(' ');
     }
   }
+
+  String _formatScanPurpose(String purpose) {
+    switch (purpose) {
+      case 'routine_check':
+        return 'Routine Check';
+      case 'roadblock':
+        return 'Roadblock';
+      case 'investigation':
+        return 'Investigation';
+      case 'compliance_audit':
+        return 'Compliance Audit';
+      default:
+        return purpose
+            .replaceAll('_', ' ')
+            .split(' ')
+            .map((word) => word[0].toUpperCase() + word.substring(1))
+            .join(' ');
+    }
+  }
+
+  bool get isBorderMovement =>
+      movementType == 'check_in' || movementType == 'check_out';
+  bool get isLocalAuthorityScan => movementType == 'local_authority_scan';
 }
 
 /// Border assignment with direction permissions

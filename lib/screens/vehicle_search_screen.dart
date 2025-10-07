@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/purchased_pass.dart';
-import '../widgets/vehicle_search_widget.dart';
+import '../widgets/improved_vehicle_search_widget.dart';
 
 class VehicleSearchScreen extends StatelessWidget {
   final String title;
@@ -17,6 +17,8 @@ class VehicleSearchScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset:
+          false, // Don't resize when keyboard appears - let it cover the watermark
       appBar: AppBar(
         title: Text(title),
         backgroundColor: Colors.blue.shade600,
@@ -30,7 +32,7 @@ class VehicleSearchScreen extends StatelessWidget {
             : null,
       ),
       body: SafeArea(
-        child: VehicleSearchWidget(
+        child: ImprovedVehicleSearchWidget(
           initialSearchTerm: initialSearchTerm,
           onPassSelected: (pass) {
             // Return the selected pass to the previous screen

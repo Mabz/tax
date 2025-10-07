@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -102,7 +103,8 @@ class PassCardWidget extends StatelessWidget {
                                   color: Colors.grey.shade300, width: 2),
                             ),
                             child: QrImageView(
-                              data: pass.qrCode ?? _generateQrCodeForPass(pass),
+                              data: pass.qrCode ??
+                                  _generateSimpleQrCodeForPass(pass),
                               version: QrVersions.auto,
                               size: isCompact ? 150 : 200,
                               backgroundColor: Colors.white,
@@ -169,8 +171,8 @@ class PassCardWidget extends StatelessWidget {
                       ),
                     ],
                   ),
-                  // Status overlay for inactive passes
-                  if (!isActive)
+                  // Status overlay for truly inactive passes (not just "Active" status)
+                  if (!isActive && statusDisplay != 'Active')
                     Positioned.fill(
                       child: Container(
                         decoration: BoxDecoration(
@@ -632,41 +634,23 @@ class PassCardWidget extends StatelessWidget {
     }
   }
 
-  String _getVehicleDisplayText(PurchasedPass pass) {
-    if (pass.vehicleRegistrationNumber != null &&
-        pass.vehicleRegistrationNumber!.isNotEmpty) {
-      return pass.vehicleDescription;
-    } else {
-      return pass.vehicleDescription.isNotEmpty
-          ? pass.vehicleDescription
-          : 'General Pass';
-    }
-  }
-
   bool _isPendingActivation(PurchasedPass pass) {
     return pass.activationDate.isAfter(DateTime.now());
   }
 
-  String _generateQrCodeForPass(PurchasedPass pass) {
-    // Generate QR code data for existing passes that don't have one
-    final qrData = {
-      'passId': pass.passId,
-      'passDescription': pass.passDescription,
-      'vehicleDescription': pass.vehicleDescription,
-      'entryPointName': pass.entryPointName ?? 'Any Entry Point',
-      'exitPointName': pass.exitPointName ?? 'Any Exit Point',
-      'issuedAt':
-          DateTime(pass.issuedAt.year, pass.issuedAt.month, pass.issuedAt.day)
-              .toIso8601String(),
-      'expiresAt': DateTime(
-              pass.expiresAt.year, pass.expiresAt.month, pass.expiresAt.day)
-          .toIso8601String(),
-      'amount': pass.amount,
-      'currency': pass.currency,
-      'status': pass.status,
-      'entries': '${pass.entriesRemaining}/${pass.entryLimit}',
+  String _generateSimpleQrCodeForPass(PurchasedPass pass) {
+    // Generate SIMPLE QR code data - just the pass ID in JSON format
+    // This makes QR codes much shorter and easier to scan with phones
+    debugPrint('🔍 Generating simple QR code for pass: ${pass.passId}');
+
+    final simpleQrData = {
+      'id': pass.passId,
     };
-    return qrData.entries.map((e) => '${e.key}:${e.value}').join('|');
+
+    final qrString = jsonEncode(simpleQrData);
+    debugPrint('🔍 Generated QR code: $qrString (${qrString.length} chars)');
+
+    return qrString;
   }
 
   String _formatFriendlyDate(DateTime date) {

@@ -169,12 +169,41 @@ class ProfileManagementService {
             card_exp_month,
             card_exp_year,
             payment_provider,
+            profile_image_url,
             updated_at
           ''').eq('id', user.id).maybeSingle();
 
       return response;
     } catch (e) {
       throw Exception('Failed to get profile: $e');
+    }
+  }
+
+  /// Update profile image URL
+  static Future<void> updateProfileImageUrl(String imageUrl) async {
+    try {
+      final user = _supabase.auth.currentUser;
+      if (user == null) throw Exception('User not authenticated');
+
+      await _supabase
+          .from('profiles')
+          .update({'profile_image_url': imageUrl}).eq('id', user.id);
+    } catch (e) {
+      throw Exception('Failed to update profile image URL: $e');
+    }
+  }
+
+  /// Remove profile image URL
+  static Future<void> removeProfileImageUrl() async {
+    try {
+      final user = _supabase.auth.currentUser;
+      if (user == null) throw Exception('User not authenticated');
+
+      await _supabase
+          .from('profiles')
+          .update({'profile_image_url': null}).eq('id', user.id);
+    } catch (e) {
+      throw Exception('Failed to remove profile image URL: $e');
     }
   }
 

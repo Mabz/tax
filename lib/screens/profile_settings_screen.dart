@@ -3,6 +3,7 @@ import '../models/identity_documents.dart';
 import '../models/payment_details.dart';
 import '../services/profile_management_service.dart';
 import '../enums/pass_verification_method.dart';
+import '../widgets/profile_image_widget.dart';
 
 class ProfileSettingsScreen extends StatefulWidget {
   const ProfileSettingsScreen({super.key});
@@ -428,16 +429,15 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
               ),
               child: Row(
                 children: [
-                  CircleAvatar(
-                    backgroundColor: Colors.blue.shade600,
-                    child: Text(
-                      (_profileData!['full_name']?.toString() ?? 'U')[0]
-                          .toUpperCase(),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                  ProfileImageWidget(
+                    currentImageUrl:
+                        _profileData!['profile_image_url']?.toString(),
+                    size: 60,
+                    isEditable: true,
+                    onImageUpdated: () {
+                      // Refresh profile data when image is updated
+                      _loadProfileData();
+                    },
                   ),
                   const SizedBox(width: 16),
                   Expanded(

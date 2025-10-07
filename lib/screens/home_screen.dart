@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../constants/app_constants.dart';
 import '../models/profile.dart';
 import '../services/profile_service.dart';
+import '../widgets/profile_image_widget.dart';
 import 'profile_settings_screen.dart';
 import '../models/authority.dart';
 import '../models/country.dart';
@@ -12,7 +13,6 @@ import '../services/authority_service.dart';
 import '../services/invitation_service.dart';
 import 'authority_management_screen.dart';
 import 'single_authority_management_screen.dart';
-import 'edit_authority_screen.dart';
 import 'country_management_screen.dart';
 import 'profile_management_screen.dart';
 import 'border_type_management_screen.dart';
@@ -654,50 +654,64 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               )
             else if (_currentProfile != null)
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              Row(
                 children: [
-                  Text(
-                    _currentProfile!.fullName ??
-                        _currentProfile!.email ??
-                        'Unknown User',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  // Profile Image
+                  ProfileImageWidget(
+                    currentImageUrl: _currentProfile!.profileImageUrl,
+                    size: 50,
+                    isEditable: false,
                   ),
-                  if (_currentProfile!.fullName != null &&
-                      _currentProfile!.email != null)
-                    Text(
-                      _currentProfile!.email!,
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 12,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  if (_isAccountDisabled)
-                    Container(
-                      margin: const EdgeInsets.only(top: 4),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Colors.red.shade600,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: const Text(
-                        'ACCOUNT DISABLED',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
+                  const SizedBox(width: 12),
+                  // User Info
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _currentProfile!.fullName ??
+                              _currentProfile!.email ??
+                              'Unknown User',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                      ),
+                        if (_currentProfile!.fullName != null &&
+                            _currentProfile!.email != null)
+                          Text(
+                            _currentProfile!.email!,
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 12,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        if (_isAccountDisabled)
+                          Container(
+                            margin: const EdgeInsets.only(top: 4),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.red.shade600,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Text(
+                              'ACCOUNT DISABLED',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
+                  ),
                 ],
               )
             else
@@ -1209,135 +1223,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ],
 
-      // Border Control (Border Officials)
-      if (_selectedAuthority != null && _isBorderOfficialForSelected()) ...[
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Row(
-            children: [
-              Icon(Icons.shield, color: Colors.red.shade600, size: 20),
-              const SizedBox(width: 8),
-              Text(
-                'Border Control',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.red.shade700,
-                ),
-              ),
-            ],
-          ),
-        ),
-        ListTile(
-          leading: const Icon(Icons.shield, color: Colors.red),
-          title: const Text('Validate Passes'),
-          subtitle: Text(
-            'Validate passes at ${_selectedAuthority!.name}',
-          ),
-          onTap: () async {
-            Navigator.of(context).pop();
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (context) => AuthorityValidationScreen(
-                  role: AuthorityRole.borderOfficial,
-                  currentAuthorityId: _selectedAuthority?.id,
-                  currentCountryId: _selectedAuthority?.countryId,
-                ),
-              ),
-            );
-          },
-        ),
-      ],
-
-      // Local Authority Control (Local Authorities)
-      if (_selectedAuthority != null && _isLocalAuthorityForSelected()) ...[
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Row(
-            children: [
-              Icon(Icons.verified, color: Colors.blue.shade600, size: 20),
-              const SizedBox(width: 8),
-              Text(
-                'Local Authority Control',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.blue.shade700,
-                ),
-              ),
-            ],
-          ),
-        ),
-        ListTile(
-          leading: const Icon(Icons.verified, color: Colors.blue),
-          title: const Text('Validate Passes'),
-          subtitle: Text(
-            'Validate passes for ${_selectedAuthority!.name}',
-          ),
-          onTap: () async {
-            Navigator.of(context).pop();
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (context) => AuthorityValidationScreen(
-                  role: AuthorityRole.localAuthority,
-                  currentAuthorityId: _selectedAuthority?.id,
-                  currentCountryId: _selectedAuthority?.countryId,
-                ),
-              ),
-            );
-          },
-        ),
-      ],
-
-      // Invitations (if user has pending invitations)
-      if (_pendingInvitationsCount > 0) ...[
-        ListTile(
-          leading: Stack(
-            children: [
-              const Icon(Icons.mail, color: Colors.orange),
-              if (_pendingInvitationsCount > 0)
-                Positioned(
-                  right: 0,
-                  top: 0,
-                  child: Container(
-                    padding: const EdgeInsets.all(2),
-                    decoration: BoxDecoration(
-                      color: Colors.red,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    constraints: const BoxConstraints(
-                      minWidth: 16,
-                      minHeight: 16,
-                    ),
-                    child: Text(
-                      '$_pendingInvitationsCount',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          title: const Text('Role Invitations'),
-          subtitle: Text(
-            '$_pendingInvitationsCount pending invitation${_pendingInvitationsCount == 1 ? '' : 's'}',
-          ),
-          onTap: () {
-            Navigator.of(context).pop();
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (context) => const InvitationDashboardScreen(),
-              ),
-            );
-          },
-        ),
-      ],
-
-      // Country Admin functions (only show if user is admin for selected authority's country)
+      // Authority Management functions (show after superuser section)
       if (_isSuperuser ||
           (_selectedAuthority != null && _isCountryAdminForSelected())) ...[
         Container(
@@ -1617,6 +1503,134 @@ class _HomeScreenState extends State<HomeScreen> {
           },
         ),
       ],
+      // Border Control (Border Officials)
+      if (_selectedAuthority != null && _isBorderOfficialForSelected()) ...[
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            children: [
+              Icon(Icons.shield, color: Colors.red.shade600, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'Border Control',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.red.shade700,
+                ),
+              ),
+            ],
+          ),
+        ),
+        ListTile(
+          leading: const Icon(Icons.shield, color: Colors.red),
+          title: const Text('Validate Passes'),
+          subtitle: Text(
+            'Validate passes at ${_selectedAuthority!.name}',
+          ),
+          onTap: () async {
+            Navigator.of(context).pop();
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => AuthorityValidationScreen(
+                  role: AuthorityRole.borderOfficial,
+                  currentAuthorityId: _selectedAuthority?.id,
+                  currentCountryId: _selectedAuthority?.countryId,
+                ),
+              ),
+            );
+          },
+        ),
+      ],
+
+      // Local Authority Control (Local Authorities)
+      if (_selectedAuthority != null && _isLocalAuthorityForSelected()) ...[
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            children: [
+              Icon(Icons.verified, color: Colors.blue.shade600, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'Local Authority Control',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blue.shade700,
+                ),
+              ),
+            ],
+          ),
+        ),
+        ListTile(
+          leading: const Icon(Icons.verified, color: Colors.blue),
+          title: const Text('Validate Passes'),
+          subtitle: Text(
+            'Validate passes for ${_selectedAuthority!.name}',
+          ),
+          onTap: () async {
+            Navigator.of(context).pop();
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => AuthorityValidationScreen(
+                  role: AuthorityRole.localAuthority,
+                  currentAuthorityId: _selectedAuthority?.id,
+                  currentCountryId: _selectedAuthority?.countryId,
+                ),
+              ),
+            );
+          },
+        ),
+      ],
+
+      // Invitations (if user has pending invitations)
+      if (_pendingInvitationsCount > 0) ...[
+        ListTile(
+          leading: Stack(
+            children: [
+              const Icon(Icons.mail, color: Colors.orange),
+              if (_pendingInvitationsCount > 0)
+                Positioned(
+                  right: 0,
+                  top: 0,
+                  child: Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: BoxDecoration(
+                      color: Colors.red,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    constraints: const BoxConstraints(
+                      minWidth: 16,
+                      minHeight: 16,
+                    ),
+                    child: Text(
+                      '$_pendingInvitationsCount',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          title: const Text('Role Invitations'),
+          subtitle: Text(
+            '$_pendingInvitationsCount pending invitation${_pendingInvitationsCount == 1 ? '' : 's'}',
+          ),
+          onTap: () {
+            Navigator.of(context).pop();
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => const InvitationDashboardScreen(),
+              ),
+            );
+          },
+        ),
+      ],
+
       // Business Intelligence functions (only show if user has BI role for selected country)
       if (_selectedAuthority != null &&
           (_isSuperuser || _isBusinessIntelligenceForSelected())) ...[

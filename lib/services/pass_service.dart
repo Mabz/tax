@@ -1,5 +1,4 @@
 import 'package:flutter/foundation.dart';
-import 'dart:convert';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/purchased_pass.dart';
 import '../models/authority.dart';
@@ -338,58 +337,6 @@ class PassService {
         }
       }
 
-      // Create comprehensive QR data with all required fields
-      final qrData = {
-        // Core pass identification
-        'profile_id': user.id,
-        'pass_hash': passHash,
-        'short_code': shortCode,
-
-        // Dates
-        'issued_at': DateTime(now.year, now.month, now.day).toIso8601String(),
-        'activation_date': DateTime(
-                activationDate.year, activationDate.month, activationDate.day)
-            .toIso8601String(),
-        'expires_at': DateTime(
-                expirationDate.year, expirationDate.month, expirationDate.day)
-            .toIso8601String(),
-
-        // Authority and location data
-        'authority_id': templateResponse['authority_id'],
-        'authority_name': authorityData?['name'] ?? '',
-        'entry_point_id': finalEntryPointId,
-        'exit_point_id': finalExitPointId,
-        'entry_point_name': entryBorderData?['name'] ?? 'Any Entry Point',
-        'exit_point_name': exitBorderData?['name'] ?? 'Any Exit Point',
-        'country_id': countryData?['id'] ?? templateResponse['country_id'],
-        'country_name': countryData?['name'] ?? '',
-
-        // Pass details
-        'pass_description': _buildPassDescription(
-          templateResponse,
-          authorityData,
-          entryBorderData,
-          exitBorderData,
-          countryData,
-          finalVehicleDescription,
-          finalVehicleNumberPlate,
-          finalVehicleVin,
-          activationDate,
-        ),
-        'entry_limit': templateResponse['entry_limit'],
-        'currency': templateResponse['currency_code'] ?? 'USD',
-        'amount': templateResponse['tax_amount'],
-
-        // Vehicle information
-        'vehicle_description': finalVehicleDescription ?? '',
-        'vehicle_registration_number': finalVehicleNumberPlate ?? '',
-        'vehicle_vin': finalVehicleVin ?? '',
-        'vehicle_make': finalVehicleMake ?? '',
-        'vehicle_model': finalVehicleModel ?? '',
-        'vehicle_year': finalVehicleYear,
-        'vehicle_color': finalVehicleColor ?? '',
-      };
-
       // First insert the pass without QR data to get the actual database ID
       final insertData = {
         'profile_id': user.id,
@@ -473,6 +420,11 @@ class PassService {
 
       final actualPassId = insertResult['id'].toString();
 
+      // Create SIMPLE QR data with just the pass ID
+      final qrData = {
+        'id': actualPassId,
+      };
+
       // Create comprehensive QR data with all required fields including the actual pass ID
       /*
       final qrData = {
@@ -518,10 +470,13 @@ class PassService {
       };
       */
 
-      // Update the pass with the comprehensive QR data
+      // Update the pass with the simple QR data
+      debugPrint('🔍 Updating pass $actualPassId with simple QR data: $qrData');
       await _supabase
           .from('purchased_passes')
           .update({'qr_data': qrData}).eq('id', actualPassId);
+
+      debugPrint('✅ Pass updated with simplified QR code format');
     } catch (e) {
       // Provide more specific error messages for common database issues
       if (e.toString().contains('vehicle_record is not assigned') ||

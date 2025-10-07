@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 class PurchasedPass {
   final String passId;
   final String vehicleDescription;
@@ -68,10 +70,11 @@ class PurchasedPass {
     // Extract QR data from JSONB field or create from existing data
     final qrData = json['qr_data'] as Map<String, dynamic>?;
 
-    // Generate QR code string from JSONB data or fallback to legacy format
+    // Generate simple QR code string - just the pass ID in JSON format
     String? qrCodeString;
-    if (qrData != null) {
-      qrCodeString = qrData.entries.map((e) => '${e.key}:${e.value}').join('|');
+    if (qrData != null && qrData['id'] != null) {
+      // Simple format: just {"id": "pass-uuid"}
+      qrCodeString = jsonEncode({'id': qrData['id']});
     }
 
     // Enhanced data extraction with multiple fallback sources
@@ -284,7 +287,8 @@ class PurchasedPass {
     }
 
     // If vehicle hasn't entered and no entries remaining, it's consumed
-    if ((currentStatus == null || currentStatus == 'unused') && !hasEntriesRemaining) {
+    if ((currentStatus == null || currentStatus == 'unused') &&
+        !hasEntriesRemaining) {
       return 'Consumed';
     }
 
@@ -323,7 +327,10 @@ class PurchasedPass {
     }
 
     // Red for consumed (vehicle checked out or never entered, and no entries)
-    if ((currentStatus == 'checked_out' || currentStatus == null || currentStatus == 'unused') && !hasEntriesRemaining) {
+    if ((currentStatus == 'checked_out' ||
+            currentStatus == null ||
+            currentStatus == 'unused') &&
+        !hasEntriesRemaining) {
       return 'red';
     }
 

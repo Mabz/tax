@@ -89,95 +89,99 @@ class _VehicleSearchWidgetState extends State<VehicleSearchWidget> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        // Search Header
-        Container(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    Icons.search,
-                    color: Colors.blue.shade600,
-                    size: 24,
-                  ),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'Search by Vehicle',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          // Search Header
+          Container(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.search,
+                      color: Colors.blue.shade600,
+                      size: 24,
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Enter number plate or VIN to find passes',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey.shade600,
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Search by Vehicle',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-            ],
-          ),
-        ),
-
-        // Search Input
-        Container(
-          margin: const EdgeInsets.symmetric(horizontal: 16),
-          child: TextField(
-            controller: _searchController,
-            focusNode: _searchFocus,
-            decoration: InputDecoration(
-              hintText: 'Enter number plate or VIN...',
-              prefixIcon: const Icon(Icons.directions_car),
-              suffixIcon: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (_searchController.text.isNotEmpty)
-                    IconButton(
-                      icon: const Icon(Icons.clear),
-                      onPressed: _clearSearch,
-                    ),
-                  IconButton(
-                    icon: _isSearching
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.search),
-                    onPressed: _isSearching ? null : _performSearch,
+                const SizedBox(height: 8),
+                Text(
+                  'Enter number plate or VIN to find passes',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey.shade600,
                   ),
-                ],
-              ),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              counterText: '',
+                ),
+              ],
             ),
-            textCapitalization: TextCapitalization.characters,
-            inputFormatters: [
-              FilteringTextInputFormatter.allow(RegExp(r'[A-Z0-9\-\s]')),
-            ],
-            onChanged: (value) {
-              setState(() {}); // Update UI for clear button
-            },
-            onSubmitted: (_) => _performSearch(),
           ),
-        ),
 
-        const SizedBox(height: 16),
+          // Search Input
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16),
+            child: TextField(
+              controller: _searchController,
+              focusNode: _searchFocus,
+              decoration: InputDecoration(
+                hintText: 'Enter number plate or VIN...',
+                prefixIcon: const Icon(Icons.directions_car),
+                suffixIcon: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_searchController.text.isNotEmpty)
+                      IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: _clearSearch,
+                      ),
+                    IconButton(
+                      icon: _isSearching
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.search),
+                      onPressed: _isSearching ? null : _performSearch,
+                    ),
+                  ],
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                counterText: '',
+              ),
+              textCapitalization: TextCapitalization.characters,
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'[A-Z0-9\-\s]')),
+              ],
+              onChanged: (value) {
+                setState(() {}); // Update UI for clear button
+              },
+              onSubmitted: (_) => _performSearch(),
+            ),
+          ),
 
-        // Search Results
-        Flexible(
-          child: _buildSearchResults(),
-        ),
-      ],
+          const SizedBox(height: 16),
+
+          // Search Results
+          Container(
+            height: MediaQuery.of(context).size.height *
+                0.6, // Fixed height to prevent overflow
+            child: _buildSearchResults(),
+          ),
+        ],
+      ),
     );
   }
 

@@ -3,8 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 import '../models/purchased_pass.dart';
 import '../services/pass_service.dart';
+import '../services/pass_verification_service.dart';
 
 import '../services/enhanced_border_service.dart';
 import '../services/profile_management_service.dart';
@@ -46,6 +49,7 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
   final _supabase = Supabase.instance.client;
   final TextEditingController _backupCodeController = TextEditingController();
   final TextEditingController _secureCodeController = TextEditingController();
+  final TextEditingController _notesController = TextEditingController();
 
   // Individual PIN digit controllers (3-digit PIN)
   final _pinDigit1Controller = TextEditingController();
@@ -79,6 +83,22 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
   String? _errorMessage;
   bool _useBackupCode = false;
 
+  // Scan purpose and notes
+  String? _selectedScanPurpose; // No default - force user to select
+  String? _currentMovementId; // Track the movement ID for updates
+  final List<Map<String, String>> _scanPurposes = [
+    {'value': 'routine_check', 'label': 'Routine Check'},
+    {'value': 'roadblock', 'label': 'Roadblock'},
+    {'value': 'investigation', 'label': 'Investigation'},
+    {'value': 'compliance_audit', 'label': 'Compliance Audit'},
+    // Removed 'border_control' - not relevant for local authority
+  ];
+
+  // Location tracking
+  double? _currentLatitude;
+  double? _currentLongitude;
+  bool _locationPermissionGranted = false;
+
   // Enhanced border control state
   PassActionInfo? _passAction;
   PassMovementResult? _movementResult;
@@ -107,6 +127,7 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
     controller?.dispose();
     _backupCodeController.dispose();
     _secureCodeController.dispose();
+    _notesController.dispose();
 
     // Dispose PIN digit controllers and focus nodes
     _pinDigit1Controller.dispose();
@@ -497,7 +518,7 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
 
     return Column(
       children: [
-        // Enhanced Pass Information
+        // Consolidated Pass Information and Scan Controls
         Expanded(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(16),
@@ -592,14 +613,10 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
                                   child: Row(
                                     children: [
                                       Icon(
-                                        movement.movementType == 'check_in'
-                                            ? Icons.login
-                                            : Icons.logout,
+                                        _getMovementIcon(movement.movementType),
                                         size: 16,
-                                        color:
-                                            movement.movementType == 'check_in'
-                                                ? Colors.green
-                                                : Colors.blue,
+                                        color: _getMovementColor(
+                                            movement.movementType),
                                       ),
                                       const SizedBox(width: 8),
                                       Expanded(
@@ -608,17 +625,118 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
                                               CrossAxisAlignment.start,
                                           children: [
                                             Text(
-                                              '${movement.actionDescription} at ${movement.borderName}',
+                                              _getMovementTitle(movement),
                                               style:
                                                   const TextStyle(fontSize: 14),
                                             ),
                                             Text(
-                                              'by ${movement.officialName}',
+                                              _getOfficialName(movement),
                                               style: TextStyle(
                                                 fontSize: 12,
                                                 color: Colors.grey.shade600,
                                               ),
                                             ),
+                                            // Show location if available
+                                            // Always show location info for debugging
+                                            Builder(
+                                              builder: (context) {
+                                                debugPrint(
+                                                    '🌍 Movement coordinates: ${movement.latitude}, ${movement.longitude}');
+
+                                                if (movement.latitude != 0.0 &&
+                                                    movement.longitude != 0.0) {
+                                                  return FutureBuilder<String>(
+                                                    future: _getLocationName(
+                                                        movement.latitude,
+                                                        movement.longitude),
+                                                    builder:
+                                                        (context, snapshot) {
+                                                      debugPrint(
+                                                          '🌍 FutureBuilder state: ${snapshot.connectionState}');
+                                                      debugPrint(
+                                                          '🌍 Has data: ${snapshot.hasData}');
+                                                      debugPrint(
+                                                          '🌍 Has error: ${snapshot.hasError}');
+                                                      if (snapshot.hasError) {
+                                                        debugPrint(
+                                                            '🌍 Error: ${snapshot.error}');
+                                                      }
+                                                      if (snapshot.hasData) {
+                                                        debugPrint(
+                                                            '🌍 Data: ${snapshot.data}');
+                                                        return Text(
+                                                          'Location: ${snapshot.data}',
+                                                          style: TextStyle(
+                                                            fontSize: 11,
+                                                            color: Colors
+                                                                .grey.shade500,
+                                                            fontStyle: FontStyle
+                                                                .italic,
+                                                          ),
+                                                        );
+                                                      } else if (snapshot
+                                                              .connectionState ==
+                                                          ConnectionState
+                                                              .waiting) {
+                                                        return Text(
+                                                          'Location: Loading...',
+                                                          style: TextStyle(
+                                                            fontSize: 11,
+                                                            color: Colors
+                                                                .grey.shade400,
+                                                            fontStyle: FontStyle
+                                                                .italic,
+                                                          ),
+                                                        );
+                                                      } else if (snapshot
+                                                          .hasError) {
+                                                        return Text(
+                                                          'Location: Error - ${movement.latitude.toStringAsFixed(4)}, ${movement.longitude.toStringAsFixed(4)}',
+                                                          style: TextStyle(
+                                                            fontSize: 11,
+                                                            color: Colors
+                                                                .red.shade400,
+                                                            fontStyle: FontStyle
+                                                                .italic,
+                                                          ),
+                                                        );
+                                                      }
+                                                      return Text(
+                                                        'Location: ${movement.latitude.toStringAsFixed(4)}, ${movement.longitude.toStringAsFixed(4)}',
+                                                        style: TextStyle(
+                                                          fontSize: 11,
+                                                          color: Colors
+                                                              .grey.shade500,
+                                                          fontStyle:
+                                                              FontStyle.italic,
+                                                        ),
+                                                      );
+                                                    },
+                                                  );
+                                                } else {
+                                                  return Text(
+                                                    'Location: No GPS data (${movement.latitude}, ${movement.longitude})',
+                                                    style: TextStyle(
+                                                      fontSize: 11,
+                                                      color:
+                                                          Colors.grey.shade400,
+                                                      fontStyle:
+                                                          FontStyle.italic,
+                                                    ),
+                                                  );
+                                                }
+                                              },
+                                            ),
+                                            // Only show notes if user has proper access rights
+                                            if (_shouldShowNotes(movement))
+                                              Text(
+                                                'Notes: ${movement.notes}',
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  color: Colors.grey.shade500,
+                                                  fontStyle: FontStyle.italic,
+                                                ),
+                                              ),
                                           ],
                                         ),
                                       ),
@@ -635,7 +753,10 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
                                               fontWeight: FontWeight.w500,
                                             ),
                                           ),
-                                          if (movement.entriesDeducted > 0)
+                                          // Only show entry deduction for border movements
+                                          if (movement.entriesDeducted > 0 &&
+                                              movement.movementType !=
+                                                  'local_authority_scan')
                                             Text(
                                               '-${movement.entriesDeducted} entry',
                                               style: TextStyle(
@@ -669,6 +790,138 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
                     ),
                   ),
                 ],
+
+                // Add scan purpose controls for local authority within the scrollable area
+                if (widget.role == AuthorityRole.localAuthority) ...[
+                  const SizedBox(height: 16),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Scan Details',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 18,
+                              color: Colors.blue,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          const Text(
+                            'Scan Purpose',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          DropdownButtonFormField<String>(
+                            value: _selectedScanPurpose,
+                            hint: const Text('Select scan purpose...'),
+                            decoration: InputDecoration(
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                            ),
+                            items: _scanPurposes.map((purpose) {
+                              return DropdownMenuItem<String>(
+                                value: purpose['value'],
+                                child: Text(purpose['label']!),
+                              );
+                            }).toList(),
+                            onChanged: (value) {
+                              setState(() {
+                                _selectedScanPurpose = value;
+                              });
+                            },
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Please select a scan purpose';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 16),
+                          const Text(
+                            'Notes (Optional)',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: _notesController,
+                            decoration: InputDecoration(
+                              hintText:
+                                  'Add any additional notes about this scan...',
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              contentPadding: const EdgeInsets.all(12),
+                            ),
+                            maxLines: 3,
+                            textCapitalization: TextCapitalization.sentences,
+                          ),
+                          const SizedBox(height: 12),
+
+                          // Location indicator with refresh button
+                          Row(
+                            children: [
+                              Icon(
+                                _currentLatitude != null &&
+                                        _currentLongitude != null
+                                    ? Icons.location_on
+                                    : Icons.location_off,
+                                size: 16,
+                                color: _currentLatitude != null &&
+                                        _currentLongitude != null
+                                    ? Colors.green
+                                    : Colors.grey,
+                              ),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  _currentLatitude != null &&
+                                          _currentLongitude != null
+                                      ? 'GPS: ${_currentLatitude!.toStringAsFixed(6)}, ${_currentLongitude!.toStringAsFixed(6)}'
+                                      : 'GPS: Not available',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: _currentLatitude != null &&
+                                            _currentLongitude != null
+                                        ? Colors.green.shade700
+                                        : Colors.grey.shade600,
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                onPressed: () async {
+                                  debugPrint(
+                                      '📍 Manual location refresh requested');
+                                  await _getCurrentLocation();
+                                },
+                                icon: const Icon(Icons.refresh, size: 16),
+                                tooltip: 'Refresh GPS location',
+                                constraints: const BoxConstraints(
+                                  minWidth: 32,
+                                  minHeight: 32,
+                                ),
+                                padding: const EdgeInsets.all(4),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -680,13 +933,17 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
           child: Column(
             children: [
               if (widget.role == AuthorityRole.localAuthority) ...[
-                // Local Authority - Just validation
+                // Local Authority - Complete Validation Button (now at bottom)
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
-                    onPressed: () => _completeValidation(),
+                    onPressed: _selectedScanPurpose != null && !_isProcessing
+                        ? () => _completeValidation()
+                        : null, // Disabled until scan purpose is selected
                     icon: const Icon(Icons.check),
-                    label: const Text('Complete Validation'),
+                    label: Text(_selectedScanPurpose == null
+                        ? 'Select Scan Purpose First'
+                        : 'Complete Validation'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blue.shade600,
                       foregroundColor: Colors.white,
@@ -1169,6 +1426,84 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
   void initState() {
     super.initState();
     controller = MobileScannerController();
+    _requestLocationPermission();
+  }
+
+  /// Request location permission and get current location
+  Future<void> _requestLocationPermission() async {
+    try {
+      // Check if location services are enabled
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        debugPrint('📍 Location services are disabled');
+        return;
+      }
+
+      // Check location permission
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          debugPrint('📍 Location permissions are denied');
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        debugPrint('📍 Location permissions are permanently denied');
+        return;
+      }
+
+      // Get current location
+      _locationPermissionGranted = true;
+      await _getCurrentLocation();
+    } catch (e) {
+      debugPrint('📍 Error requesting location permission: $e');
+    }
+  }
+
+  /// Get current GPS coordinates
+  Future<void> _getCurrentLocation() async {
+    if (!_locationPermissionGranted) {
+      debugPrint('📍 Location permission not granted, skipping GPS');
+      return;
+    }
+
+    try {
+      debugPrint('📍 Attempting to get current location...');
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 15), // Increased timeout
+      );
+
+      setState(() {
+        _currentLatitude = position.latitude;
+        _currentLongitude = position.longitude;
+      });
+
+      debugPrint(
+          '📍 ✅ Location obtained: ${position.latitude}, ${position.longitude}');
+    } catch (e) {
+      debugPrint('📍 ❌ Error getting location: $e');
+
+      // Try to get last known location as fallback
+      try {
+        debugPrint('📍 Trying to get last known location...');
+        Position? lastPosition = await Geolocator.getLastKnownPosition();
+        if (lastPosition != null) {
+          setState(() {
+            _currentLatitude = lastPosition.latitude;
+            _currentLongitude = lastPosition.longitude;
+          });
+          debugPrint(
+              '📍 ✅ Last known location: ${lastPosition.latitude}, ${lastPosition.longitude}');
+        } else {
+          debugPrint('📍 ❌ No last known location available');
+        }
+      } catch (fallbackError) {
+        debugPrint('📍 ❌ Error getting last known location: $fallbackError');
+      }
+    }
   }
 
   /// Check if we can process a new scan (implements cooldown logic)
@@ -1247,10 +1582,22 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
       debugPrint('🔍 Starting enhanced QR code validation...');
       debugPrint('📱 QR Data length: ${qrData.length} characters');
 
-      // Step 1: Verify the pass exists and get pass details
+      // Step 1: Verify the pass exists and get pass details using PassVerificationService
       debugPrint(
-          '🔍 Attempting to validate QR code: ${qrData.substring(0, 50)}...');
-      final pass = await PassService.validatePassByQRCode(qrData);
+          '🔍 Attempting to validate QR code: ${qrData.length > 50 ? qrData.substring(0, 50) + '...' : qrData}');
+      // Create initial scan entry - will be updated when user completes validation
+      debugPrint(
+          '📍 Scanning with coordinates: lat=${_currentLatitude}, lng=${_currentLongitude}');
+      final pass = await PassVerificationService.verifyPass(
+        code: qrData,
+        isQrCode: true,
+        authorityType:
+            'local_authority', // Always local_authority from this screen
+        scanPurpose: 'scan_initiated', // Initial scan, will be updated
+        notes: 'Scan in progress', // Will be updated with user notes
+        latitude: _currentLatitude,
+        longitude: _currentLongitude,
+      );
 
       if (pass == null) {
         debugPrint('❌ Pass validation failed for QR code');
@@ -1323,9 +1670,21 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
     try {
       debugPrint('🔍 Starting enhanced backup code validation: $backupCode');
 
-      // Verify the pass using backup code
+      // Verify the pass using backup code with PassVerificationService
       debugPrint('🔍 Attempting to validate backup code: $backupCode');
-      final pass = await PassService.validatePassByBackupCode(backupCode);
+      // Create initial scan entry - will be updated when user completes validation
+      debugPrint(
+          '📍 Backup code scan with coordinates: lat=${_currentLatitude}, lng=${_currentLongitude}');
+      final pass = await PassVerificationService.verifyPass(
+        code: backupCode,
+        isQrCode: false,
+        authorityType:
+            'local_authority', // Always local_authority from this screen
+        scanPurpose: 'scan_initiated', // Initial scan, will be updated
+        notes: 'Scan in progress', // Will be updated with user notes
+        latitude: _currentLatitude,
+        longitude: _currentLongitude,
+      );
 
       if (pass == null) {
         debugPrint('❌ Pass validation failed for backup code: $backupCode');
@@ -1458,8 +1817,41 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
     }
   }
 
-  void _completeValidation() {
+  void _completeValidation() async {
+    // Validate that scan purpose is selected
+    if (_selectedScanPurpose == null) {
+      setState(() {
+        _errorMessage =
+            'Please select a scan purpose before completing validation';
+      });
+      return;
+    }
+
     setState(() {
+      _isProcessing = true;
+      _errorMessage = null;
+    });
+
+    try {
+      // Update the existing movement record with scan purpose and notes
+      await PassVerificationService.updateLastMovement(
+        scanPurpose: _selectedScanPurpose!,
+        notes: _notesController.text.trim().isEmpty
+            ? null
+            : _notesController.text.trim(),
+      );
+
+      debugPrint('✅ Movement updated with purpose: $_selectedScanPurpose');
+      if (_notesController.text.trim().isNotEmpty) {
+        debugPrint('📝 Notes: ${_notesController.text.trim()}');
+      }
+    } catch (e) {
+      debugPrint('⚠️ Failed to log validation completion: $e');
+      // Continue anyway - don't block the UI for logging issues
+    }
+
+    setState(() {
+      _isProcessing = false;
       _currentStep = ValidationStep.completed;
     });
   }
@@ -1730,7 +2122,15 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
       // Reset scanning controls
       _scanningEnabled = true;
       _lastScanAttempt = null;
+
+      // Clear scan purpose and notes for next scan
+      _selectedScanPurpose = null; // Reset to null to force selection
+      _notesController.clear();
+      _currentMovementId = null;
     });
+
+    // Clear the movement ID in the service
+    PassVerificationService.clearLastMovementId();
 
     _backupCodeController.clear();
     _secureCodeController.clear();
@@ -1822,7 +2222,7 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
   Future<PurchasedPass?> _parseAndValidatePass(String qrData) async {
     try {
       debugPrint(
-          '🔍 Parsing QR data: ${qrData.substring(0, qrData.length > 50 ? 50 : qrData.length)}...');
+          '🔍 Parsing QR data: ${qrData.length > 50 ? qrData.substring(0, 50) + '...' : qrData}');
 
       final pass = await PassService.validatePassByQRCode(qrData);
       if (pass == null) {
@@ -2181,6 +2581,169 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
       debugPrint('Error getting pass authority info: $e');
       return null;
     }
+  }
+
+  // Helper methods for movement history display
+  IconData _getMovementIcon(String movementType) {
+    switch (movementType) {
+      case 'check_in':
+        return Icons.login;
+      case 'check_out':
+        return Icons.logout;
+      case 'local_authority_scan':
+        return Icons.verified_user;
+      default:
+        return Icons.history;
+    }
+  }
+
+  Color _getMovementColor(String movementType) {
+    switch (movementType) {
+      case 'check_in':
+        return Colors.green;
+      case 'check_out':
+        return Colors.blue;
+      case 'local_authority_scan':
+        return Colors.orange;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  String _getMovementTitle(PassMovement movement) {
+    if (movement.movementType == 'local_authority_scan') {
+      // For local authority: just show scan purpose (no "by Local Authority")
+      return movement.actionDescription;
+    } else {
+      // For border control: show action at border
+      return '${movement.actionDescription} at ${movement.borderName}';
+    }
+  }
+
+  String _getOfficialName(PassMovement movement) {
+    if (movement.movementType == 'local_authority_scan') {
+      // For local authority: show "Local Authority: [Name]"
+      return 'Local Authority: ${movement.officialName}';
+    } else {
+      // For border control: show just the official name
+      return movement.officialName;
+    }
+  }
+
+  bool _shouldShowNotes(PassMovement movement) {
+    // Only show notes if movement has notes and user has proper access rights
+    if (movement.notes == null || movement.notes!.isEmpty) {
+      return false;
+    }
+
+    // Check if current user has rights to see notes
+    // Allowed roles: border_official, local_authority, country_administrator, auditor, business_intelligence
+    return _hasNotesViewingRights();
+  }
+
+  bool _hasNotesViewingRights() {
+    // For now, allow all authenticated users to see notes
+    // In production, you would check the user's role from their profile
+    // Example roles that should see notes:
+    // - border_official
+    // - local_authority
+    // - country_administrator
+    // - auditor
+    // - business_intelligence
+
+    // TODO: Implement proper role checking
+    // For now, return true to show notes to all users
+    return true;
+  }
+
+  // Cache for location names to avoid repeated API calls
+  static final Map<String, String> _locationCache = {};
+
+  Future<String> _getLocationName(double latitude, double longitude) async {
+    final key =
+        '${latitude.toStringAsFixed(4)},${longitude.toStringAsFixed(4)}';
+
+    debugPrint('🌍 Getting location for: $latitude, $longitude');
+
+    // Check cache first
+    if (_locationCache.containsKey(key)) {
+      debugPrint('🌍 Using cached location: ${_locationCache[key]}');
+      return _locationCache[key]!;
+    }
+
+    try {
+      debugPrint('🌍 Calling geocoding API...');
+      List<Placemark> placemarks = await placemarkFromCoordinates(
+        latitude,
+        longitude,
+      );
+
+      debugPrint('🌍 Geocoding returned ${placemarks.length} placemarks');
+
+      if (placemarks.isNotEmpty) {
+        final placemark = placemarks.first;
+
+        debugPrint('🌍 Placemark details:');
+        debugPrint('  - Name: ${placemark.name}');
+        debugPrint('  - Locality: ${placemark.locality}');
+        debugPrint('  - SubLocality: ${placemark.subLocality}');
+        debugPrint('  - AdministrativeArea: ${placemark.administrativeArea}');
+        debugPrint(
+            '  - SubAdministrativeArea: ${placemark.subAdministrativeArea}');
+        debugPrint('  - Country: ${placemark.country}');
+        debugPrint('  - PostalCode: ${placemark.postalCode}');
+        debugPrint('  - Street: ${placemark.street}');
+        debugPrint('  - Thoroughfare: ${placemark.thoroughfare}');
+
+        // Build location string with available information
+        List<String> locationParts = [];
+
+        // Try different combinations to get the best location description
+        if (placemark.subLocality != null &&
+            placemark.subLocality!.isNotEmpty) {
+          locationParts.add(placemark.subLocality!);
+        } else if (placemark.locality != null &&
+            placemark.locality!.isNotEmpty) {
+          locationParts.add(placemark.locality!);
+        } else if (placemark.name != null && placemark.name!.isNotEmpty) {
+          locationParts.add(placemark.name!);
+        }
+
+        if (placemark.subAdministrativeArea != null &&
+            placemark.subAdministrativeArea!.isNotEmpty) {
+          locationParts.add(placemark.subAdministrativeArea!);
+        } else if (placemark.administrativeArea != null &&
+            placemark.administrativeArea!.isNotEmpty) {
+          locationParts.add(placemark.administrativeArea!);
+        }
+
+        if (placemark.country != null && placemark.country!.isNotEmpty) {
+          locationParts.add(placemark.country!);
+        }
+
+        String locationName = locationParts.isNotEmpty
+            ? locationParts.join(', ')
+            : 'Unknown Location';
+
+        debugPrint('🌍 Final location name: $locationName');
+
+        // Cache the result
+        _locationCache[key] = locationName;
+        return locationName;
+      } else {
+        debugPrint('🌍 No placemarks returned');
+      }
+    } catch (e) {
+      debugPrint('🌍 ❌ Error getting location name: $e');
+      debugPrint('🌍 Error type: ${e.runtimeType}');
+    }
+
+    // Fallback to coordinates
+    final fallback =
+        '${latitude.toStringAsFixed(4)}, ${longitude.toStringAsFixed(4)}';
+    debugPrint('🌍 Using fallback: $fallback');
+    _locationCache[key] = fallback;
+    return fallback;
   }
 }
 

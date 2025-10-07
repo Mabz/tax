@@ -482,9 +482,31 @@ class _PassDashboardScreenState extends State<PassDashboardScreen>
   }
 
   String _generateQrCodeForPass(PurchasedPass pass) {
-    // Minimal, canonical QR payload to improve scan reliability
-    // Format: PASS:<uuid>
-    return 'PASS:${pass.passId}';
+    try {
+      // Minimal, phone-friendly QR payload for maximum scan reliability
+      // Format: Simple pass ID only
+      final qrData = pass.passId;
+
+      // Validate the QR data before returning
+      if (qrData.isEmpty) {
+        debugPrint('⚠️ Warning: Empty pass ID, using fallback');
+        return 'INVALID_PASS';
+      }
+
+      // Ensure it's a valid UUID format
+      final uuidRegex = RegExp(
+          r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$');
+      if (!uuidRegex.hasMatch(qrData)) {
+        debugPrint('⚠️ Warning: Invalid UUID format: $qrData');
+        return 'INVALID_UUID_FORMAT';
+      }
+
+      debugPrint('🔍 Generated QR data: $qrData (${qrData.length} characters)');
+      return qrData;
+    } catch (e) {
+      debugPrint('❌ Error generating QR code: $e');
+      return 'QR_GENERATION_ERROR';
+    }
   }
 
   void _showQrCodeDialog(PurchasedPass pass) {
@@ -523,11 +545,41 @@ class _PassDashboardScreenState extends State<PassDashboardScreen>
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: Colors.grey.shade300),
                 ),
-                child: QrImageView(
-                  data: pass.qrCode ?? _generateQrCodeForPass(pass),
-                  version: QrVersions.auto,
-                  size: 200,
-                  backgroundColor: Colors.white,
+                child: Builder(
+                  builder: (context) {
+                    try {
+                      final qrData =
+                          pass.qrCode ?? _generateQrCodeForPass(pass);
+                      return QrImageView(
+                        data: qrData,
+                        version: QrVersions.auto,
+                        size: 200,
+                        backgroundColor: Colors.white,
+                        errorCorrectionLevel: QrErrorCorrectLevel.M,
+                      );
+                    } catch (e) {
+                      debugPrint('❌ QR generation error: $e');
+                      return Container(
+                        width: 200,
+                        height: 200,
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade50,
+                          border: Border.all(color: Colors.red.shade300),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.error_outline,
+                                color: Colors.red.shade600, size: 48),
+                            const SizedBox(height: 8),
+                            Text('QR Error',
+                                style: TextStyle(color: Colors.red.shade600)),
+                          ],
+                        ),
+                      );
+                    }
+                  },
                 ),
               ),
               const SizedBox(height: 16),
@@ -617,18 +669,24 @@ class _PassDashboardScreenState extends State<PassDashboardScreen>
         // Show secure code logic with enhanced status indication
         if (pass.hasValidSecureCode) {
           // Check if pass has been recently processed (checked in/out)
-          final bool isRecentlyProcessed = pass.currentStatus == 'checked_in' || pass.currentStatus == 'checked_out';
+          final bool isRecentlyProcessed = pass.currentStatus == 'checked_in' ||
+              pass.currentStatus == 'checked_out';
           final bool isCheckedIn = pass.currentStatus == 'checked_in';
-          
+
           return Column(
             children: [
               Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 decoration: BoxDecoration(
-                  color: isRecentlyProcessed ? Colors.blue.shade50 : Colors.green.shade50,
+                  color: isRecentlyProcessed
+                      ? Colors.blue.shade50
+                      : Colors.green.shade50,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: isRecentlyProcessed ? Colors.blue.shade200 : Colors.green.shade200),
+                  border: Border.all(
+                      color: isRecentlyProcessed
+                          ? Colors.blue.shade200
+                          : Colors.green.shade200),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.center,
@@ -680,7 +738,9 @@ class _PassDashboardScreenState extends State<PassDashboardScreen>
                       style: TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.w900,
-                        color: isRecentlyProcessed ? Colors.blue.shade900 : Colors.green.shade900,
+                        color: isRecentlyProcessed
+                            ? Colors.blue.shade900
+                            : Colors.green.shade900,
                         fontFamily: 'Courier',
                         letterSpacing: 3,
                         height: 1.2,
@@ -690,14 +750,17 @@ class _PassDashboardScreenState extends State<PassDashboardScreen>
                     Text(
                       'Expires in ${pass.secureCodeMinutesRemaining} min',
                       style: TextStyle(
-                        color: isRecentlyProcessed ? Colors.blue.shade700 : Colors.green.shade700,
+                        color: isRecentlyProcessed
+                            ? Colors.blue.shade700
+                            : Colors.green.shade700,
                         fontSize: 12,
                       ),
                     ),
                     if (isRecentlyProcessed) ...[
                       const SizedBox(height: 6),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
                           color: Colors.blue.shade100,
                           borderRadius: BorderRadius.circular(12),
@@ -714,7 +777,8 @@ class _PassDashboardScreenState extends State<PassDashboardScreen>
                     ] else ...[
                       const SizedBox(height: 6),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
                           color: Colors.green.shade100,
                           borderRadius: BorderRadius.circular(12),
@@ -2697,9 +2761,11 @@ class _PassSelectionDialogState extends State<PassSelectionDialog> {
                               icon: const Icon(Icons.filter_list),
                               tooltip: 'Add filters',
                               onSelected: (value) {
-                                if (value.startsWith('entry:')) {
+                                if (value.startsWith('entry:') &&
+                                    value.length > 6) {
                                   _addEntryPointFilter(value.substring(6));
-                                } else if (value.startsWith('vehicle:')) {
+                                } else if (value.startsWith('vehicle:') &&
+                                    value.length > 8) {
                                   _addVehicleTypeFilter(value.substring(8));
                                 }
                               },

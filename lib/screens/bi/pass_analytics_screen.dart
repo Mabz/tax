@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/authority.dart';
 import '../../services/business_intelligence_service.dart';
+import 'overstayed_vehicles_screen.dart';
 
 /// Pass Analytics Screen
 /// Shows detailed pass analytics including non-compliance detection
@@ -976,8 +977,8 @@ Note: This feature is under development and currently shows 0 alerts.''';
             _buildOverviewMetrics(),
             const SizedBox(height: 24),
 
-            // Top Passes by Border
-            _buildTopPassesByBorder(),
+            // Top Passes by Entry and Exit Points
+            _buildTopPassesByEntryAndExit(),
             const SizedBox(height: 24),
 
             // Quick Stats
@@ -997,6 +998,10 @@ Note: This feature is under development and currently shows 0 alerts.''';
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Time Period Filter for Non-Compliance
+            _buildNonComplianceFilters(),
+            const SizedBox(height: 16),
+
             // Non-Compliance Alert Banner
             _buildNonComplianceBanner(),
             const SizedBox(height: 24),
@@ -1005,8 +1010,16 @@ Note: This feature is under development and currently shows 0 alerts.''';
             _buildNonComplianceCategories(),
             const SizedBox(height: 24),
 
-            // Revenue at Risk
+            // Revenue at Risk (with authority currency)
             _buildRevenueAtRisk(),
+            const SizedBox(height: 24),
+
+            // Top 5 Borders Analysis
+            _buildTop5BordersAnalysis(),
+            const SizedBox(height: 24),
+
+            // Detailed Non-Compliant Passes List
+            _buildNonCompliantPassesList(),
           ],
         ),
       ),
@@ -1176,85 +1189,220 @@ Note: This feature is under development and currently shows 0 alerts.''';
     );
   }
 
-  Widget _buildTopPassesByBorder() {
-    final topPasses = (_analyticsData['topPasses'] as List<dynamic>?) ?? [];
-    final availableBorders =
-        (_analyticsData['availableBorders'] as List<dynamic>?) ?? [];
+  Widget _buildTopPassesByEntryAndExit() {
+    final topEntryPasses =
+        (_analyticsData['topEntryPasses'] as List<dynamic>?) ?? [];
+    final topExitPasses =
+        (_analyticsData['topExitPasses'] as List<dynamic>?) ?? [];
+    final availableEntryBorders =
+        (_analyticsData['availableEntryBorders'] as List<dynamic>?) ?? [];
+    final availableExitBorders =
+        (_analyticsData['availableExitBorders'] as List<dynamic>?) ?? [];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Text(
+          'Top Passes by Entry and Exit Points',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Colors.blue.shade800,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Most popular pass types for ${_getPeriodDisplayText()}',
+          style: TextStyle(
+            fontSize: 14,
+            color: Colors.grey.shade600,
+          ),
+        ),
+        const SizedBox(height: 16),
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              'Top Passes by Border',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.blue.shade800,
-              ),
-            ),
-            GestureDetector(
-              onTap: () => _showBorderSelector(availableBorders),
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.blue.shade200),
+            if (topEntryPasses.isNotEmpty) ...[
+              Expanded(
+                child: _buildPassTypeCard(
+                  'Entry Points',
+                  topEntryPasses,
+                  availableEntryBorders,
+                  Icons.login,
+                  Colors.green,
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      _getBorderDisplayText(),
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.blue.shade700,
-                        fontWeight: FontWeight.w500,
-                      ),
+              ),
+              if (topExitPasses.isNotEmpty) const SizedBox(width: 16),
+            ],
+            if (topExitPasses.isNotEmpty)
+              Expanded(
+                child: _buildPassTypeCard(
+                  'Exit Points',
+                  topExitPasses,
+                  availableExitBorders,
+                  Icons.logout,
+                  Colors.blue,
+                ),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPassTypeCard(String title, List<dynamic> passes,
+      List<dynamic> availableBorders, IconData icon, Color color) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  icon,
+                  color: color,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue.shade800,
                     ),
-                    const SizedBox(width: 4),
-                    Icon(
-                      Icons.keyboard_arrow_down,
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () => _showBorderSelector(availableBorders),
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.blue.shade200),
+                    ),
+                    child: Icon(
+                      Icons.filter_list,
                       size: 16,
                       color: Colors.blue.shade700,
                     ),
-                  ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (passes.isEmpty)
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Center(
+                  child: Text(
+                    'No passes found',
+                    style: TextStyle(
+                      color: Colors.grey.shade600,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+              )
+            else
+              ...passes.take(5).toList().asMap().entries.map((entry) {
+                final index = entry.key;
+                final pass = entry.value as Map<String, dynamic>;
+                return _buildCompactPassItem(index + 1, pass, color);
+              }),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCompactPassItem(
+      int rank, Map<String, dynamic> pass, Color color) {
+    final passDescription = pass['passDescription'] ?? 'Unknown Pass';
+    final borderName = pass['borderName'] ?? 'Unknown Border';
+    final count = pass['count'] ?? 0;
+    final amount = pass['amount'] ?? 0.0;
+    final currency = pass['currency'] ?? 'USD';
+    final entryLimit = pass['entryLimit'] ?? 0;
+    final validityDays = pass['validityDays'] ?? 0;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          // Rank badge
+          Container(
+            width: 20,
+            height: 20,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: color.withValues(alpha: 0.3)),
+            ),
+            child: Center(
+              child: Text(
+                rank.toString(),
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  color: color,
                 ),
               ),
             ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: topPasses.isEmpty
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(32.0),
-                      child: Text(
-                        'No passes found for selected criteria',
-                        style: TextStyle(
-                          color: Colors.grey.shade600,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ),
-                  )
-                : Column(
-                    children: topPasses.asMap().entries.map((entry) {
-                      final index = entry.key;
-                      final pass = entry.value as Map<String, dynamic>;
-                      return _buildTopPassItem(index + 1, pass);
-                    }).toList(),
-                  ),
           ),
-        ),
-      ],
+          const SizedBox(width: 8),
+
+          // Pass details
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '$entryLimit entries • $validityDays days',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  borderName,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Count and price
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '$count',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                ),
+              ),
+              Text(
+                '$currency ${amount.toStringAsFixed(0)}',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -1309,8 +1457,7 @@ Note: This feature is under development and currently shows 0 alerts.''';
   }
 
   Widget _buildNonComplianceBanner() {
-    final nonCompliantCount = (_analyticsData['expiredButActive'] ?? 0) +
-        (_analyticsData['overstayedVehicles'] ?? 0) +
+    final nonCompliantCount = (_analyticsData['overstayedVehicles'] ?? 0) +
         (_analyticsData['fraudAlerts'] ?? 0);
 
     return Container(
@@ -1369,21 +1516,13 @@ Note: This feature is under development and currently shows 0 alerts.''';
         ),
         const SizedBox(height: 16),
         _buildNonComplianceCardWithExplanation(
-          'Expired Passes Still Active',
-          _analyticsData['expiredButActive'].toString(),
-          'Passes that expired but vehicles haven\'t checked out',
-          Icons.schedule,
-          Colors.orange,
-          _getExpiredButActiveExplanation(),
-        ),
-        const SizedBox(height: 12),
-        _buildNonComplianceCardWithExplanation(
           'Overstayed Vehicles',
           _analyticsData['overstayedVehicles'].toString(),
-          'Vehicles exceeding their allowed duration',
+          'Vehicles that have exceeded their pass validity period',
           Icons.timer_off,
           Colors.red,
           _getOverstayedVehiclesExplanation(),
+          onTap: () => _showOverstayedVehiclesDetails(),
         ),
         const SizedBox(height: 12),
         _buildNonComplianceCardWithExplanation(
@@ -1434,7 +1573,7 @@ Note: This feature is under development and currently shows 0 alerts.''';
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '\$${(_analyticsData['revenueAtRisk'] as double).toStringAsFixed(2)}',
+                        '${_analyticsData['authorityCurrency'] ?? 'USD'} ${((_analyticsData['revenueAtRisk'] as double?) ?? 0.0).toStringAsFixed(2)}',
                         style: TextStyle(
                           fontSize: 24,
                           fontWeight: FontWeight.bold,
@@ -1525,9 +1664,10 @@ Note: This feature is under development and currently shows 0 alerts.''';
   }
 
   Widget _buildNonComplianceCardWithExplanation(String title, String count,
-      String description, IconData icon, Color color, String explanation) {
+      String description, IconData icon, Color color, String explanation,
+      {VoidCallback? onTap}) {
     return GestureDetector(
-      onTap: () => _showStatisticExplanation(title, explanation),
+      onTap: onTap ?? (() => _showStatisticExplanation(title, explanation)),
       child: Card(
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -1714,6 +1854,514 @@ Note: This feature is under development and currently shows 0 alerts.''';
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// Navigate to detailed overstayed vehicles screen
+  void _showOverstayedVehiclesDetails() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => OverstayedVehiclesScreen(
+          authority: widget.authority,
+          period: _selectedPeriod,
+          customStartDate: _customStartDate,
+          customEndDate: _customEndDate,
+          borderFilter: _selectedBorder,
+        ),
+      ),
+    );
+  }
+
+  /// Build time period and border filters for Non-Compliance tab
+  Widget _buildNonComplianceFilters() {
+    final availableBorders =
+        (_analyticsData['availableBorders'] as List<dynamic>?) ?? [];
+
+    return Row(
+      children: [
+        Expanded(
+          child: GestureDetector(
+            onTap: _showPeriodSelector,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.blue.shade200),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.date_range,
+                    size: 20,
+                    color: Colors.blue.shade700,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _getPeriodDisplayText(),
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.blue.shade700,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    Icons.keyboard_arrow_down,
+                    size: 20,
+                    color: Colors.blue.shade700,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: GestureDetector(
+            onTap: () => _showBorderSelector(availableBorders),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.blue.shade200),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.location_on,
+                    size: 20,
+                    color: Colors.blue.shade700,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _getBorderDisplayText(),
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.blue.shade700,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    Icons.keyboard_arrow_down,
+                    size: 20,
+                    color: Colors.blue.shade700,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Build detailed list of non-compliant passes
+  Widget _buildNonCompliantPassesList() {
+    final nonCompliantPasses =
+        (_analyticsData['nonCompliantPasses'] as List<dynamic>?) ?? [];
+
+    if (nonCompliantPasses.isEmpty) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Non-Compliant Passes Details',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.blue.shade800,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Center(
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.check_circle,
+                      size: 48,
+                      color: Colors.green.shade400,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'No Non-Compliant Passes',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.green.shade700,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'All passes in the selected period are compliant',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey.shade600,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Non-Compliant Passes Details',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Colors.blue.shade800,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          '${nonCompliantPasses.length} violations found in ${_getPeriodDisplayText()}',
+          style: TextStyle(
+            fontSize: 14,
+            color: Colors.grey.shade600,
+          ),
+        ),
+        const SizedBox(height: 16),
+        Card(
+          child: Column(
+            children: [
+              // Header
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(8),
+                    topRight: Radius.circular(8),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.warning,
+                      color: Colors.red.shade600,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Critical Violations Requiring Action',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.red.shade800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // List of non-compliant passes
+              ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: nonCompliantPasses.length,
+                separatorBuilder: (context, index) => Divider(
+                  height: 1,
+                  color: Colors.grey.shade200,
+                ),
+                itemBuilder: (context, index) {
+                  final pass =
+                      nonCompliantPasses[index] as Map<String, dynamic>;
+                  return _buildNonCompliantPassItem(pass);
+                },
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Build top 5 borders analysis for non-compliance
+  Widget _buildTop5BordersAnalysis() {
+    final top5EntryBorders =
+        (_analyticsData['top5EntryBorders'] as List<dynamic>?) ?? [];
+    final top5ExitBorders =
+        (_analyticsData['top5ExitBorders'] as List<dynamic>?) ?? [];
+
+    if (top5EntryBorders.isEmpty && top5ExitBorders.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Top Borders for Non-Compliance',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Colors.blue.shade800,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Borders with the highest number of violations in ${_getPeriodDisplayText()}',
+          style: TextStyle(
+            fontSize: 14,
+            color: Colors.grey.shade600,
+          ),
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            if (top5EntryBorders.isNotEmpty) ...[
+              Expanded(
+                child: _buildBorderAnalysisCard(
+                    'Entry Points', top5EntryBorders, Icons.login),
+              ),
+              if (top5ExitBorders.isNotEmpty) const SizedBox(width: 16),
+            ],
+            if (top5ExitBorders.isNotEmpty)
+              Expanded(
+                child: _buildBorderAnalysisCard(
+                    'Exit Points', top5ExitBorders, Icons.logout),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBorderAnalysisCard(
+      String title, List<dynamic> borders, IconData icon) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  icon,
+                  color: Colors.red.shade600,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blue.shade800,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (borders.isEmpty)
+              Text(
+                'No violations found',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey.shade600,
+                  fontStyle: FontStyle.italic,
+                ),
+              )
+            else
+              ...borders.toList().asMap().entries.map((entry) {
+                final index = entry.key;
+                final border = entry.value as Map<String, dynamic>;
+                final name = border['name'] as String;
+                final count = border['count'] as int;
+
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 20,
+                        height: 20,
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade100,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Center(
+                          child: Text(
+                            '${index + 1}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.red.shade700,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          name,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade600,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          count.toString(),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Build individual non-compliant pass item
+  Widget _buildNonCompliantPassItem(Map<String, dynamic> pass) {
+    final daysOverdue = pass['daysOverdue'] as int? ?? 0;
+    final amount = pass['amount'] as double? ?? 0.0;
+    final currency = pass['currency'] as String? ?? 'USD';
+    final vehicleReg = pass['vehicleRegistrationNumber'] as String? ?? 'N/A';
+    final vehicleDesc =
+        pass['vehicleDescription'] as String? ?? 'Unknown Vehicle';
+    final passDesc = pass['passDescription'] as String? ?? 'Unknown Pass';
+    final borderName = pass['borderName'] as String? ?? 'Unknown Border';
+
+    Color severityColor;
+    String severityText;
+    if (daysOverdue <= 7) {
+      severityColor = Colors.orange;
+      severityText = 'Recent';
+    } else if (daysOverdue <= 30) {
+      severityColor = Colors.red;
+      severityText = 'Critical';
+    } else {
+      severityColor = Colors.purple;
+      severityText = 'Severe';
+    }
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      vehicleDesc,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Registration: $vehicleReg',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: severityColor,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  '$daysOverdue days overdue',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Pass: $passDesc',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey.shade700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Border: $borderName',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey.shade700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    '$currency ${amount.toStringAsFixed(2)}',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.red.shade700,
+                    ),
+                  ),
+                  Text(
+                    'Revenue at risk',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

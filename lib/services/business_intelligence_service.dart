@@ -101,6 +101,16 @@ class BusinessIntelligenceService {
     try {
       debugPrint('🔍 Fetching pass analytics for authority: $authorityId');
 
+      // Get authority details to fetch currency
+      final authorityResponse = await _supabase
+          .from('authorities')
+          .select('default_currency_code')
+          .eq('id', authorityId)
+          .single();
+
+      final authorityCurrency =
+          authorityResponse['default_currency_code'] as String? ?? 'USD';
+
       final response = await _supabase
           .from('purchased_passes')
           .select('*')
@@ -142,7 +152,7 @@ class BusinessIntelligenceService {
         passTypeMap[type] = (passTypeMap[type] ?? 0) + 1;
       }
 
-      // Revenue at risk from non-compliant passes
+      // Revenue at risk from non-compliant passes (using authority currency)
       final revenueAtRisk =
           expiredButActive.fold<double>(0.0, (sum, p) => sum + p.amount);
 
@@ -165,52 +175,113 @@ class BusinessIntelligenceService {
         });
       }
 
-      // Get available entry points (deduplicated)
+      // Get available entry and exit points (deduplicated)
       final entryPointMap = <String, String>{};
+      final exitPointMap = <String, String>{};
+
       for (final pass in passes) {
+        // Entry points
         if (pass.entryPointName != null && pass.entryPointName!.isNotEmpty) {
           final id = pass.entryPointId ?? pass.entryPointName!;
           entryPointMap[id] = pass.entryPointName!;
         }
+        // Exit points
+        if (pass.exitPointName != null && pass.exitPointName!.isNotEmpty) {
+          final id = pass.exitPointId ?? pass.exitPointName!;
+          exitPointMap[id] = pass.exitPointName!;
+        }
       }
-      final availableBorders = entryPointMap.entries
+
+      final availableEntryBorders = entryPointMap.entries
           .map((entry) => {
                 'id': entry.key,
                 'name': entry.value,
+                'type': 'entry',
               })
           .toList();
 
-      // Calculate top passes by entry point
+      final availableExitBorders = exitPointMap.entries
+          .map((entry) => {
+                'id': entry.key,
+                'name': entry.value,
+                'type': 'exit',
+              })
+          .toList();
+
+      // Legacy support - combined borders list
+      final availableBorders = [
+        ...availableEntryBorders,
+        ...availableExitBorders
+      ];
+
+      // Calculate top passes by entry and exit points separately
       final filteredPasses = borderFilter == 'any_border'
           ? passes
           : passes
               .where((p) =>
                   p.entryPointId == borderFilter ||
-                  p.entryPointName == borderFilter)
+                  p.entryPointName == borderFilter ||
+                  p.exitPointId == borderFilter ||
+                  p.exitPointName == borderFilter)
               .toList();
 
-      // Group passes by template (passDescription + amount + entryLimit)
-      final passTemplateMap = <String, Map<String, dynamic>>{};
+      // Group passes by template for entry points
+      final entryPassTemplateMap = <String, Map<String, dynamic>>{};
+      final exitPassTemplateMap = <String, Map<String, dynamic>>{};
+
       for (final pass in filteredPasses) {
         final key = '${pass.passDescription}_${pass.amount}_${pass.entryLimit}';
-        if (passTemplateMap.containsKey(key)) {
-          passTemplateMap[key]!['count'] =
-              (passTemplateMap[key]!['count'] as int) + 1;
-        } else {
-          passTemplateMap[key] = {
-            'passDescription': pass.passDescription,
-            'borderName': pass.entryPointName ?? 'Any Entry Point',
-            'count': 1,
-            'amount': pass.amount,
-            'currency': pass.currency,
-            'entryLimit': pass.entryLimit,
-            'validityDays': _calculateValidityDays(pass.passDescription),
-          };
+
+        // Entry point analysis
+        if (pass.entryPointName != null && pass.entryPointName!.isNotEmpty) {
+          if (entryPassTemplateMap.containsKey(key)) {
+            entryPassTemplateMap[key]!['count'] =
+                (entryPassTemplateMap[key]!['count'] as int) + 1;
+          } else {
+            entryPassTemplateMap[key] = {
+              'passDescription': pass.passDescription,
+              'borderName': pass.entryPointName!,
+              'borderType': 'entry',
+              'count': 1,
+              'amount': pass.amount,
+              'currency': pass.currency,
+              'entryLimit': pass.entryLimit,
+              'validityDays': _calculateValidityDays(pass.passDescription),
+            };
+          }
+        }
+
+        // Exit point analysis
+        if (pass.exitPointName != null && pass.exitPointName!.isNotEmpty) {
+          if (exitPassTemplateMap.containsKey(key)) {
+            exitPassTemplateMap[key]!['count'] =
+                (exitPassTemplateMap[key]!['count'] as int) + 1;
+          } else {
+            exitPassTemplateMap[key] = {
+              'passDescription': pass.passDescription,
+              'borderName': pass.exitPointName!,
+              'borderType': 'exit',
+              'count': 1,
+              'amount': pass.amount,
+              'currency': pass.currency,
+              'entryLimit': pass.entryLimit,
+              'validityDays': _calculateValidityDays(pass.passDescription),
+            };
+          }
         }
       }
 
-      // Sort by count and take top 10
-      final topPasses = passTemplateMap.values.toList()
+      // Sort and get top 10 for each
+      final topEntryPasses = entryPassTemplateMap.values.toList()
+        ..sort((a, b) => (b['count'] as int).compareTo(a['count'] as int));
+      final top10EntryPasses = topEntryPasses.take(10).toList();
+
+      final topExitPasses = exitPassTemplateMap.values.toList()
+        ..sort((a, b) => (b['count'] as int).compareTo(a['count'] as int));
+      final top10ExitPasses = topExitPasses.take(10).toList();
+
+      // Legacy support - combined top passes
+      final topPasses = [...topEntryPasses, ...topExitPasses]
         ..sort((a, b) => (b['count'] as int).compareTo(a['count'] as int));
       final top10Passes = topPasses.take(10).toList();
 
@@ -225,15 +296,19 @@ class BusinessIntelligenceService {
         'totalPasses': totalPasses,
         'activePasses': activePasses,
         'expiredPasses': expiredPasses,
-        'expiredButActive': expiredButActive.length,
-        'overstayedVehicles': overstayedVehicles.length,
+        'overstayedVehicles': overstayedVehicles.length, // Consolidated metric
         'fraudAlerts': 0, // TODO: Implement fraud detection
         'complianceRate': complianceRate,
         'revenueAtRisk': revenueAtRisk,
+        'authorityCurrency': authorityCurrency,
         'passTypes': passTypeMap,
         'monthlyTrends': monthlyTrends,
-        'topPasses': top10Passes,
-        'availableBorders': availableBorders,
+        'topPasses': top10Passes, // Legacy support
+        'topEntryPasses': top10EntryPasses,
+        'topExitPasses': top10ExitPasses,
+        'availableBorders': availableBorders, // Legacy support
+        'availableEntryBorders': availableEntryBorders,
+        'availableExitBorders': availableExitBorders,
         'quickStats': quickStats,
         'nonCompliantPasses': expiredButActive
             .map((p) => {
@@ -244,7 +319,10 @@ class BusinessIntelligenceService {
                   'expiresAt': p.expiresAt.toIso8601String(),
                   'currentStatus': p.currentStatus,
                   'amount': p.amount,
+                  'currency': p.currency,
                   'daysOverdue': DateTime.now().difference(p.expiresAt).inDays,
+                  'entryPointName': p.entryPointName,
+                  'exitPointName': p.exitPointName,
                 })
             .toList(),
       };
@@ -496,6 +574,187 @@ class BusinessIntelligenceService {
     }
   }
 
+  /// Get non-compliance analytics with time period filtering
+  static Future<Map<String, dynamic>> getNonComplianceAnalytics(
+      String authorityId,
+      {String period = 'all_time',
+      DateTime? customStartDate,
+      DateTime? customEndDate,
+      String borderFilter = 'any_border'}) async {
+    try {
+      debugPrint(
+          '🔍 Fetching non-compliance analytics for authority: $authorityId');
+
+      // Get authority details to fetch currency
+      final authorityResponse = await _supabase
+          .from('authorities')
+          .select('default_currency_code')
+          .eq('id', authorityId)
+          .single();
+
+      final authorityCurrency =
+          authorityResponse['default_currency_code'] as String? ?? 'USD';
+
+      final response = await _supabase
+          .from('purchased_passes')
+          .select('*')
+          .eq('authority_id', authorityId);
+
+      final allPasses =
+          response.map((json) => PurchasedPass.fromJson(json)).toList();
+
+      // Filter passes based on period (for issued passes)
+      final passes = _filterPassesByPeriod(
+          allPasses, period, customStartDate, customEndDate);
+
+      // Filter by border if specified
+      final filteredPasses = borderFilter == 'any_border'
+          ? passes
+          : passes
+              .where((p) =>
+                  p.entryPointId == borderFilter ||
+                  p.entryPointName == borderFilter)
+              .toList();
+
+      // Find expired passes still active (non-compliant)
+      final expiredButActive = filteredPasses
+          .where((p) => p.isExpired && p.currentStatus == 'checked_in')
+          .toList();
+
+      // Find overstayed vehicles (same as expired but active for now)
+      final overstayedVehicles = expiredButActive;
+
+      // Calculate revenue at risk using authority currency
+      final revenueAtRisk =
+          expiredButActive.fold<double>(0.0, (sum, p) => sum + p.amount);
+
+      // Group by days overdue for analysis
+      final overdueAnalysis = <String, int>{};
+      for (final pass in expiredButActive) {
+        final daysOverdue = DateTime.now().difference(pass.expiresAt).inDays;
+        String category;
+        if (daysOverdue <= 7) {
+          category = '1-7 days';
+        } else if (daysOverdue <= 30) {
+          category = '8-30 days';
+        } else if (daysOverdue <= 90) {
+          category = '31-90 days';
+        } else {
+          category = '90+ days';
+        }
+        overdueAnalysis[category] = (overdueAnalysis[category] ?? 0) + 1;
+      }
+
+      // Get available entry and exit borders for filtering
+      final entryPointMap = <String, String>{};
+      final exitPointMap = <String, String>{};
+
+      for (final pass in allPasses) {
+        // Entry points
+        if (pass.entryPointName != null && pass.entryPointName!.isNotEmpty) {
+          final id = pass.entryPointId ?? pass.entryPointName!;
+          entryPointMap[id] = pass.entryPointName!;
+        }
+        // Exit points
+        if (pass.exitPointName != null && pass.exitPointName!.isNotEmpty) {
+          final id = pass.exitPointId ?? pass.exitPointName!;
+          exitPointMap[id] = pass.exitPointName!;
+        }
+      }
+
+      final availableEntryBorders = entryPointMap.entries
+          .map((entry) => {
+                'id': entry.key,
+                'name': entry.value,
+                'type': 'entry',
+              })
+          .toList();
+
+      final availableExitBorders = exitPointMap.entries
+          .map((entry) => {
+                'id': entry.key,
+                'name': entry.value,
+                'type': 'exit',
+              })
+          .toList();
+
+      // Legacy support - combined borders list
+      final availableBorders = [
+        ...availableEntryBorders,
+        ...availableExitBorders
+      ];
+
+      // Detailed non-compliant passes list
+      final nonCompliantPassesList = expiredButActive
+          .map((p) => {
+                'passId': p.passId,
+                'vehicleDescription': p.vehicleDescription,
+                'vehicleRegistrationNumber':
+                    p.vehicleRegistrationNumber ?? 'N/A',
+                'passDescription': p.passDescription,
+                'expiresAt': p.expiresAt.toIso8601String(),
+                'currentStatus': p.currentStatus,
+                'amount': p.amount,
+                'currency': p.currency,
+                'daysOverdue': DateTime.now().difference(p.expiresAt).inDays,
+                'borderName': p.entryPointName ?? 'Unknown',
+                'issuedAt': p.issuedAt.toIso8601String(),
+              })
+          .toList();
+
+      // Sort by days overdue (most critical first)
+      nonCompliantPassesList.sort((a, b) =>
+          (b['daysOverdue'] as int).compareTo(a['daysOverdue'] as int));
+
+      // Top 5 borders for non-compliance (entry and exit)
+      final nonComplianceEntryBorders = <String, int>{};
+      final nonComplianceExitBorders = <String, int>{};
+
+      for (final pass in expiredButActive) {
+        if (pass.entryPointName != null && pass.entryPointName!.isNotEmpty) {
+          nonComplianceEntryBorders[pass.entryPointName!] =
+              (nonComplianceEntryBorders[pass.entryPointName!] ?? 0) + 1;
+        }
+        if (pass.exitPointName != null && pass.exitPointName!.isNotEmpty) {
+          nonComplianceExitBorders[pass.exitPointName!] =
+              (nonComplianceExitBorders[pass.exitPointName!] ?? 0) + 1;
+        }
+      }
+
+      final top5EntryBorders = nonComplianceEntryBorders.entries
+          .map((e) => {'name': e.key, 'count': e.value, 'type': 'entry'})
+          .toList()
+        ..sort((a, b) => (b['count'] as int).compareTo(a['count'] as int));
+
+      final top5ExitBorders = nonComplianceExitBorders.entries
+          .map((e) => {'name': e.key, 'count': e.value, 'type': 'exit'})
+          .toList()
+        ..sort((a, b) => (b['count'] as int).compareTo(a['count'] as int));
+
+      debugPrint(
+          '✅ Non-compliance analytics calculated: ${expiredButActive.length} violations');
+
+      return {
+        'overstayedVehicles': overstayedVehicles.length,
+        'revenueAtRisk': revenueAtRisk,
+        'authorityCurrency': authorityCurrency,
+        'overdueAnalysis': overdueAnalysis,
+        'availableBorders': availableBorders,
+        'availableEntryBorders': availableEntryBorders,
+        'availableExitBorders': availableExitBorders,
+        'nonCompliantPasses': nonCompliantPassesList,
+        'top5EntryBorders': top5EntryBorders.take(5).toList(),
+        'top5ExitBorders': top5ExitBorders.take(5).toList(),
+        'period': period,
+        'borderFilter': borderFilter,
+        'totalPassesInPeriod': filteredPasses.length,
+      };
+    } catch (e) {
+      debugPrint('❌ Error fetching non-compliance analytics: $e');
+      rethrow;
+    }
+  }
+
   /// Helper method to determine pass type from description
   static String _getPassType(String description) {
     final desc = description.toLowerCase();
@@ -627,6 +886,145 @@ class BusinessIntelligenceService {
     } else {
       return 'Just now';
     }
+  }
+
+  /// Get detailed overstayed vehicles with owner information
+  static Future<List<Map<String, dynamic>>> getOverstayedVehiclesDetails(
+      String authorityId,
+      {String period = 'all_time',
+      DateTime? customStartDate,
+      DateTime? customEndDate,
+      String borderFilter = 'any_border'}) async {
+    try {
+      debugPrint(
+          '🔍 Fetching detailed overstayed vehicles for authority: $authorityId');
+
+      // Get authority currency
+      final authorityResponse = await _supabase
+          .from('authorities')
+          .select('default_currency_code')
+          .eq('id', authorityId)
+          .single();
+
+      final authorityCurrency =
+          authorityResponse['default_currency_code'] as String? ?? 'USD';
+
+      // Get overstayed passes with profile information
+      final response = await _supabase
+          .from('purchased_passes')
+          .select('''
+            *,
+            profiles (
+              id,
+              full_name,
+              email,
+              phone_number,
+              company_name,
+              profile_image_url
+            )
+          ''')
+          .eq('authority_id', authorityId)
+          .lt('expires_at', DateTime.now().toIso8601String())
+          .eq('current_status', 'checked_in');
+
+      final allPasses =
+          response.map((json) => PurchasedPass.fromJson(json)).toList();
+
+      // Filter by time period
+      final passes = _filterPassesByPeriod(
+          allPasses, period, customStartDate, customEndDate);
+
+      // Filter by border if specified
+      final filteredPasses = borderFilter == 'any_border'
+          ? passes
+          : passes
+              .where((p) =>
+                  p.entryPointId == borderFilter ||
+                  p.entryPointName == borderFilter ||
+                  p.exitPointId == borderFilter ||
+                  p.exitPointName == borderFilter)
+              .toList();
+
+      // Build detailed list with profile information
+      final detailedList = <Map<String, dynamic>>[];
+
+      for (final pass in filteredPasses) {
+        // Find the corresponding raw data to get profile information
+        final passData = response.firstWhere(
+          (r) => r['id'] == pass.passId,
+          orElse: () => <String, dynamic>{},
+        );
+
+        final profile = passData['profiles'] as Map<String, dynamic>?;
+        final daysOverdue = DateTime.now().difference(pass.expiresAt).inDays;
+
+        // Extract owner information from profile
+        String ownerFullName = 'Owner Information Unavailable';
+        String? ownerEmail;
+        String? ownerPhone;
+        String? ownerCompany;
+        String? ownerProfileImage;
+
+        if (profile != null) {
+          ownerFullName = profile['full_name']?.toString() ?? 'Unknown Owner';
+          ownerEmail = profile['email']?.toString();
+          ownerPhone = profile['phone_number']?.toString();
+          ownerCompany = profile['company_name']?.toString();
+          ownerProfileImage = profile['profile_image_url']?.toString();
+        }
+
+        detailedList.add({
+          'passId': pass.passId,
+          'vehicleDescription': pass.vehicleDescription,
+          'vehicleRegistrationNumber': pass.vehicleRegistrationNumber ?? 'N/A',
+          'vehicleMake': pass.vehicleMake,
+          'vehicleModel': pass.vehicleModel,
+          'vehicleYear': pass.vehicleYear,
+          'vehicleColor': pass.vehicleColor,
+          'passDescription': pass.passDescription,
+          'expiresAt': pass.expiresAt.toIso8601String(),
+          'issuedAt': pass.issuedAt.toIso8601String(),
+          'activationDate': pass.activationDate.toIso8601String(),
+          'amount': pass.amount,
+          'currency': pass.currency,
+          'authorityCurrency': authorityCurrency,
+          'daysOverdue': daysOverdue,
+          'entryPointName': pass.entryPointName ?? 'Unknown',
+          'exitPointName': pass.exitPointName,
+          'authorityName': pass.authorityName ?? 'Unknown Authority',
+          'countryName': pass.countryName ?? 'Unknown Country',
+          'status': pass.status,
+          'currentStatus': pass.currentStatus,
+          'entryLimit': pass.entryLimit,
+          'entriesRemaining': pass.entriesRemaining,
+          'ownerFullName': ownerFullName,
+          'ownerEmail': ownerEmail,
+          'ownerPhone': ownerPhone,
+          'ownerCompany': ownerCompany,
+          'ownerProfileImage': ownerProfileImage,
+        });
+      }
+
+      // Sort by days overdue (most critical first)
+      detailedList.sort((a, b) =>
+          (b['daysOverdue'] as int).compareTo(a['daysOverdue'] as int));
+
+      debugPrint(
+          '✅ Detailed overstayed vehicles fetched: ${detailedList.length} vehicles');
+
+      return detailedList;
+    } catch (e) {
+      debugPrint('❌ Error fetching detailed overstayed vehicles: $e');
+      rethrow;
+    }
+  }
+
+  /// Helper method to build full name from first and last name
+  static String _buildFullName(String? firstName, String? lastName) {
+    final parts = <String>[];
+    if (firstName != null && firstName.isNotEmpty) parts.add(firstName);
+    if (lastName != null && lastName.isNotEmpty) parts.add(lastName);
+    return parts.isEmpty ? 'Unknown Owner' : parts.join(' ');
   }
 
   /// Helper method to filter passes by time period

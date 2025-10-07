@@ -5,6 +5,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
+import 'package:intl/intl.dart';
 import '../models/purchased_pass.dart';
 import '../services/pass_service.dart';
 import '../services/pass_verification_service.dart';
@@ -1262,11 +1263,20 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
           resultIcon = Icons.verified;
           resultColor = Colors.green.shade600;
         } else if (pass.statusDisplay == 'Consumed') {
-          validationResult = 'Pass CONSUMED';
-          validationDetails =
-              'All entries have been used. Vehicle may need a new pass.';
-          resultIcon = Icons.warning;
-          resultColor = Colors.orange.shade600;
+          // Check if vehicle is currently in country
+          if (pass.currentStatus == 'checked_in') {
+            validationResult = 'Vehicle is LEGAL';
+            validationDetails =
+                'Pass entries consumed but vehicle is legally in country until ${DateFormat('MMM d, yyyy').format(pass.expiresAt)}.';
+            resultIcon = Icons.verified;
+            resultColor = Colors.green.shade600;
+          } else {
+            validationResult = 'Pass CONSUMED';
+            validationDetails =
+                'All entries have been used. Vehicle may need a new pass for future travel.';
+            resultIcon = Icons.warning;
+            resultColor = Colors.orange.shade600;
+          }
         } else if (pass.statusDisplay == 'Expired') {
           validationResult = 'Pass EXPIRED';
           validationDetails =

@@ -1,4 +1,4 @@
--- Get both full_name and profile_image_url in exactly the same way
+-- Get blsth full_name and profile_image_url in exactly the same way
 
 -- Drop existing function
 DROP FUNCTION IF EXISTS get_pass_movement_history(TEXT);

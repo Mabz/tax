@@ -22,6 +22,7 @@ class PurchasedPass {
   final String? authorityId;
   final String? authorityName;
   final String? countryName;
+  final String? profileId;
   final String? entryPointId; // Renamed from borderId
   final String? exitPointId; // New field for exit point ID
   final String? vehicleRegistrationNumber;
@@ -54,6 +55,7 @@ class PurchasedPass {
     this.authorityId,
     this.authorityName,
     this.countryName,
+    this.profileId,
     this.entryPointId,
     this.exitPointId,
     this.vehicleRegistrationNumber,
@@ -136,6 +138,7 @@ class PurchasedPass {
       authorityId: json['authority_id']?.toString(),
       authorityName: json['authority_name']?.toString(),
       countryName: json['country_name']?.toString(),
+      profileId: json['profile_id']?.toString(),
       entryPointId: json['entry_point_id']?.toString() ??
           json['border_id']?.toString(), // Support legacy border_id
       exitPointId: json['exit_point_id']?.toString(),
@@ -177,6 +180,7 @@ class PurchasedPass {
       'authority_id': authorityId,
       'authority_name': authorityName,
       'country_name': countryName,
+      'profile_id': profileId,
       'entry_point_id': entryPointId,
       'exit_point_id': exitPointId,
       'vehicle_description': vehicleDescription,
@@ -251,7 +255,10 @@ class PurchasedPass {
   bool get hasEntriesRemaining => entriesRemaining > 0;
 
   bool get isActive =>
-      status == 'active' && !isExpired && isActivated && hasEntriesRemaining;
+      status == 'active' &&
+      !isExpired &&
+      isActivated &&
+      (hasEntriesRemaining || currentStatus == 'checked_in');
 
   String get statusDisplay {
     final now = DateTime.now();
@@ -397,6 +404,7 @@ class PurchasedPass {
         other.authorityId == authorityId &&
         other.authorityName == authorityName &&
         other.countryName == countryName &&
+        other.profileId == profileId &&
         other.entryPointId == entryPointId &&
         other.exitPointId == exitPointId &&
         other.vehicleRegistrationNumber == vehicleRegistrationNumber &&
@@ -429,6 +437,7 @@ class PurchasedPass {
       authorityId,
       authorityName,
       countryName,
+      profileId,
       entryPointId,
       exitPointId,
       vehicleRegistrationNumber,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../models/authority.dart';
 import '../../services/business_intelligence_service.dart';
 import '../../widgets/pass_history_widget.dart';
+import '../../widgets/owner_details_button.dart';
 
 /// Overstayed Vehicles Detail Screen
 /// Shows detailed list of vehicles that have overstayed their pass validity
@@ -171,9 +172,9 @@ class _OverstayedVehiclesScreenState extends State<OverstayedVehiclesScreen> {
   }
 
   Color _getSeverityColor(int daysOverdue) {
-    if (daysOverdue <= 7) return Colors.orange;
+    if (daysOverdue <= 7) return Colors.green.shade500;
     if (daysOverdue <= 30) return Colors.red;
-    return Colors.purple;
+    return Colors.green.shade800;
   }
 
   String _getSeverityText(int daysOverdue) {
@@ -231,7 +232,7 @@ class _OverstayedVehiclesScreenState extends State<OverstayedVehiclesScreen> {
                       children: [
                         Icon(
                           Icons.history,
-                          color: Colors.blue.shade600,
+                          color: Colors.green.shade600,
                           size: 24,
                         ),
                         const SizedBox(width: 8),
@@ -241,7 +242,7 @@ class _OverstayedVehiclesScreenState extends State<OverstayedVehiclesScreen> {
                             style: TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.bold,
-                              color: Colors.blue.shade800,
+                              color: Colors.green.shade800,
                             ),
                           ),
                         ),
@@ -270,6 +271,7 @@ class _OverstayedVehiclesScreenState extends State<OverstayedVehiclesScreen> {
     final daysOverdue = vehicle['daysOverdue'] as int;
     final amount = vehicle['amount'] as double;
     final currency = vehicle['authorityCurrency'] as String;
+    final passId = vehicle['passId'] as String;
 
     return SafeArea(
       child: DraggableScrollableSheet(
@@ -332,7 +334,7 @@ class _OverstayedVehiclesScreenState extends State<OverstayedVehiclesScreen> {
                                     style: TextStyle(
                                       fontSize: 20,
                                       fontWeight: FontWeight.bold,
-                                      color: Colors.blue.shade800,
+                                      color: Colors.green.shade800,
                                     ),
                                   ),
                                   Text(
@@ -366,94 +368,25 @@ class _OverstayedVehiclesScreenState extends State<OverstayedVehiclesScreen> {
                         ),
                         const SizedBox(height: 24),
 
-                        // Vehicle Summary Card
-                        _buildVehicleSummaryCard(
-                            vehicle, currency, amount, daysOverdue),
+                        // Vehicle Summary Card with Last Position
+                        _buildEnhancedVehicleSummaryCard(
+                            vehicle, currency, amount, daysOverdue, passId),
 
                         const SizedBox(height: 16),
 
-                        // Timeline Section
-                        _buildTimelineSection(vehicle),
-
-                        const SizedBox(height: 16),
-
-                        // Status & Usage Section
-                        _buildStatusSection(vehicle, currency, amount),
-
-                        const SizedBox(height: 16),
-
-                        // Owner Information (if available)
+                        // Owner Information (if available) - moved up
                         if (vehicle['ownerFullName'] !=
                             'Owner Information Unavailable')
                           _buildOwnerSection(vehicle),
 
-                        const SizedBox(height: 24),
+                        if (vehicle['ownerFullName'] !=
+                            'Owner Information Unavailable')
+                          const SizedBox(height: 16),
 
-                        // Action Buttons
-                        Column(
-                          children: [
-                            // First row - View Pass History (full width)
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton.icon(
-                                onPressed: () {
-                                  Navigator.pop(context);
-                                  _showPassHistory(vehicle['passId']);
-                                },
-                                icon: const Icon(Icons.history),
-                                label: const Text('View Pass History'),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.blue.shade600,
-                                  foregroundColor: Colors.white,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            // Second row - Contact and Action buttons
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: OutlinedButton.icon(
-                                    onPressed: () {
-                                      Navigator.pop(context);
-                                      // TODO: Implement contact owner functionality
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                        const SnackBar(
-                                            content: Text(
-                                                'Contact owner feature coming soon')),
-                                      );
-                                    },
-                                    icon: const Icon(Icons.email),
-                                    label: const Text('Contact Owner'),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: ElevatedButton.icon(
-                                    onPressed: () {
-                                      Navigator.pop(context);
-                                      // TODO: Implement enforcement action
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                        const SnackBar(
-                                            content: Text(
-                                                'Enforcement action feature coming soon')),
-                                      );
-                                    },
-                                    icon: const Icon(Icons.security),
-                                    label: const Text('Take Action'),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor:
-                                          _getSeverityColor(daysOverdue),
-                                      foregroundColor: Colors.white,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
+                        // Pass Information Section
+                        _buildStatusSection(vehicle, currency, amount),
+
+                        const SizedBox(height: 24),
 
                         const SizedBox(height: 16),
                       ],
@@ -477,7 +410,7 @@ class _OverstayedVehiclesScreenState extends State<OverstayedVehiclesScreen> {
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.bold,
-            color: Colors.blue.shade800,
+            color: Colors.green.shade800,
           ),
         ),
         const SizedBox(height: 8),
@@ -532,8 +465,8 @@ class _OverstayedVehiclesScreenState extends State<OverstayedVehiclesScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.blue.shade50,
-        border: Border(bottom: BorderSide(color: Colors.blue.shade200)),
+        color: Colors.green.shade50,
+        border: Border(bottom: BorderSide(color: Colors.green.shade200)),
       ),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
@@ -544,7 +477,7 @@ class _OverstayedVehiclesScreenState extends State<OverstayedVehiclesScreen> {
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
-                color: Colors.blue.shade800,
+                color: Colors.green.shade800,
               ),
             ),
             const SizedBox(width: 16),
@@ -568,10 +501,10 @@ class _OverstayedVehiclesScreenState extends State<OverstayedVehiclesScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: isActive ? Colors.blue.shade600 : Colors.white,
+          color: isActive ? Colors.green.shade600 : Colors.white,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: isActive ? Colors.blue.shade600 : Colors.blue.shade300,
+            color: isActive ? Colors.green.shade600 : Colors.green.shade300,
           ),
         ),
         child: Row(
@@ -581,7 +514,7 @@ class _OverstayedVehiclesScreenState extends State<OverstayedVehiclesScreen> {
               label,
               style: TextStyle(
                 fontSize: 12,
-                color: isActive ? Colors.white : Colors.blue.shade700,
+                color: isActive ? Colors.white : Colors.green.shade700,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -604,8 +537,8 @@ class _OverstayedVehiclesScreenState extends State<OverstayedVehiclesScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Overstayed Vehicles'),
-        backgroundColor: Colors.blue.shade100,
-        foregroundColor: Colors.blue.shade800,
+        backgroundColor: Colors.green.shade700,
+        foregroundColor: Colors.white,
         actions: [
           IconButton(
             onPressed: _loadOverstayedVehicles,
@@ -622,8 +555,9 @@ class _OverstayedVehiclesScreenState extends State<OverstayedVehiclesScreen> {
               width: double.infinity,
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.blue.shade50,
-                border: Border(bottom: BorderSide(color: Colors.blue.shade200)),
+                color: Colors.green.shade50,
+                border:
+                    Border(bottom: BorderSide(color: Colors.green.shade200)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -633,7 +567,7 @@ class _OverstayedVehiclesScreenState extends State<OverstayedVehiclesScreen> {
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
-                      color: Colors.blue.shade800,
+                      color: Colors.green.shade800,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -641,7 +575,7 @@ class _OverstayedVehiclesScreenState extends State<OverstayedVehiclesScreen> {
                     'Period: ${_getPeriodDisplayText()} • ${_overstayedVehicles.length} vehicles overstayed',
                     style: TextStyle(
                       fontSize: 14,
-                      color: Colors.blue.shade600,
+                      color: Colors.green.shade600,
                     ),
                   ),
                 ],
@@ -876,7 +810,7 @@ class _OverstayedVehiclesScreenState extends State<OverstayedVehiclesScreen> {
               children: [
                 Icon(
                   Icons.directions_car,
-                  color: Colors.blue.shade600,
+                  color: Colors.green.shade600,
                   size: 24,
                 ),
                 const SizedBox(width: 8),
@@ -885,7 +819,7 @@ class _OverstayedVehiclesScreenState extends State<OverstayedVehiclesScreen> {
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
-                    color: Colors.blue.shade800,
+                    color: Colors.green.shade800,
                   ),
                 ),
               ],
@@ -912,6 +846,17 @@ class _OverstayedVehiclesScreenState extends State<OverstayedVehiclesScreen> {
                           color: Colors.grey.shade600,
                         ),
                       ),
+                      if (vehicle['vehicleVin'] != null &&
+                          vehicle['vehicleVin'].toString().isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'VIN: ${vehicle['vehicleVin']}',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ],
                       if (vehicle['vehicleMake'] != null) ...[
                         const SizedBox(height: 4),
                         Text(
@@ -988,6 +933,159 @@ class _OverstayedVehiclesScreenState extends State<OverstayedVehiclesScreen> {
     );
   }
 
+  /// Build enhanced vehicle summary card with last recorded position
+  Widget _buildEnhancedVehicleSummaryCard(Map<String, dynamic> vehicle,
+      String currency, double amount, int daysOverdue, String passId) {
+    return Card(
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.directions_car,
+                  color: Colors.green.shade600,
+                  size: 24,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Vehicle Information',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green.shade800,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        vehicle['vehicleDescription'] ?? 'Unknown Vehicle',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Reg: ${vehicle['vehicleRegistrationNumber'] ?? 'N/A'}',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                      if (vehicle['vehicleVin'] != null &&
+                          vehicle['vehicleVin'].toString().isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'VIN: ${vehicle['vehicleVin']}',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ],
+                      if (vehicle['vehicleMake'] != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          '${vehicle['vehicleMake']} ${vehicle['vehicleModel'] ?? ''} ${vehicle['vehicleYear'] ?? ''}'
+                              .trim(),
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ],
+                      if (vehicle['vehicleColor'] != null) ...[
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Container(
+                              width: 12,
+                              height: 12,
+                              decoration: BoxDecoration(
+                                color:
+                                    _getColorFromName(vehicle['vehicleColor']),
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.grey.shade300),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              vehicle['vehicleColor'],
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade100,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Text(
+                        '$currency ${amount.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.red.shade700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Revenue at Risk',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Get time ago string from timestamp
+  String _getTimeAgo(DateTime timestamp) {
+    final now = DateTime.now();
+    final difference = now.difference(timestamp);
+
+    if (difference.inDays > 0) {
+      return '${difference.inDays} day${difference.inDays == 1 ? '' : 's'} ago';
+    } else if (difference.inHours > 0) {
+      return '${difference.inHours} hour${difference.inHours == 1 ? '' : 's'} ago';
+    } else if (difference.inMinutes > 0) {
+      return '${difference.inMinutes} minute${difference.inMinutes == 1 ? '' : 's'} ago';
+    } else {
+      return 'Just now';
+    }
+  }
+
   /// Build timeline section with pass dates
   Widget _buildTimelineSection(Map<String, dynamic> vehicle) {
     final issuedDate = DateTime.parse(vehicle['issuedAt']);
@@ -1014,7 +1112,7 @@ class _OverstayedVehiclesScreenState extends State<OverstayedVehiclesScreen> {
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
-                    color: Colors.blue.shade800,
+                    color: Colors.green.shade800,
                   ),
                 ),
               ],
@@ -1024,7 +1122,7 @@ class _OverstayedVehiclesScreenState extends State<OverstayedVehiclesScreen> {
               Icons.add_circle,
               'Pass Issued',
               _formatDateWithFriendly(issuedDate),
-              Colors.blue,
+              Colors.green,
               true,
             ),
             _buildTimelineItem(
@@ -1113,106 +1211,67 @@ class _OverstayedVehiclesScreenState extends State<OverstayedVehiclesScreen> {
               children: [
                 Icon(
                   Icons.info,
-                  color: Colors.orange.shade600,
+                  color: Colors.green.shade600,
                   size: 24,
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  'Status & Usage',
+                  'Pass Information',
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
-                    color: Colors.blue.shade800,
+                    color: Colors.green.shade800,
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildStatusItem(
-                    'Pass Type',
-                    vehicle['passDescription'] ?? 'N/A',
-                    Icons.description,
-                  ),
-                ),
-                Expanded(
-                  child: _buildStatusItem(
-                    'Pass Status',
-                    vehicle['status'] ?? 'Unknown',
-                    Icons.assignment,
-                  ),
-                ),
-              ],
+            // Single column layout for mobile-friendly display
+            _buildPassInfoItem(
+              'Pass Type',
+              _generateCleanPassType(vehicle),
+              Icons.description,
             ),
             const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildStatusItem(
-                    'Vehicle Status',
-                    _getVehicleStatusDisplay(vehicle['currentStatus']),
-                    Icons.location_on,
-                  ),
-                ),
-                Expanded(
-                  child: _buildStatusItem(
-                    'Entries Used',
-                    '$entriesUsed of $entryLimit',
-                    Icons.confirmation_number,
-                  ),
-                ),
-              ],
+            _buildPassInfoItem(
+              'Status',
+              '${vehicle['status'] ?? 'Unknown'} • ${_getVehicleStatusDisplay(vehicle['currentStatus'])}',
+              Icons.flag,
             ),
+            const SizedBox(height: 12),
+            _buildPassInfoItem(
+              'Usage',
+              '$entriesUsed of $entryLimit entries used',
+              Icons.confirmation_number,
+            ),
+            const SizedBox(height: 12),
+            _buildPassInfoItem(
+              'Amount Paid',
+              '$currency ${vehicle['amount']?.toStringAsFixed(2) ?? '0.00'}',
+              Icons.attach_money,
+            ),
+            const SizedBox(height: 12),
+            _buildPassInfoItem(
+              'Route',
+              _buildRouteInfo(vehicle),
+              Icons.location_on,
+            ),
+
             const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.blue.shade50,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.blue.shade200),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.location_on,
-                    color: Colors.blue.shade600,
-                    size: 20,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Border Points',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.blue.shade800,
-                          ),
-                        ),
-                        Text(
-                          'Entry: ${vehicle['entryPointName'] ?? 'Unknown'}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.blue.shade700,
-                          ),
-                        ),
-                        if (vehicle['exitPointName'] != null &&
-                            vehicle['exitPointName'].toString().isNotEmpty)
-                          Text(
-                            'Exit: ${vehicle['exitPointName']}',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.blue.shade700,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ],
+            // View Pass History Button
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _showPassHistory(vehicle['passId']);
+                },
+                icon: const Icon(Icons.history),
+                label: const Text('View Pass History'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green.shade600,
+                  foregroundColor: Colors.white,
+                ),
               ),
             ),
           ],
@@ -1269,7 +1328,7 @@ class _OverstayedVehiclesScreenState extends State<OverstayedVehiclesScreen> {
               children: [
                 Icon(
                   Icons.person,
-                  color: Colors.purple.shade600,
+                  color: Colors.green.shade600,
                   size: 24,
                 ),
                 const SizedBox(width: 8),
@@ -1278,7 +1337,7 @@ class _OverstayedVehiclesScreenState extends State<OverstayedVehiclesScreen> {
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
-                    color: Colors.blue.shade800,
+                    color: Colors.green.shade800,
                   ),
                 ),
               ],
@@ -1286,12 +1345,51 @@ class _OverstayedVehiclesScreenState extends State<OverstayedVehiclesScreen> {
             const SizedBox(height: 12),
             _buildDetailRow(
                 'Name', vehicle['ownerFullName'] ?? 'Unknown Owner'),
-            if (vehicle['ownerEmail'] != null)
+            if (vehicle['ownerEmail'] != null &&
+                vehicle['ownerEmail'].toString().isNotEmpty)
               _buildDetailRow('Email', vehicle['ownerEmail']),
-            if (vehicle['ownerPhone'] != null)
+            if (vehicle['ownerPhone'] != null &&
+                vehicle['ownerPhone'].toString().isNotEmpty)
               _buildDetailRow('Phone', vehicle['ownerPhone']),
-            if (vehicle['ownerCompany'] != null)
-              _buildDetailRow('Company', vehicle['ownerCompany']),
+            if (vehicle['ownerAddress'] != null &&
+                vehicle['ownerAddress'].toString().isNotEmpty)
+              _buildDetailRow('Address', vehicle['ownerAddress']),
+
+            const SizedBox(height: 12),
+            // Owner Details Button (only show if we have a valid profileId)
+            if (vehicle['profileId'] != null &&
+                vehicle['profileId'].toString().isNotEmpty &&
+                vehicle['profileId'].toString() != 'null')
+              SizedBox(
+                width: double.infinity,
+                child: OwnerDetailsButton(
+                  ownerId: vehicle['profileId'].toString(),
+                  ownerName: vehicle['ownerFullName']?.toString(),
+                  buttonText: 'View Complete Owner Details',
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green.shade600,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              )
+            else
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: Text(
+                  'Owner details not available',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ),
           ],
         ),
       ),
@@ -1310,6 +1408,97 @@ class _OverstayedVehiclesScreenState extends State<OverstayedVehiclesScreen> {
       default:
         return 'Unknown';
     }
+  }
+
+  /// Generate pass type from individual columns instead of using pass_description
+  String _generatePassType(Map<String, dynamic> vehicle) {
+    final entryLimit = vehicle['entryLimit'] ?? 0;
+    final authorityName = vehicle['authorityName'] ?? 'Unknown Authority';
+    final countryName = vehicle['countryName'] ?? 'Unknown Country';
+    final entryPoint = vehicle['entryPointName'] ?? 'Any Entry';
+    final exitPoint = vehicle['exitPointName'];
+
+    String passType = '$entryLimit-Entry Pass';
+
+    // Add route information if available
+    if (exitPoint != null && exitPoint.toString().isNotEmpty) {
+      passType += ' ($entryPoint → $exitPoint)';
+    } else {
+      passType += ' via $entryPoint';
+    }
+
+    // Add authority/country context
+    passType += ' - $authorityName, $countryName';
+
+    return passType;
+  }
+
+  /// Generate clean pass type without duplicating information shown elsewhere
+  String _generateCleanPassType(Map<String, dynamic> vehicle) {
+    final entryLimit = vehicle['entryLimit'] ?? 0;
+    return '$entryLimit-Entry Border Pass';
+  }
+
+  /// Build route information string
+  String _buildRouteInfo(Map<String, dynamic> vehicle) {
+    final entryPoint = vehicle['entryPointName'] ?? 'Unknown';
+    final exitPoint = vehicle['exitPointName'];
+    final authorityName = vehicle['authorityName'] ?? 'Unknown Authority';
+    final countryName = vehicle['countryName'] ?? 'Unknown Country';
+
+    String route = entryPoint;
+    if (exitPoint != null && exitPoint.toString().isNotEmpty) {
+      route += ' → $exitPoint';
+    }
+    route += ' ($authorityName, $countryName)';
+
+    return route;
+  }
+
+  /// Build pass info item (single column layout)
+  Widget _buildPassInfoItem(String label, String value, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.green.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.green.shade200),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            icon,
+            size: 20,
+            color: Colors.green.shade600,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.green.shade600,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.green.shade800,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   /// Get color from color name (basic implementation)
@@ -1338,8 +1527,30 @@ class _OverstayedVehiclesScreenState extends State<OverstayedVehiclesScreen> {
         return Colors.brown;
       case 'silver':
         return Colors.grey.shade300;
+      case 'gold':
+        return Colors.amber;
+      case 'pink':
+        return Colors.pink;
+      case 'cyan':
+        return Colors.cyan;
+      case 'lime':
+        return Colors.lime;
+      case 'indigo':
+        return Colors.indigo;
+      case 'teal':
+        return Colors.teal;
       default:
         return Colors.grey.shade400;
+    }
+  }
+
+  /// Format date of birth for display
+  String _formatDateOfBirth(String dateOfBirth) {
+    try {
+      final date = DateTime.parse(dateOfBirth);
+      return '${date.day}/${date.month}/${date.year}';
+    } catch (e) {
+      return dateOfBirth; // Return as-is if parsing fails
     }
   }
 }

@@ -20,8 +20,10 @@ import 'border_management_screen.dart';
 import 'border_official_management_screen.dart';
 import 'audit_management_screen.dart';
 import 'country_user_management_screen.dart';
+import 'manage_users_screen.dart';
 import 'bi/bi_dashboard_screen.dart';
 import 'bi/pass_analytics_screen.dart';
+import 'bi/non_compliance_screen.dart';
 import 'bi/revenue_analytics_screen.dart';
 import 'invitation_management_screen.dart';
 import 'invitation_dashboard_screen.dart';
@@ -1315,8 +1317,41 @@ class _HomeScreenState extends State<HomeScreen> {
           leading: const Icon(Icons.people, color: Colors.orange),
           title: const Text('Manage Users'),
           subtitle: Text(_selectedAuthority != null
-              ? 'Manage users for ${_selectedAuthority!.name}'
-              : 'Manage users and roles in your authority'),
+              ? 'Manage authority user profiles for ${_selectedAuthority!.name}'
+              : 'Manage authority user profiles'),
+          onTap: () {
+            if (_selectedAuthority == null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Please select an authority first'),
+                  backgroundColor: Colors.orange,
+                ),
+              );
+              return;
+            }
+            Navigator.of(context).pop();
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => ManageUsersScreen(
+                  selectedAuthority: {
+                    'id': _selectedAuthority!.countryId,
+                    'name': _selectedAuthority!.countryName ?? 'Unknown',
+                    'country_code': _selectedAuthority!.countryCode ?? '',
+                    'authority_id': _selectedAuthority!.id,
+                    'authority_name': _selectedAuthority!.name,
+                  },
+                ),
+              ),
+            );
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.admin_panel_settings_outlined,
+              color: Colors.orange),
+          title: const Text('Manage Roles'),
+          subtitle: Text(_selectedAuthority != null
+              ? 'Assign roles and send invitations for ${_selectedAuthority!.name}'
+              : 'Manage user roles and send invitations'),
           onTap: () {
             if (_selectedAuthority == null) {
               ScaffoldMessenger.of(context).showSnackBar(
@@ -1671,13 +1706,29 @@ class _HomeScreenState extends State<HomeScreen> {
         ListTile(
           leading: const Icon(Icons.analytics, color: Colors.green),
           title: const Text('Pass Analytics'),
-          subtitle: Text(
-              'Pass trends and non-compliance detection for ${_selectedAuthority!.name}'),
+          subtitle:
+              Text('Pass trends and analytics for ${_selectedAuthority!.name}'),
           onTap: () {
             Navigator.of(context).pop();
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (context) => PassAnalyticsScreen(
+                  authority: _selectedAuthority!,
+                ),
+              ),
+            );
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.warning, color: Colors.green),
+          title: const Text('Non-Compliance'),
+          subtitle: Text(
+              'Non-compliance detection and analysis for ${_selectedAuthority!.name}'),
+          onTap: () {
+            Navigator.of(context).pop();
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => NonComplianceScreen(
                   authority: _selectedAuthority!,
                 ),
               ),

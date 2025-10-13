@@ -58,9 +58,27 @@ class BorderOfficialService {
     String countryId,
   ) async {
     try {
-      final response =
-          await _supabase.rpc('get_border_officials_for_country', params: {
+      final response = await _supabase
+          .rpc('get_border_officials_for_country_enhanced', params: {
         'target_country_id': countryId,
+      });
+
+      return (response as List)
+          .map((item) => BorderOfficial.fromJson(item))
+          .toList();
+    } catch (e) {
+      throw Exception('Failed to get border officials: $e');
+    }
+  }
+
+  /// Get all border officials for a specific authority (with assignment details)
+  static Future<List<BorderOfficial>> getBorderOfficialsForAuthority(
+    String authorityId,
+  ) async {
+    try {
+      final response = await _supabase
+          .rpc('get_border_officials_for_authority_enhanced', params: {
+        'target_authority_id': authorityId,
       });
 
       return (response as List)
@@ -158,8 +176,8 @@ class BorderOfficialService {
     String countryId,
   ) async {
     try {
-      final response =
-          await _supabase.rpc('get_border_officials_by_country', params: {
+      final response = await _supabase
+          .rpc('get_border_officials_by_country_enhanced', params: {
         'target_country_id': countryId,
       });
 

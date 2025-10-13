@@ -137,13 +137,38 @@ class AuthorityService {
     try {
       debugPrint('🔍 Fetching admin authorities for current user');
 
-      // Try the RPC function first
-      try {
-        final response = await _supabase.rpc('get_admin_authorities');
-        final authorities =
-            (response as List).map((json) => Authority.fromJson(json)).toList();
+      final user = _supabase.auth.currentUser;
+      if (user == null) {
+        debugPrint('❌ No authenticated user');
+        return [];
+      }
 
-        debugPrint('✅ Fetched ${authorities.length} admin authorities via RPC');
+      // Use the new function that respects authority_profiles.is_active
+      try {
+        final response =
+            await _supabase.rpc('get_admin_authorities_for_user', params: {
+          'user_id': user.id,
+        });
+
+        final authorities = (response as List).map((json) {
+          return Authority(
+            id: json['id'] as String,
+            countryId: json['country_id'] as String,
+            name: json['name'] as String,
+            countryName: json['country_name'] as String,
+            countryCode: json['country_code'] as String,
+            code: '', // Not returned by this function, use empty string
+            authorityType:
+                '', // Not returned by this function, use empty string
+            description: '', // Not returned by this function, use empty string
+            isActive: true, // Only active authorities are returned
+            createdAt: DateTime.now(), // Not returned by this function
+            updatedAt: DateTime.now(), // Not returned by this function
+          );
+        }).toList();
+
+        debugPrint(
+            '✅ Fetched ${authorities.length} admin authorities (respecting authority_profiles.is_active)');
         return authorities;
       } catch (rpcError) {
         debugPrint('⚠️ Admin authorities RPC function failed: $rpcError');
@@ -153,7 +178,6 @@ class AuthorityService {
       debugPrint(
           '🔄 Falling back to direct profile_roles query for admin authorities');
 
-      final user = _supabase.auth.currentUser;
       if (user == null) {
         debugPrint('❌ No authenticated user');
         return [];

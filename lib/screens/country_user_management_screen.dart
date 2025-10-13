@@ -4,6 +4,7 @@ import '../models/profile.dart';
 import '../services/country_user_service.dart';
 import '../constants/app_constants.dart';
 import '../utils/role_colors.dart';
+import '../widgets/profile_image_widget.dart';
 
 /// Screen for country administrators to manage users in their country
 class CountryUserManagementScreen extends StatefulWidget {
@@ -54,9 +55,11 @@ class _CountryUserManagementScreenState
       } else {
         _filteredUsers = _users.where((user) {
           final name = user.fullName?.toLowerCase() ?? '';
+          final displayName = user.displayName?.toLowerCase() ?? '';
           final email = user.email?.toLowerCase() ?? '';
           final roles = user.roles.toLowerCase();
           return name.contains(query) ||
+              displayName.contains(query) ||
               email.contains(query) ||
               roles.contains(query);
         }).toList();
@@ -126,6 +129,7 @@ class _CountryUserManagementScreenState
           profile: profile,
           authorityId: widget.selectedCountry['authority_id'] as String,
           authorityName: _authorityName,
+          displayName: user.displayName,
           onRoleChanged: _loadUsers,
         ),
       );
@@ -151,7 +155,7 @@ class _CountryUserManagementScreenState
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Manage Users'),
+        title: const Text('Manage Roles'),
         backgroundColor: Colors.orange.shade100,
         foregroundColor: Colors.orange.shade800,
         actions: [
@@ -416,24 +420,33 @@ class _CountryUserManagementScreenState
                 // Header row with avatar and status
                 Row(
                   children: [
-                    Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: user.anyActive
-                              ? [Colors.green.shade400, Colors.green.shade600]
-                              : [Colors.grey.shade400, Colors.grey.shade600],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
+                    Stack(
+                      children: [
+                        ProfileImageWidget(
+                          currentImageUrl: user.profileImageUrl,
+                          size: 48,
+                          isEditable: false,
                         ),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(
-                        Icons.person_rounded,
-                        color: Colors.white,
-                        size: 24,
-                      ),
+                        // Status indicator overlay
+                        Positioned(
+                          bottom: 0,
+                          right: 0,
+                          child: Container(
+                            width: 16,
+                            height: 16,
+                            decoration: BoxDecoration(
+                              color: user.anyActive
+                                  ? Colors.green.shade500
+                                  : Colors.red.shade500,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: Colors.white,
+                                width: 2,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -441,7 +454,7 @@ class _CountryUserManagementScreenState
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            user.fullName ?? 'Unknown User',
+                            user.displayName ?? user.fullName ?? 'Unknown User',
                             style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w600,
@@ -586,12 +599,14 @@ class _UserRoleManagementDialog extends StatefulWidget {
   final Profile profile;
   final String authorityId;
   final String authorityName;
+  final String? displayName;
   final VoidCallback onRoleChanged;
 
   const _UserRoleManagementDialog({
     required this.profile,
     required this.authorityId,
     required this.authorityName,
+    this.displayName,
     required this.onRoleChanged,
   });
 
@@ -751,7 +766,9 @@ class _UserRoleManagementDialogState extends State<_UserRoleManagementDialog> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          widget.profile.fullName ?? 'Unknown User',
+                          widget.displayName ??
+                              widget.profile.fullName ??
+                              'Unknown User',
                           style: const TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,

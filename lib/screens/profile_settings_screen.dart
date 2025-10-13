@@ -4,6 +4,7 @@ import '../models/payment_details.dart';
 import '../services/profile_management_service.dart';
 import '../enums/pass_verification_method.dart';
 import '../widgets/profile_image_widget.dart';
+import '../widgets/passport_image_widget.dart';
 
 class ProfileSettingsScreen extends StatefulWidget {
   const ProfileSettingsScreen({super.key});
@@ -18,6 +19,9 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
 
   // Controllers
   final _fullNameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _phoneNumberController = TextEditingController();
+  final _addressController = TextEditingController();
   final _nationalIdController = TextEditingController();
   final _passportController = TextEditingController();
   final _staticPinController =
@@ -49,7 +53,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _loadProfileData();
   }
 
@@ -57,6 +61,9 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
   void dispose() {
     _tabController.dispose();
     _fullNameController.dispose();
+    _emailController.dispose();
+    _phoneNumberController.dispose();
+    _addressController.dispose();
     _nationalIdController.dispose();
     _passportController.dispose();
     _staticPinController.dispose(); // Dispose new controller
@@ -70,6 +77,74 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
     _pinDigit3Focus.dispose();
 
     super.dispose();
+  }
+
+  /// Validate phone number format
+  String? _validatePhoneNumber(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return null; // Phone number is optional
+    }
+
+    final phoneNumber = value.trim();
+
+    // Check if it starts with +
+    if (!phoneNumber.startsWith('+')) {
+      return 'Phone number must start with country code (e.g., +263)';
+    }
+
+    // Check if it contains only digits after the +
+    final digitsOnly = phoneNumber.substring(1);
+    if (!RegExp(r'^\d+$').hasMatch(digitsOnly)) {
+      return 'Phone number can only contain digits after the country code';
+    }
+
+    // Check length (minimum 8, maximum 15 digits after +)
+    if (digitsOnly.length < 7 || digitsOnly.length > 15) {
+      return 'Phone number must be between 8-16 characters total';
+    }
+
+    // Check for common country codes (basic validation)
+    final countryCode =
+        digitsOnly.substring(0, digitsOnly.length >= 3 ? 3 : digitsOnly.length);
+    final validCountryCodes = [
+      '263', '27', '260', '265', '268', '254', '256', '255', '234',
+      '233', // African countries (added 268 for Eswatini)
+      '1', '44', '33', '49', '39', '34', '31', '32', '41',
+      '43', // Western countries
+      '86', '91', '81', '82', '65', '60', '66', '84', '62',
+      '63', // Asian countries
+    ];
+
+    bool hasValidCountryCode = false;
+    for (final code in validCountryCodes) {
+      if (digitsOnly.startsWith(code)) {
+        hasValidCountryCode = true;
+        break;
+      }
+    }
+
+    if (!hasValidCountryCode) {
+      return 'Please enter a valid country code (e.g., +263 for Zimbabwe)';
+    }
+
+    return null; // Valid phone number
+  }
+
+  /// Validate email address format
+  String? _validateEmail(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Email address is required';
+    }
+
+    final email = value.trim();
+
+    // Basic email validation regex
+    if (!RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+        .hasMatch(email)) {
+      return 'Please enter a valid email address';
+    }
+
+    return null; // Valid email
   }
 
   Future<void> _loadProfileData() async {
@@ -97,6 +172,10 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
           // Populate controllers
           _fullNameController.text =
               profileData?['full_name']?.toString() ?? '';
+          _emailController.text = profileData?['email']?.toString() ?? '';
+          _phoneNumberController.text =
+              profileData?['phone_number']?.toString() ?? '';
+          _addressController.text = profileData?['address']?.toString() ?? '';
           _selectedCountryId = identityDocs.countryOfOriginId;
           _nationalIdController.text = identityDocs.nationalIdNumber ?? '';
           _passportController.text = identityDocs.passportNumber ?? '';
@@ -149,8 +228,15 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
     }
   }
 
-  Future<void> _saveFullName() async {
-    if (_fullNameController.text.trim().isEmpty) {
+  Future<void> _savePersonalInformation() async {
+    // Validate all fields
+    final fullName = _fullNameController.text.trim();
+    final email = _emailController.text.trim();
+    final phoneNumber = _phoneNumberController.text.trim();
+    final address = _addressController.text.trim();
+
+    // Validate required fields
+    if (fullName.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please enter your full name'),
@@ -160,18 +246,47 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
       return;
     }
 
+    // Validate email
+    final emailError = _validateEmail(email);
+    if (emailError != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(emailError),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // Validate phone number if provided
+    if (phoneNumber.isNotEmpty) {
+      final phoneError = _validatePhoneNumber(phoneNumber);
+      if (phoneError != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(phoneError),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+    }
+
     try {
       setState(() => _isSaving = true);
 
-      await ProfileManagementService.updateFullName(
-        _fullNameController.text.trim(),
+      await ProfileManagementService.updatePersonalInformation(
+        fullName: fullName,
+        email: email,
+        phoneNumber: phoneNumber.isEmpty ? null : phoneNumber,
+        address: address.isEmpty ? null : address,
       );
 
       if (mounted) {
         setState(() => _isSaving = false);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Full name updated successfully'),
+            content: Text('Personal information updated successfully'),
             backgroundColor: Colors.green,
           ),
         );
@@ -182,7 +297,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
         setState(() => _isSaving = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error updating full name: $e'),
+            content: Text('Error updating personal information: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -330,6 +445,41 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
     }
   }
 
+  Future<void> _onPassportDocumentUpdated(String? documentUrl) async {
+    try {
+      setState(() => _isSaving = true);
+
+      if (documentUrl != null) {
+        await ProfileManagementService.updatePassportDocumentUrl(documentUrl);
+      } else {
+        await ProfileManagementService.removePassportDocument();
+      }
+
+      if (mounted) {
+        setState(() => _isSaving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(documentUrl != null
+                ? 'Passport document updated successfully'
+                : 'Passport document removed successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        await _loadProfileData(); // Refresh data
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isSaving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error updating passport document: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _clearPaymentDetails() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -394,6 +544,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
             Tab(icon: Icon(Icons.person), text: 'Identity'),
             Tab(icon: Icon(Icons.payment), text: 'Payment'),
             Tab(icon: Icon(Icons.settings), text: 'Preferences'),
+            Tab(icon: Icon(Icons.history), text: 'Audit'),
           ],
         ),
       ),
@@ -406,6 +557,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
                   _buildIdentityTab(),
                   _buildPaymentTab(),
                   _buildPreferencesTab(),
+                  _buildAuditTab(),
                 ],
               ),
       ),
@@ -492,10 +644,50 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
           ),
           const SizedBox(height: 16),
 
+          TextFormField(
+            controller: _emailController,
+            decoration: const InputDecoration(
+              labelText: 'Email Address',
+              hintText: 'Enter your email address',
+              prefixIcon: Icon(Icons.email),
+              border: OutlineInputBorder(),
+            ),
+            keyboardType: TextInputType.emailAddress,
+            validator: _validateEmail,
+          ),
+          const SizedBox(height: 16),
+
+          TextFormField(
+            controller: _phoneNumberController,
+            decoration: const InputDecoration(
+              labelText: 'Phone Number',
+              hintText: 'Enter your phone number (e.g., +268 for Eswatini)',
+              prefixIcon: Icon(Icons.phone),
+              border: OutlineInputBorder(),
+              helperText: 'Include country code (e.g., +268 Eswatini)',
+            ),
+            keyboardType: TextInputType.phone,
+            validator: _validatePhoneNumber,
+          ),
+          const SizedBox(height: 16),
+
+          TextFormField(
+            controller: _addressController,
+            decoration: const InputDecoration(
+              labelText: 'Address',
+              hintText: 'Enter your residential address',
+              prefixIcon: Icon(Icons.home),
+              border: OutlineInputBorder(),
+            ),
+            textCapitalization: TextCapitalization.words,
+            maxLines: 2,
+          ),
+          const SizedBox(height: 24),
+
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
-              onPressed: _isSaving ? null : _saveFullName,
+              onPressed: _isSaving ? null : _savePersonalInformation,
               icon: _isSaving
                   ? const SizedBox(
                       width: 16,
@@ -503,7 +695,8 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.save),
-              label: Text(_isSaving ? 'Saving...' : 'Update Full Name'),
+              label:
+                  Text(_isSaving ? 'Saving...' : 'Update Personal Information'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,
                 foregroundColor: Colors.white,
@@ -573,6 +766,23 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
               border: OutlineInputBorder(),
             ),
             textCapitalization: TextCapitalization.characters,
+          ),
+          const SizedBox(height: 16),
+
+          // Passport Page Upload
+          const Text(
+            'Passport Page',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Capture a clear photo of your entire passport page (4.9" × 3.4") for verification.',
+            style: TextStyle(color: Colors.grey, fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          PassportImageWidget(
+            currentImageUrl: _profileData?['passport_document_url']?.toString(),
+            onImageUpdated: _onPassportDocumentUpdated,
           ),
           const SizedBox(height: 24),
 
@@ -994,5 +1204,328 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen>
         ],
       ),
     );
+  }
+
+  Widget _buildAuditTab() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Profile Audit History',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Track all changes made to your profile settings.',
+            style: TextStyle(color: Colors.grey),
+          ),
+          const SizedBox(height: 24),
+          FutureBuilder<List<Map<String, dynamic>>>(
+            future: ProfileManagementService.getProfileAuditHistory(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              if (snapshot.hasError) {
+                return Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    border: Border.all(color: Colors.red.shade200),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    children: [
+                      Icon(Icons.error, color: Colors.red.shade600, size: 32),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Error loading audit history',
+                        style: TextStyle(
+                          color: Colors.red.shade800,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        snapshot.error.toString(),
+                        style:
+                            TextStyle(color: Colors.red.shade600, fontSize: 12),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                );
+              }
+
+              final auditHistory = snapshot.data ?? [];
+
+              if (auditHistory.isEmpty) {
+                return Container(
+                  padding: const EdgeInsets.all(32),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade50,
+                    border: Border.all(color: Colors.grey.shade200),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    children: [
+                      Icon(Icons.history,
+                          color: Colors.grey.shade400, size: 48),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'No Changes Yet',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Your profile changes will appear here once you start making updates.',
+                        style: TextStyle(color: Colors.grey.shade600),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                );
+              }
+
+              return Column(
+                children: auditHistory.map((audit) {
+                  final changeType =
+                      audit['change_type']?.toString() ?? 'update';
+                  final fieldName =
+                      audit['field_name']?.toString() ?? 'Unknown';
+                  final oldValue = audit['old_value']?.toString();
+                  final newValue = audit['new_value']?.toString();
+                  final changedAt = audit['changed_at'] != null
+                      ? DateTime.parse(audit['changed_at'].toString())
+                      : DateTime.now();
+                  final changedBy =
+                      audit['changed_by_name']?.toString() ?? 'System';
+                  final notes = audit['notes']?.toString();
+
+                  Color changeColor;
+                  IconData changeIcon;
+
+                  switch (changeType) {
+                    case 'create':
+                      changeColor = Colors.green;
+                      changeIcon = Icons.add_circle;
+                      break;
+                    case 'delete':
+                      changeColor = Colors.red;
+                      changeIcon = Icons.remove_circle;
+                      break;
+                    default:
+                      changeColor = Colors.blue;
+                      changeIcon = Icons.edit;
+                  }
+
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      border: Border.all(color: Colors.grey.shade200),
+                      borderRadius: BorderRadius.circular(8),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.grey.shade100,
+                          blurRadius: 2,
+                          offset: const Offset(0, 1),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(changeIcon, color: changeColor, size: 20),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _formatFieldName(fieldName),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: changeColor.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                changeType.toUpperCase(),
+                                style: TextStyle(
+                                  color: changeColor,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        if (changeType != 'create') ...[
+                          if (oldValue != null && oldValue.isNotEmpty) ...[
+                            const Text(
+                              'From:',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            Text(
+                              _formatFieldValue(fieldName, oldValue),
+                              style: const TextStyle(
+                                fontSize: 14,
+                                decoration: TextDecoration.lineThrough,
+                                color: Colors.red,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                          ],
+                        ],
+                        if (changeType != 'delete' && newValue != null) ...[
+                          const Text(
+                            'To:',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          Text(
+                            _formatFieldValue(fieldName, newValue),
+                            style: const TextStyle(
+                              fontSize: 14,
+                              color: Colors.green,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Icon(Icons.access_time,
+                                size: 14, color: Colors.grey.shade600),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${changedAt.toLocal().toString().split('.')[0]} by $changedBy',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (notes != null && notes.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.shade50,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.note,
+                                    size: 14, color: Colors.blue.shade600),
+                                const SizedBox(width: 4),
+                                Expanded(
+                                  child: Text(
+                                    notes,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.blue.shade800,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  );
+                }).toList(),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatFieldName(String fieldName) {
+    switch (fieldName) {
+      case 'full_name':
+        return 'Full Name';
+      case 'email':
+        return 'Email Address';
+      case 'phone_number':
+        return 'Phone Number';
+      case 'address':
+        return 'Address';
+      case 'country_of_origin_id':
+        return 'Country of Origin';
+      case 'national_id_number':
+        return 'National ID Number';
+      case 'passport_number':
+        return 'Passport Number';
+      case 'passport_document_url':
+        return 'Passport Document';
+      case 'profile_image_url':
+        return 'Profile Image';
+      case 'pass_confirmation_type':
+        return 'Pass Verification Method';
+      case 'static_confirmation_code':
+        return 'Personal PIN';
+      default:
+        return fieldName
+            .replaceAll('_', ' ')
+            .split(' ')
+            .map((word) => word.isNotEmpty
+                ? word[0].toUpperCase() + word.substring(1).toLowerCase()
+                : word)
+            .join(' ');
+    }
+  }
+
+  String _formatFieldValue(String fieldName, String value) {
+    if (value.isEmpty) return '(empty)';
+
+    switch (fieldName) {
+      case 'passport_document_url':
+      case 'profile_image_url':
+        return value.contains('/') ? 'Document uploaded' : value;
+      case 'static_confirmation_code':
+        return '***';
+      case 'pass_confirmation_type':
+        switch (value) {
+          case 'none':
+            return 'No verification required';
+          case 'staticPin':
+            return 'Personal PIN';
+          case 'dynamicCode':
+            return 'Secure code via SMS/Email';
+          default:
+            return value;
+        }
+      default:
+        return value;
+    }
   }
 }

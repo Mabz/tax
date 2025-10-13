@@ -66,8 +66,8 @@ class _BiDashboardScreenState extends State<BiDashboardScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Business Intelligence'),
-        backgroundColor: Colors.green.shade100,
-        foregroundColor: Colors.green.shade800,
+        backgroundColor: Colors.green.shade700,
+        foregroundColor: Colors.white,
         actions: [
           IconButton(
             onPressed: _loadDashboardData,
@@ -223,25 +223,25 @@ class _BiDashboardScreenState extends State<BiDashboardScreen> {
               'Total Passes',
               _dashboardData['totalPasses'].toString(),
               Icons.confirmation_number,
-              Colors.blue,
+              Colors.green.shade600,
             ),
             _buildMetricCard(
               'Active Passes',
               _dashboardData['activePasses'].toString(),
               Icons.check_circle,
-              Colors.green,
+              Colors.green.shade700,
             ),
             _buildMetricCard(
               'Total Revenue',
               '\$${(_dashboardData['totalRevenue'] as double).toStringAsFixed(2)}',
               Icons.attach_money,
-              Colors.orange,
+              Colors.green.shade500,
             ),
             _buildMetricCard(
               'Compliance Rate',
               '${_dashboardData['complianceRate']}%',
               Icons.verified,
-              Colors.purple,
+              Colors.green.shade800,
             ),
           ],
         ),
@@ -324,7 +324,7 @@ class _BiDashboardScreenState extends State<BiDashboardScreen> {
               child: _buildActionButton(
                 'Pass Analytics',
                 Icons.analytics,
-                Colors.blue,
+                Colors.green,
                 () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
@@ -341,7 +341,7 @@ class _BiDashboardScreenState extends State<BiDashboardScreen> {
               child: _buildActionButton(
                 'Revenue Reports',
                 Icons.attach_money,
-                Colors.orange,
+                Colors.green,
                 () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
@@ -533,7 +533,7 @@ class _BiDashboardScreenState extends State<BiDashboardScreen> {
       case 'red':
         return Colors.red;
       case 'blue':
-        return Colors.blue;
+        return Colors.green.shade500;
       default:
         return Colors.grey;
     }

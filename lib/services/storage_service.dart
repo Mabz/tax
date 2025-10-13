@@ -101,6 +101,165 @@ class StorageService {
     }
   }
 
+  /// Upload a passport image for the current user
+  static Future<String> uploadPassportImage(File imageFile) async {
+    try {
+      final user = _supabase.auth.currentUser;
+      if (user == null) {
+        throw Exception('User not authenticated');
+      }
+
+      // Generate a unique filename with user ID prefix
+      final fileExtension = path.extension(imageFile.path);
+      final fileName =
+          '${user.id}/passport_${DateTime.now().millisecondsSinceEpoch}$fileExtension';
+
+      debugPrint('StorageService: Uploading passport image: $fileName');
+
+      // Read file as bytes
+      final bytes = await imageFile.readAsBytes();
+
+      // Upload to Supabase Storage
+      await _supabase.storage.from(_bucketName).uploadBinary(fileName, bytes);
+      debugPrint('StorageService: Passport image upload successful');
+
+      // Get the public URL
+      final publicUrl =
+          _supabase.storage.from(_bucketName).getPublicUrl(fileName);
+
+      debugPrint('StorageService: Generated passport image URL: $publicUrl');
+      return publicUrl;
+    } catch (e) {
+      throw Exception('Failed to upload passport image: $e');
+    }
+  }
+
+  /// Upload passport image from bytes (for web compatibility)
+  static Future<String> uploadPassportImageFromBytes(
+      Uint8List bytes, String originalFileName) async {
+    try {
+      final user = _supabase.auth.currentUser;
+      if (user == null) {
+        throw Exception('User not authenticated');
+      }
+
+      // Generate a unique filename with user ID prefix
+      final fileExtension = path.extension(originalFileName);
+      final fileName =
+          '${user.id}/passport_${DateTime.now().millisecondsSinceEpoch}$fileExtension';
+
+      // Upload to Supabase Storage
+      await _supabase.storage.from(_bucketName).uploadBinary(fileName, bytes);
+
+      // Get the public URL
+      final publicUrl =
+          _supabase.storage.from(_bucketName).getPublicUrl(fileName);
+
+      return publicUrl;
+    } catch (e) {
+      throw Exception('Failed to upload passport image: $e');
+    }
+  }
+
+  /// Upload a document for the current user
+  static Future<String> uploadDocument(
+      String filePath, String documentType) async {
+    try {
+      final user = _supabase.auth.currentUser;
+      if (user == null) {
+        throw Exception('User not authenticated');
+      }
+
+      final file = File(filePath);
+      if (!await file.exists()) {
+        throw Exception('File does not exist');
+      }
+
+      // Generate a unique filename with user ID prefix
+      final fileExtension = path.extension(filePath);
+      final fileName =
+          '${user.id}/${documentType}_${DateTime.now().millisecondsSinceEpoch}$fileExtension';
+
+      debugPrint('StorageService: Uploading document: $fileName');
+
+      // Read file as bytes
+      final bytes = await file.readAsBytes();
+
+      // Upload to Supabase Storage
+      await _supabase.storage.from(_bucketName).uploadBinary(fileName, bytes);
+      debugPrint('StorageService: Document upload successful');
+
+      // Get the public URL
+      final publicUrl =
+          _supabase.storage.from(_bucketName).getPublicUrl(fileName);
+
+      debugPrint('StorageService: Generated document URL: $publicUrl');
+      return publicUrl;
+    } catch (e) {
+      throw Exception('Failed to upload document: $e');
+    }
+  }
+
+  /// Upload document from bytes (for web compatibility)
+  static Future<String> uploadDocumentFromBytes(
+      Uint8List bytes, String originalFileName, String documentType) async {
+    try {
+      final user = _supabase.auth.currentUser;
+      if (user == null) {
+        throw Exception('User not authenticated');
+      }
+
+      // Generate a unique filename with user ID prefix
+      final fileExtension = path.extension(originalFileName);
+      final fileName =
+          '${user.id}/${documentType}_${DateTime.now().millisecondsSinceEpoch}$fileExtension';
+
+      // Upload to Supabase Storage
+      await _supabase.storage.from(_bucketName).uploadBinary(fileName, bytes);
+
+      // Get the public URL
+      final publicUrl =
+          _supabase.storage.from(_bucketName).getPublicUrl(fileName);
+
+      return publicUrl;
+    } catch (e) {
+      throw Exception('Failed to upload document: $e');
+    }
+  }
+
+  /// Delete a file by URL
+  static Future<void> deleteFile(String fileUrl) async {
+    try {
+      final user = _supabase.auth.currentUser;
+      if (user == null) {
+        throw Exception('User not authenticated');
+      }
+
+      // Extract filename from URL
+      final uri = Uri.parse(fileUrl);
+      final pathSegments = uri.pathSegments;
+
+      // Find the filename in the path (should be after 'BorderTax')
+      final bucketIndex = pathSegments.indexOf(_bucketName);
+      if (bucketIndex == -1 || bucketIndex >= pathSegments.length - 1) {
+        throw Exception('Invalid file URL format');
+      }
+
+      // Get the file path (everything after the bucket name)
+      final filePath = pathSegments.sublist(bucketIndex + 1).join('/');
+
+      // Verify the file belongs to the current user
+      if (!filePath.startsWith('${user.id}/')) {
+        throw Exception('Unauthorized: Cannot delete another user\'s file');
+      }
+
+      // Delete from Supabase Storage
+      await _supabase.storage.from(_bucketName).remove([filePath]);
+    } catch (e) {
+      throw Exception('Failed to delete file: $e');
+    }
+  }
+
   /// List all profile images for the current user
   static Future<List<String>> getUserProfileImages() async {
     try {

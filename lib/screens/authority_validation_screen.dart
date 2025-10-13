@@ -14,6 +14,7 @@ import '../services/enhanced_border_service.dart';
 import '../services/profile_management_service.dart';
 import '../enums/pass_verification_method.dart';
 import '../widgets/pass_card_widget.dart';
+import '../widgets/owner_details_popup.dart';
 import '../utils/time_utils.dart';
 import '../screens/vehicle_search_screen.dart';
 
@@ -534,6 +535,11 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
                   isCompact: true,
                   showSecureCode: false,
                 ),
+
+                const SizedBox(height: 16),
+
+                // Owner Details Section
+                _buildOwnerDetailsSection(pass),
 
                 const SizedBox(height: 16),
 
@@ -2754,6 +2760,224 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
     debugPrint('🌍 Using fallback: $fallback');
     _locationCache[key] = fallback;
     return fallback;
+  }
+
+  /// Build owner details section with basic info and view complete details button
+  Widget _buildOwnerDetailsSection(PurchasedPass pass) {
+    return FutureBuilder<Map<String, dynamic>?>(
+      future: _getOwnerBasicInfo(pass.profileId ?? ''),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.person, color: Colors.blue.shade600),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Owner Details',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  const Center(
+                    child: CircularProgressIndicator(),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        if (snapshot.hasError || snapshot.data == null) {
+          return Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.person, color: Colors.blue.shade600),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Owner Details',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Icon(Icons.error_outline, color: Colors.red.shade400),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          'Unable to load owner information',
+                          style: TextStyle(color: Colors.red),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        final ownerData = snapshot.data!;
+        final ownerName = ownerData['full_name']?.toString() ?? 'Unknown Owner';
+        final ownerEmail = ownerData['email']?.toString();
+        final ownerPhone = ownerData['phone_number']?.toString();
+        final profileImageUrl = ownerData['profile_image_url']?.toString();
+
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header
+                Row(
+                  children: [
+                    Icon(Icons.person, color: Colors.blue.shade600),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Owner Details',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                // Owner basic info
+                Row(
+                  children: [
+                    // Profile image
+                    Container(
+                      width: 50,
+                      height: 50,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border:
+                            Border.all(color: Colors.blue.shade300, width: 2),
+                      ),
+                      child: ClipOval(
+                        child: profileImageUrl != null &&
+                                profileImageUrl.isNotEmpty
+                            ? Image.network(
+                                profileImageUrl,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) {
+                                  return Icon(
+                                    Icons.person,
+                                    size: 24,
+                                    color: Colors.grey.shade400,
+                                  );
+                                },
+                              )
+                            : Icon(
+                                Icons.person,
+                                size: 24,
+                                color: Colors.grey.shade400,
+                              ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+
+                    // Owner info
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            ownerName,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          if (ownerEmail != null) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              ownerEmail,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                          if (ownerPhone != null) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              ownerPhone,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+
+                    // View complete details button
+                    ElevatedButton.icon(
+                      onPressed: () => _showOwnerDetailsPopup(
+                          pass.profileId ?? '', ownerName),
+                      icon: const Icon(Icons.visibility, size: 16),
+                      label: const Text('View Complete'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue.shade600,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                        textStyle: const TextStyle(fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// Get basic owner information for display
+  Future<Map<String, dynamic>?> _getOwnerBasicInfo(String profileId) async {
+    try {
+      return await ProfileManagementService.getProfileById(profileId);
+    } catch (e) {
+      debugPrint('Error getting owner basic info: $e');
+      return null;
+    }
+  }
+
+  /// Show owner details popup
+  void _showOwnerDetailsPopup(String ownerId, String ownerName) {
+    showDialog(
+      context: context,
+      builder: (context) => OwnerDetailsPopup(
+        ownerId: ownerId,
+        ownerName: ownerName,
+      ),
+    );
   }
 }
 

@@ -316,7 +316,7 @@ class _EnhancedBorderAssignmentDialogState
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      official.fullName,
+                      official.displayName ?? official.fullName,
                       style: const TextStyle(fontWeight: FontWeight.w600),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -335,7 +335,7 @@ class _EnhancedBorderAssignmentDialogState
             selectedItemBuilder: (BuildContext context) {
               return widget.borderOfficials.map((official) {
                 return Text(
-                  official.fullName,
+                  official.displayName ?? official.fullName,
                   style: const TextStyle(fontWeight: FontWeight.w600),
                   overflow: TextOverflow.ellipsis,
                 );

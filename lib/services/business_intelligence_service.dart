@@ -580,7 +580,9 @@ class BusinessIntelligenceService {
       {String period = 'all_time',
       DateTime? customStartDate,
       DateTime? customEndDate,
-      String borderFilter = 'any_border'}) async {
+      String borderFilter = 'any_border',
+      String entryBorderFilter = 'any_entry',
+      String exitBorderFilter = 'any_exit'}) async {
     try {
       debugPrint(
           '🔍 Fetching non-compliance analytics for authority: $authorityId');
@@ -607,14 +609,37 @@ class BusinessIntelligenceService {
       final passes = _filterPassesByPeriod(
           allPasses, period, customStartDate, customEndDate);
 
-      // Filter by border if specified
-      final filteredPasses = borderFilter == 'any_border'
-          ? passes
-          : passes
-              .where((p) =>
-                  p.entryPointId == borderFilter ||
-                  p.entryPointName == borderFilter)
-              .toList();
+      // Filter by borders if specified
+      var filteredPasses = passes;
+
+      // Apply entry border filter
+      if (entryBorderFilter != 'any_entry') {
+        filteredPasses = filteredPasses
+            .where((p) =>
+                p.entryPointId == entryBorderFilter ||
+                p.entryPointName == entryBorderFilter)
+            .toList();
+      }
+
+      // Apply exit border filter
+      if (exitBorderFilter != 'any_exit') {
+        filteredPasses = filteredPasses
+            .where((p) =>
+                p.exitPointId == exitBorderFilter ||
+                p.exitPointName == exitBorderFilter)
+            .toList();
+      }
+
+      // Legacy border filter support (for backward compatibility)
+      if (borderFilter != 'any_border') {
+        filteredPasses = filteredPasses
+            .where((p) =>
+                p.entryPointId == borderFilter ||
+                p.entryPointName == borderFilter ||
+                p.exitPointId == borderFilter ||
+                p.exitPointName == borderFilter)
+            .toList();
+      }
 
       // Find expired passes still active (non-compliant)
       final expiredButActive = filteredPasses
@@ -918,9 +943,9 @@ class BusinessIntelligenceService {
               id,
               full_name,
               email,
+              profile_image_url,
               phone_number,
-              company_name,
-              profile_image_url
+              address
             )
           ''')
           .eq('authority_id', authorityId)
@@ -962,19 +987,20 @@ class BusinessIntelligenceService {
         String ownerFullName = 'Owner Information Unavailable';
         String? ownerEmail;
         String? ownerPhone;
-        String? ownerCompany;
+        String? ownerAddress;
         String? ownerProfileImage;
 
         if (profile != null) {
           ownerFullName = profile['full_name']?.toString() ?? 'Unknown Owner';
           ownerEmail = profile['email']?.toString();
           ownerPhone = profile['phone_number']?.toString();
-          ownerCompany = profile['company_name']?.toString();
+          ownerAddress = profile['address']?.toString();
           ownerProfileImage = profile['profile_image_url']?.toString();
         }
 
         detailedList.add({
           'passId': pass.passId,
+          'profileId': profile?['id']?.toString(), // Add the missing profileId
           'vehicleDescription': pass.vehicleDescription,
           'vehicleRegistrationNumber': pass.vehicleRegistrationNumber ?? 'N/A',
           'vehicleMake': pass.vehicleMake,
@@ -1000,7 +1026,7 @@ class BusinessIntelligenceService {
           'ownerFullName': ownerFullName,
           'ownerEmail': ownerEmail,
           'ownerPhone': ownerPhone,
-          'ownerCompany': ownerCompany,
+          'ownerAddress': ownerAddress,
           'ownerProfileImage': ownerProfileImage,
         });
       }
@@ -1016,6 +1042,66 @@ class BusinessIntelligenceService {
     } catch (e) {
       debugPrint('❌ Error fetching detailed overstayed vehicles: $e');
       rethrow;
+    }
+  }
+
+  /// Get last recorded position for a pass from movement history
+  static Future<Map<String, dynamic>?> getLastRecordedPosition(
+      String passId) async {
+    try {
+      debugPrint('🔍 Fetching last recorded position for pass: $passId');
+
+      // Validate passId
+      if (passId.isEmpty || passId == 'null') {
+        debugPrint('❌ Invalid passId: $passId');
+        return null;
+      }
+
+      final response = await _supabase
+          .from('pass_movements')
+          .select('''
+            *,
+            border_officials (
+              display_name,
+              authority_profiles (
+                authority_name
+              )
+            )
+          ''')
+          .eq('pass_id', passId)
+          .order('created_at', ascending: false)
+          .limit(1);
+
+      debugPrint(
+          '📊 Movement history response: ${response.length} records found');
+
+      if (response.isEmpty) {
+        debugPrint('No movement history found for pass: $passId');
+        return null;
+      }
+
+      final movement = response.first;
+      final borderOfficial =
+          movement['border_officials'] as Map<String, dynamic>?;
+      final authorityProfile =
+          borderOfficial?['authority_profiles'] as Map<String, dynamic>?;
+
+      final result = {
+        'location': movement['location'] ?? 'Unknown Location',
+        'timestamp': movement['created_at'],
+        'scanPurpose': movement['scan_purpose'] ?? 'Unknown',
+        'officerName': borderOfficial?['display_name'] ?? 'Unknown Officer',
+        'authorityName':
+            authorityProfile?['authority_name'] ?? 'Unknown Authority',
+        'notes': movement['notes'],
+      };
+
+      debugPrint(
+          '✅ Last position found: ${result['location']} at ${result['timestamp']}');
+      return result;
+    } catch (e) {
+      debugPrint('❌ Error fetching last recorded position: $e');
+      return null;
     }
   }
 

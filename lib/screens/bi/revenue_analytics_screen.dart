@@ -68,8 +68,8 @@ class _RevenueAnalyticsScreenState extends State<RevenueAnalyticsScreen>
     return Scaffold(
       appBar: AppBar(
         title: const Text('Revenue Analytics'),
-        backgroundColor: Colors.orange.shade100,
-        foregroundColor: Colors.orange.shade800,
+        backgroundColor: Colors.green.shade700,
+        foregroundColor: Colors.white,
         actions: [
           IconButton(
             onPressed: _loadRevenueData,
@@ -79,9 +79,9 @@ class _RevenueAnalyticsScreenState extends State<RevenueAnalyticsScreen>
         ],
         bottom: TabBar(
           controller: _tabController,
-          labelColor: Colors.orange.shade800,
-          unselectedLabelColor: Colors.orange.shade400,
-          indicatorColor: Colors.orange.shade600,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.green.shade200,
+          indicatorColor: Colors.white,
           tabs: const [
             Tab(text: 'Overview', icon: Icon(Icons.attach_money, size: 20)),
             Tab(text: 'Breakdown', icon: Icon(Icons.pie_chart, size: 20)),
@@ -96,10 +96,10 @@ class _RevenueAnalyticsScreenState extends State<RevenueAnalyticsScreen>
             width: double.infinity,
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.orange.shade50,
+              color: Colors.green.shade50,
               border: Border(
                 bottom: BorderSide(
-                  color: Colors.orange.shade200,
+                  color: Colors.green.shade200,
                   width: 1,
                 ),
               ),
@@ -111,7 +111,7 @@ class _RevenueAnalyticsScreenState extends State<RevenueAnalyticsScreen>
                   children: [
                     Icon(
                       Icons.attach_money,
-                      color: Colors.orange.shade700,
+                      color: Colors.green.shade700,
                       size: 24,
                     ),
                     const SizedBox(width: 8),
@@ -121,7 +121,7 @@ class _RevenueAnalyticsScreenState extends State<RevenueAnalyticsScreen>
                         style: TextStyle(
                           fontSize: 24,
                           fontWeight: FontWeight.bold,
-                          color: Colors.orange.shade800,
+                          color: Colors.green.shade800,
                         ),
                       ),
                     ),
@@ -132,7 +132,7 @@ class _RevenueAnalyticsScreenState extends State<RevenueAnalyticsScreen>
                   'Revenue Analytics • ${widget.authority.countryName ?? 'Unknown Country'}',
                   style: TextStyle(
                     fontSize: 14,
-                    color: Colors.orange.shade600,
+                    color: Colors.green.shade600,
                   ),
                 ),
               ],
@@ -276,7 +276,7 @@ class _RevenueAnalyticsScreenState extends State<RevenueAnalyticsScreen>
           style: TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.bold,
-            color: Colors.orange.shade800,
+            color: Colors.green.shade800,
           ),
         ),
         const SizedBox(height: 16),
@@ -298,19 +298,19 @@ class _RevenueAnalyticsScreenState extends State<RevenueAnalyticsScreen>
               'Monthly Revenue',
               '\$${((_revenueData['monthlyRevenue'] as double?) ?? 0.0).toStringAsFixed(0)}',
               Icons.calendar_month,
-              Colors.blue,
+              Colors.green.shade500,
             ),
             _buildMetricCard(
               'Daily Average',
               '\$${((_revenueData['dailyAverage'] as double?) ?? 0.0).toStringAsFixed(0)}',
               Icons.today,
-              Colors.purple,
+              Colors.green.shade600,
             ),
             _buildMetricCard(
               'Growth Rate',
               '${(_revenueData['revenueGrowth'] ?? 0.0).toStringAsFixed(1)}%',
               Icons.trending_up,
-              Colors.orange,
+              Colors.green,
             ),
           ],
         ),
@@ -327,7 +327,7 @@ class _RevenueAnalyticsScreenState extends State<RevenueAnalyticsScreen>
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
-            color: Colors.orange.shade800,
+            color: Colors.green.shade800,
           ),
         ),
         const SizedBox(height: 16),
@@ -354,7 +354,7 @@ class _RevenueAnalyticsScreenState extends State<RevenueAnalyticsScreen>
                   'Outstanding Payments',
                   '\$${(_revenueData['outstandingPayments'] as double).toStringAsFixed(0)}',
                   Icons.schedule,
-                  Colors.orange,
+                  Colors.green,
                 ),
               ],
             ),
@@ -373,7 +373,7 @@ class _RevenueAnalyticsScreenState extends State<RevenueAnalyticsScreen>
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
-            color: Colors.orange.shade800,
+            color: Colors.green.shade800,
           ),
         ),
         const SizedBox(height: 16),
@@ -418,7 +418,7 @@ class _RevenueAnalyticsScreenState extends State<RevenueAnalyticsScreen>
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
-            color: Colors.orange.shade800,
+            color: Colors.green.shade800,
           ),
         ),
         const SizedBox(height: 16),
@@ -491,7 +491,7 @@ class _RevenueAnalyticsScreenState extends State<RevenueAnalyticsScreen>
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
-            color: Colors.orange.shade800,
+            color: Colors.green.shade800,
           ),
         ),
         const SizedBox(height: 16),
@@ -546,7 +546,7 @@ class _RevenueAnalyticsScreenState extends State<RevenueAnalyticsScreen>
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
-            color: Colors.orange.shade800,
+            color: Colors.green.shade800,
           ),
         ),
         const SizedBox(height: 16),
@@ -614,7 +614,7 @@ class _RevenueAnalyticsScreenState extends State<RevenueAnalyticsScreen>
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
-            color: Colors.orange.shade800,
+            color: Colors.green.shade800,
           ),
         ),
         const SizedBox(height: 16),
@@ -637,7 +637,7 @@ class _RevenueAnalyticsScreenState extends State<RevenueAnalyticsScreen>
                 '${_revenueData['collectionEfficiency']}%',
                 'efficiency',
                 Icons.check_circle,
-                Colors.blue,
+                Colors.green.shade500,
                 true,
               ),
             ),
@@ -656,7 +656,7 @@ class _RevenueAnalyticsScreenState extends State<RevenueAnalyticsScreen>
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
-            color: Colors.orange.shade800,
+            color: Colors.green.shade800,
           ),
         ),
         const SizedBox(height: 16),
@@ -671,14 +671,14 @@ class _RevenueAnalyticsScreenState extends State<RevenueAnalyticsScreen>
                   Icon(
                     Icons.show_chart,
                     size: 48,
-                    color: Colors.orange.shade300,
+                    color: Colors.green.shade300,
                   ),
                   const SizedBox(height: 16),
                   Text(
                     'Revenue Charts Coming Soon',
                     style: TextStyle(
                       fontSize: 16,
-                      color: Colors.orange.shade600,
+                      color: Colors.green.shade600,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -788,7 +788,7 @@ class _RevenueAnalyticsScreenState extends State<RevenueAnalyticsScreen>
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         children: [
-          Icon(icon, color: Colors.orange.shade600, size: 20),
+          Icon(icon, color: Colors.green.shade600, size: 20),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
@@ -799,7 +799,7 @@ class _RevenueAnalyticsScreenState extends State<RevenueAnalyticsScreen>
           Text(
             value,
             style: TextStyle(
-              color: Colors.orange.shade700,
+              color: Colors.green.shade700,
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -859,13 +859,13 @@ class _RevenueAnalyticsScreenState extends State<RevenueAnalyticsScreen>
   Color _getPassTypeColor(String passType) {
     switch (passType.toLowerCase()) {
       case 'daily':
-        return Colors.blue;
+        return Colors.green.shade500;
       case 'weekly':
         return Colors.green;
       case 'monthly':
-        return Colors.orange;
+        return Colors.green;
       case 'annual':
-        return Colors.purple;
+        return Colors.green.shade600;
       default:
         return Colors.grey;
     }
@@ -889,13 +889,13 @@ class _RevenueAnalyticsScreenState extends State<RevenueAnalyticsScreen>
   Color _getPaymentMethodColor(String method) {
     switch (method.toLowerCase()) {
       case 'credit_card':
-        return Colors.blue;
+        return Colors.green.shade500;
       case 'mobile_money':
         return Colors.green;
       case 'bank_transfer':
-        return Colors.purple;
+        return Colors.green.shade600;
       case 'cash':
-        return Colors.orange;
+        return Colors.green;
       default:
         return Colors.grey;
     }

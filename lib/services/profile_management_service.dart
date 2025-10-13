@@ -55,6 +55,36 @@ class ProfileManagementService {
     }
   }
 
+  /// Update current user's phone number
+  static Future<void> updatePhoneNumber(String? phoneNumber) async {
+    try {
+      await _supabase.rpc('update_phone_number', params: {
+        'new_phone_number': phoneNumber,
+      });
+    } catch (e) {
+      throw Exception('Failed to update phone number: $e');
+    }
+  }
+
+  /// Update current user's personal information (full name, email, phone, address)
+  static Future<void> updatePersonalInformation({
+    required String fullName,
+    required String email,
+    String? phoneNumber,
+    String? address,
+  }) async {
+    try {
+      await _supabase.rpc('update_personal_information', params: {
+        'new_full_name': fullName,
+        'new_email': email,
+        'new_phone_number': phoneNumber,
+        'new_address': address,
+      });
+    } catch (e) {
+      throw Exception('Failed to update personal information: $e');
+    }
+  }
+
   /// Update current user's identity documents
   static Future<void> updateIdentityDocuments({
     required String countryOfOriginId,
@@ -159,11 +189,15 @@ class ProfileManagementService {
       final response = await _supabase.from('profiles').select('''
             full_name,
             email,
+            phone_number,
+            address,
             country_of_origin_id,
             national_id_number,
             passport_number,
+            passport_document_url,
             require_manual_pass_confirmation,
             pass_confirmation_type,
+            static_confirmation_code,
             card_holder_name,
             card_last4,
             card_exp_month,
@@ -204,6 +238,97 @@ class ProfileManagementService {
           .update({'profile_image_url': null}).eq('id', user.id);
     } catch (e) {
       throw Exception('Failed to remove profile image URL: $e');
+    }
+  }
+
+  /// Update passport document URL
+  static Future<void> updatePassportDocumentUrl(String documentUrl) async {
+    try {
+      await _supabase.rpc('update_passport_document_url', params: {
+        'new_passport_document_url': documentUrl,
+      });
+    } catch (e) {
+      throw Exception('Failed to update passport document: $e');
+    }
+  }
+
+  /// Remove passport document
+  static Future<void> removePassportDocument() async {
+    try {
+      await _supabase.rpc('remove_passport_document');
+    } catch (e) {
+      throw Exception('Failed to remove passport document: $e');
+    }
+  }
+
+  /// Get profile audit history
+  static Future<List<Map<String, dynamic>>> getProfileAuditHistory({
+    String? profileId,
+    int limit = 50,
+  }) async {
+    try {
+      final response =
+          await _supabase.rpc('get_profile_audit_history', params: {
+        'p_profile_id': profileId,
+        'p_limit': limit,
+      });
+
+      return List<Map<String, dynamic>>.from(response ?? []);
+    } catch (e) {
+      throw Exception('Failed to get audit history: $e');
+    }
+  }
+
+  /// Get profile by ID (for authorities to view owner details)
+  static Future<Map<String, dynamic>?> getProfileById(String profileId) async {
+    try {
+      // Validate UUID format first
+      if (profileId.isEmpty) {
+        throw Exception('Profile ID cannot be empty');
+      }
+
+      final response =
+          await _supabase.rpc('get_owner_profile_for_authority', params: {
+        'owner_profile_id': profileId,
+      });
+
+      if (response != null && response is List && response.isNotEmpty) {
+        return response[0] as Map<String, dynamic>;
+      }
+
+      return null;
+    } catch (e) {
+      debugPrint('Error getting profile by ID: $e');
+
+      // Provide more specific error messages
+      if (e.toString().contains('invalid input syntax for type uuid')) {
+        throw Exception('Invalid profile ID format');
+      } else if (e.toString().contains('Access denied')) {
+        throw Exception(
+            'Access denied: Only authority users can view owner details');
+      } else if (e.toString().contains('not found')) {
+        throw Exception('Owner profile not found');
+      } else {
+        throw Exception('Failed to get owner profile: ${e.toString()}');
+      }
+    }
+  }
+
+  /// Get pass owner details from pass ID
+  static Future<Map<String, dynamic>?> getPassOwnerDetails(
+      String passId) async {
+    try {
+      final response = await _supabase.rpc('get_pass_owner_details', params: {
+        'pass_id': passId,
+      });
+
+      if (response != null && response is List && response.isNotEmpty) {
+        return response[0] as Map<String, dynamic>;
+      }
+
+      return null;
+    } catch (e) {
+      throw Exception('Failed to get pass owner details: $e');
     }
   }
 

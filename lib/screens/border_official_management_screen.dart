@@ -3,6 +3,7 @@ import '../models/border_official.dart';
 import '../services/border_official_service.dart';
 import '../services/enhanced_border_service.dart';
 import '../widgets/enhanced_border_assignment_dialog.dart';
+import '../widgets/profile_image_widget.dart';
 
 class BorderOfficialManagementScreen extends StatefulWidget {
   final Map<String, dynamic> selectedCountry;
@@ -25,6 +26,7 @@ class _BorderOfficialManagementScreenState
 
   String get _countryId => widget.selectedCountry['id'] as String;
   String get _countryName => widget.selectedCountry['name'] as String;
+  String get _authorityId => widget.selectedCountry['authority_id'] as String;
   String get _authorityName =>
       widget.selectedCountry['authority_name'] as String;
 
@@ -42,7 +44,8 @@ class _BorderOfficialManagementScreenState
       });
 
       final borderOfficials =
-          await BorderOfficialService.getBorderOfficialsForCountry(_countryId);
+          await BorderOfficialService.getBorderOfficialsForAuthority(
+              _authorityId);
 
       setState(() {
         _borderOfficials = borderOfficials;
@@ -317,20 +320,13 @@ class _BorderOfficialManagementScreenState
               return Card(
                 margin: const EdgeInsets.only(bottom: 12),
                 child: ExpansionTile(
-                  leading: CircleAvatar(
-                    backgroundColor: Colors.orange.shade100,
-                    child: Text(
-                      official.fullName.isNotEmpty
-                          ? official.fullName[0].toUpperCase()
-                          : '?',
-                      style: TextStyle(
-                        color: Colors.orange.shade700,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                  leading: ProfileImageWidget(
+                    currentImageUrl: official.profileImageUrl,
+                    size: 40,
+                    isEditable: false,
                   ),
                   title: Text(
-                    official.fullName,
+                    official.displayName ?? official.fullName,
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                   subtitle: Column(
@@ -386,7 +382,8 @@ class _BorderOfficialManagementScreenState
   Widget _buildBorderAssignmentsTab() {
     return FutureBuilder<List<BorderAssignmentWithPermissions>>(
       future:
-          EnhancedBorderService.getBorderAssignmentsWithPermissions(_countryId),
+          EnhancedBorderService.getBorderAssignmentsWithPermissionsByAuthority(
+              _authorityId),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(
@@ -472,12 +469,15 @@ class _BorderOfficialManagementScreenState
                     const SizedBox(height: 12),
                     Row(
                       children: [
-                        Icon(Icons.person,
-                            size: 16, color: Colors.grey.shade600),
+                        ProfileImageWidget(
+                          currentImageUrl: assignment.officialProfileImageUrl,
+                          size: 16,
+                          isEditable: false,
+                        ),
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(
-                            assignment.officialName,
+                            assignment.officialDisplayName,
                             style: const TextStyle(fontWeight: FontWeight.w500),
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -551,7 +551,7 @@ class _BorderOfficialManagementScreenState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Are you sure you want to revoke ${assignment.officialName} from ${assignment.borderName}?',
+              'Are you sure you want to revoke ${assignment.officialDisplayName} from ${assignment.borderName}?',
             ),
             const SizedBox(height: 12),
             Container(
@@ -687,7 +687,8 @@ class _BorderOfficialManagementScreenState
 
     return FutureBuilder<List<BorderAssignmentWithPermissions>>(
       future:
-          EnhancedBorderService.getBorderAssignmentsWithPermissions(_countryId),
+          EnhancedBorderService.getBorderAssignmentsWithPermissionsByAuthority(
+              _authorityId),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Padding(

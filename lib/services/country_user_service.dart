@@ -9,6 +9,8 @@ class CountryUserProfile {
   final String profileId;
   final String? fullName;
   final String? email;
+  final String? displayName;
+  final String? profileImageUrl;
   final String roles;
   final DateTime? latestAssignedAt;
   final bool anyActive;
@@ -17,6 +19,8 @@ class CountryUserProfile {
     required this.profileId,
     this.fullName,
     this.email,
+    this.displayName,
+    this.profileImageUrl,
     required this.roles,
     this.latestAssignedAt,
     required this.anyActive,
@@ -27,6 +31,8 @@ class CountryUserProfile {
       profileId: json['profile_id'] as String,
       fullName: json['full_name'] as String?,
       email: json['email'] as String?,
+      displayName: json['display_name'] as String?,
+      profileImageUrl: json['profile_image_url'] as String?,
       roles: json['roles'] as String? ?? '',
       latestAssignedAt: json['latest_assigned_at'] != null
           ? DateTime.parse(json['latest_assigned_at'] as String)
@@ -68,7 +74,7 @@ class CountryUserService {
       debugPrint('🔍 Fetching profiles for authority: $authorityId');
 
       final response =
-          await _supabase.rpc('get_profiles_by_authority', params: {
+          await _supabase.rpc('get_profiles_by_authority_enhanced', params: {
         'target_authority_id': authorityId,
       });
 

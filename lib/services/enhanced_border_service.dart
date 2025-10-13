@@ -339,6 +339,30 @@ class EnhancedBorderService {
     }
   }
 
+  /// Get border assignments with direction permissions by authority
+  static Future<List<BorderAssignmentWithPermissions>>
+      getBorderAssignmentsWithPermissionsByAuthority(
+    String authorityId,
+  ) async {
+    try {
+      debugPrint(
+          '🔍 Getting border assignments with permissions for authority: $authorityId');
+
+      final response = await _supabase
+          .rpc('get_border_assignments_with_permissions_by_authority', params: {
+        'authority_id_param': authorityId,
+      });
+
+      debugPrint('✅ Retrieved ${response.length} border assignments');
+      return (response as List)
+          .map((item) => BorderAssignmentWithPermissions.fromJson(item))
+          .toList();
+    } catch (e) {
+      debugPrint('❌ Error getting border assignments by authority: $e');
+      rethrow;
+    }
+  }
+
   /// Fallback method to get border assignments manually
   static Future<List<BorderAssignmentWithPermissions>>
       _getBorderAssignmentsFallback(
@@ -411,6 +435,9 @@ class EnhancedBorderService {
             borderId: assignment['border_id'],
             officialName: profile['full_name'] ?? 'Unknown',
             officialEmail: profile['email'] ?? 'Unknown',
+            officialDisplayName: profile['full_name'] ??
+                'Unknown', // Fallback doesn't have display names
+            officialProfileImageUrl: profile['profile_image_url'],
             borderName: border['name'] ?? 'Unknown',
             canCheckIn: assignment['can_check_in'] ?? true,
             canCheckOut: assignment['can_check_out'] ?? true,
@@ -806,6 +833,8 @@ class BorderAssignmentWithPermissions {
   final String borderId;
   final String officialName;
   final String officialEmail;
+  final String officialDisplayName;
+  final String? officialProfileImageUrl;
   final String borderName;
   final bool canCheckIn;
   final bool canCheckOut;
@@ -817,6 +846,8 @@ class BorderAssignmentWithPermissions {
     required this.borderId,
     required this.officialName,
     required this.officialEmail,
+    required this.officialDisplayName,
+    this.officialProfileImageUrl,
     required this.borderName,
     required this.canCheckIn,
     required this.canCheckOut,
@@ -828,16 +859,22 @@ class BorderAssignmentWithPermissions {
     final profiles = json['profiles'];
     final borders = json['borders'];
 
-    String officialName, officialEmail, borderName;
+    String officialName, officialEmail, officialDisplayName, borderName;
+    String? officialProfileImageUrl;
 
     if (profiles is Map<String, dynamic>) {
       // Direct query format
       officialName = profiles['full_name'] as String? ?? 'Unknown';
       officialEmail = profiles['email'] as String? ?? 'Unknown';
+      officialDisplayName = profiles['display_name'] as String? ?? officialName;
+      officialProfileImageUrl = profiles['profile_image_url'] as String?;
     } else {
-      // Fallback for other formats
+      // Enhanced function format with display names
       officialName = json['official_name'] as String? ?? 'Unknown';
       officialEmail = json['official_email'] as String? ?? 'Unknown';
+      officialDisplayName =
+          json['official_display_name'] as String? ?? officialName;
+      officialProfileImageUrl = json['official_profile_image_url'] as String?;
     }
 
     if (borders is Map<String, dynamic>) {
@@ -854,6 +891,8 @@ class BorderAssignmentWithPermissions {
       borderId: json['border_id'] as String,
       officialName: officialName,
       officialEmail: officialEmail,
+      officialDisplayName: officialDisplayName,
+      officialProfileImageUrl: officialProfileImageUrl,
       borderName: borderName,
       canCheckIn: json['can_check_in'] as bool? ?? true,
       canCheckOut: json['can_check_out'] as bool? ?? true,

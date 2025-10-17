@@ -12,6 +12,7 @@ class PassCardWidget extends StatelessWidget {
   final VoidCallback? onQrCodeTap;
   final bool isCompact;
   final bool showSecureCode;
+  final bool showPassHistory;
 
   const PassCardWidget({
     super.key,
@@ -21,6 +22,7 @@ class PassCardWidget extends StatelessWidget {
     this.onQrCodeTap,
     this.isCompact = false,
     this.showSecureCode = true,
+    this.showPassHistory = true,
   });
 
   @override
@@ -346,27 +348,29 @@ class PassCardWidget extends StatelessWidget {
                     isCompact: isCompact,
                   ),
 
-                  // Pass History Button
-                  SizedBox(height: isCompact ? 12 : 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: () => _showPassHistory(context),
-                      icon: const Icon(Icons.history, size: 18),
-                      label: const Text('View Pass History'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
-                        foregroundColor: Colors.white,
-                        padding: EdgeInsets.symmetric(
-                          vertical: isCompact ? 12 : 14,
-                          horizontal: 16,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
+                  // Pass History Button (conditional)
+                  if (showPassHistory) ...[
+                    SizedBox(height: isCompact ? 12 : 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: () => _showPassHistory(context),
+                        icon: const Icon(Icons.history, size: 18),
+                        label: const Text('View Pass History'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue,
+                          foregroundColor: Colors.white,
+                          padding: EdgeInsets.symmetric(
+                            vertical: isCompact ? 12 : 14,
+                            horizontal: 16,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
                         ),
                       ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),

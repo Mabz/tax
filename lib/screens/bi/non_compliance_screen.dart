@@ -337,6 +337,7 @@ class _NonComplianceScreenState extends State<NonComplianceScreen> {
 
   Widget _buildNonComplianceBanner() {
     final nonCompliantCount = (_analyticsData['overstayedVehicles'] ?? 0) +
+        (_analyticsData['illegalVehicles'] ?? 0) +
         (_analyticsData['fraudAlerts'] ?? 0);
 
     return Container(
@@ -410,6 +411,17 @@ class _NonComplianceScreenState extends State<NonComplianceScreen> {
                 ),
               ),
             );
+          },
+        ),
+        const SizedBox(height: 12),
+        _buildClickableNonComplianceCard(
+          'Illegal Vehicles In-Country',
+          (_analyticsData['illegalVehicles'] ?? 0).toString(),
+          'Vehicles found in-country but showing as departed (never checked in)',
+          Icons.warning,
+          Colors.orange,
+          () {
+            _showIllegalVehiclesDetails();
           },
         ),
         const SizedBox(height: 12),
@@ -1202,5 +1214,121 @@ class _NonComplianceScreenState extends State<NonComplianceScreen> {
       });
       _loadAnalyticsData();
     }
+  }
+
+  /// Show illegal vehicles details dialog
+  void _showIllegalVehiclesDetails() {
+    final illegalVehicles =
+        (_analyticsData['illegalVehiclesList'] as List<dynamic>?) ?? [];
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.warning, color: Colors.orange.shade600),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text('Illegal Vehicles In-Country'),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 400,
+          child: illegalVehicles.isEmpty
+              ? const Center(
+                  child: Text(
+                    'No illegal vehicles detected.\n\nThis is good news - all vehicles found in-country have properly checked in through border control.',
+                    textAlign: TextAlign.center,
+                  ),
+                )
+              : ListView.builder(
+                  itemCount: illegalVehicles.length,
+                  itemBuilder: (context, index) {
+                    final vehicle = illegalVehicles[index];
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: Colors.red.shade100,
+                          child: Icon(
+                            Icons.warning,
+                            color: Colors.red.shade600,
+                            size: 20,
+                          ),
+                        ),
+                        title: Text(
+                          vehicle['vehicle_description'] ?? 'Unknown Vehicle',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                                'Owner: ${vehicle['owner_name'] ?? 'Unknown'}'),
+                            Text(
+                                'Last Scan: ${vehicle['last_scan_date'] ?? 'Unknown'}'),
+                            Text(
+                                'Location: ${vehicle['scan_location'] ?? 'Unknown'}'),
+                            if (vehicle['days_since_departure'] != null)
+                              Text(
+                                'Days since departure: ${vehicle['days_since_departure']}',
+                                style: TextStyle(
+                                  color: Colors.red.shade600,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                          ],
+                        ),
+                        trailing: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.red.shade100,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            vehicle['risk_level'] ?? 'HIGH',
+                            style: TextStyle(
+                              color: Colors.red.shade700,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+          if (illegalVehicles.isNotEmpty)
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                // TODO: Navigate to detailed illegal vehicles screen
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content:
+                        Text('Detailed illegal vehicles screen coming soon'),
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange.shade600,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('View Details'),
+            ),
+        ],
+      ),
+    );
   }
 }

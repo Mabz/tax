@@ -12,9 +12,11 @@ import '../services/pass_verification_service.dart';
 
 import '../services/enhanced_border_service.dart';
 import '../services/profile_management_service.dart';
+import '../services/border_selection_service.dart';
 import '../enums/pass_verification_method.dart';
 import '../widgets/pass_card_widget.dart';
 import '../widgets/owner_details_popup.dart';
+import '../widgets/pass_history_widget.dart';
 import '../utils/time_utils.dart';
 import '../screens/vehicle_search_screen.dart';
 
@@ -534,6 +536,7 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
                   showDetails: true,
                   isCompact: true,
                   showSecureCode: false,
+                  showPassHistory: false, // Disable pass history button here
                 ),
 
                 const SizedBox(height: 16),
@@ -791,6 +794,18 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
                                   ),
                                 ),
                               ),
+                            // View Pass History button
+                            const SizedBox(height: 12),
+                            Center(
+                              child: TextButton.icon(
+                                onPressed: () => _showFullPassHistory(),
+                                icon: const Icon(Icons.history, size: 18),
+                                label: const Text('View Pass History'),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: Colors.blue.shade600,
+                                ),
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -1261,8 +1276,14 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
 
     if (isSuccess && pass != null) {
       if (widget.role == AuthorityRole.localAuthority) {
-        // Local Authority validation summary
-        if (pass.isActive) {
+        // Simple Local Authority validation - check vehicle location first
+        if (pass.vehicleStatusDisplay == 'Departed') {
+          validationResult = 'Vehicle is ILLEGAL';
+          validationDetails =
+              'Vehicle shows as departed but found in country - possible illegal re-entry or data error.';
+          resultIcon = Icons.cancel;
+          resultColor = Colors.red.shade600;
+        } else if (pass.isActive) {
           validationResult = 'Vehicle is LEGAL';
           validationDetails =
               'Pass is valid and active. Vehicle is authorized to be in the country.';
@@ -2028,34 +2049,51 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
         throw Exception('No pass or action selected');
       }
 
-      // For border officials, process the movement with GPS tracking
+      // For border officials, process the movement with GPS validation
       if (widget.role == AuthorityRole.borderOfficial) {
-        // Use enhanced border service to process movement with GPS
-        // Use the entry point ID from the pass, or fall back to a default border for the authority
-        String borderIdToUse = _scannedPass!.entryPointId ?? 'default_border';
+        String borderIdToUse;
 
-        // If the pass doesn't have a specific entry point, we need to determine which border to use
-        // For now, we'll use the first available border for the pass's authority
-        if (_scannedPass!.entryPointId == null) {
-          try {
-            final bordersResponse = await _supabase
-                .from('borders')
-                .select('id')
-                .eq('authority_id', _scannedPass!.authorityId ?? '')
-                .limit(1);
+        // SCENARIO 1: Pass has specific entry_point_id or exit_point_id
+        if (_scannedPass!.entryPointId != null) {
+          borderIdToUse = _scannedPass!.entryPointId!;
+          debugPrint('🔍 Using pass entry point: $borderIdToUse');
 
-            if (bordersResponse.isNotEmpty) {
-              borderIdToUse = bordersResponse.first['id'] as String;
-              debugPrint(
-                  '🔍 Using first available border for authority: $borderIdToUse');
-            } else {
-              debugPrint(
-                  '⚠️ No borders found for authority, using placeholder');
-              borderIdToUse = 'placeholder_border';
-            }
-          } catch (e) {
-            debugPrint('❌ Error finding border for authority: $e');
-            borderIdToUse = 'placeholder_border';
+          // Validate GPS distance to the specific border
+          await _validateGpsDistanceToBorder(borderIdToUse);
+        } else {
+          // SCENARIO 2: Pass has no specific border - show border selection
+          debugPrint(
+              '🔍 Pass has no specific border - showing border selection');
+
+          // Get current GPS position
+          final position = await EnhancedBorderService.getCurrentPosition();
+
+          // Get borders assigned to this official
+          final assignedBorders =
+              await BorderSelectionService.findNearestAssignedBorders(
+            currentLat: position.latitude,
+            currentLon: position.longitude,
+          );
+
+          if (assignedBorders.isEmpty) {
+            throw Exception(
+                'No borders assigned to your account. Please contact your supervisor.');
+          }
+
+          // If only one border, use it directly
+          if (assignedBorders.length == 1) {
+            borderIdToUse = assignedBorders.first.borderId;
+            debugPrint('🔍 Using only assigned border: $borderIdToUse');
+
+            // Still validate GPS distance
+            await _validateGpsDistanceToBorder(borderIdToUse);
+          } else {
+            // Multiple borders - show selection UI
+            borderIdToUse =
+                await _showBorderSelectionDialog(assignedBorders, position);
+
+            // Validate GPS distance to selected border
+            await _validateGpsDistanceToBorder(borderIdToUse);
           }
         }
 
@@ -2088,6 +2126,16 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
       }
     } catch (e) {
       setState(() {
+        // Handle GPS validation cancellation specifically
+        if (e
+            .toString()
+            .contains('Processing cancelled due to GPS distance violation')) {
+          _currentStep = ValidationStep.scanning; // Go back to scanning
+          _isProcessing = false;
+          _showProcessingCancelledDialog();
+          return;
+        }
+
         // Provide user-friendly error messages based on the error type
         if (e.toString().contains('Insufficient permissions') ||
             e.toString().contains('P0001')) {
@@ -2936,17 +2984,22 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
                     ),
 
                     // View complete details button
-                    ElevatedButton.icon(
-                      onPressed: () => _showOwnerDetailsPopup(
-                          pass.profileId ?? '', ownerName),
-                      icon: const Icon(Icons.visibility, size: 16),
-                      label: const Text('View Complete'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue.shade600,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 8),
-                        textStyle: const TextStyle(fontSize: 12),
+                    Flexible(
+                      child: ElevatedButton.icon(
+                        onPressed: () => _showOwnerDetailsPopup(
+                            pass.profileId ?? '', ownerName),
+                        icon: const Icon(Icons.visibility, size: 16),
+                        label: const Text(
+                          'View Complete',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue.shade600,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8),
+                          textStyle: const TextStyle(fontSize: 12),
+                        ),
                       ),
                     ),
                   ],
@@ -2976,6 +3029,272 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
       builder: (context) => OwnerDetailsPopup(
         ownerId: ownerId,
         ownerName: ownerName,
+      ),
+    );
+  }
+
+  /// Validate GPS distance to border (30km rule)
+  Future<void> _validateGpsDistanceToBorder(String borderId) async {
+    try {
+      debugPrint('🌍 Validating GPS distance to border: $borderId');
+
+      // Get current GPS position
+      final position = await EnhancedBorderService.getCurrentPosition();
+
+      // Validate GPS distance using the border selection service
+      final validation = await BorderSelectionService.validateBorderGpsDistance(
+        passId: _scannedPass!.passId,
+        borderId: borderId,
+        currentLat: position.latitude,
+        currentLon: position.longitude,
+        maxDistanceKm: 30.0,
+      );
+
+      if (!validation.withinRange) {
+        debugPrint('⚠️ GPS validation failed: ${validation.violationMessage}');
+
+        // Show GPS violation dialog
+        final shouldProceed = await _showGpsViolationDialog(validation);
+
+        if (!shouldProceed) {
+          // User chose to cancel
+          await BorderSelectionService.logDistanceViolationResponse(
+            auditId: validation.auditId!,
+            decision: 'cancel',
+            notes: 'Official chose to cancel due to distance violation',
+          );
+
+          throw Exception('Processing cancelled due to GPS distance violation');
+        } else {
+          // User chose to proceed - log the decision
+          await BorderSelectionService.logDistanceViolationResponse(
+            auditId: validation.auditId!,
+            decision: 'proceed',
+            notes: 'Official chose to proceed despite distance violation',
+          );
+
+          debugPrint('✅ Official chose to proceed despite GPS violation');
+        }
+      } else {
+        debugPrint(
+            '✅ GPS validation passed - within ${validation.maxAllowedKm}km range');
+      }
+    } catch (e) {
+      debugPrint('❌ GPS validation error: $e');
+
+      // Re-throw cancellation exceptions to stop processing
+      if (e
+          .toString()
+          .contains('Processing cancelled due to GPS distance violation')) {
+        rethrow; // This will stop the processing
+      }
+
+      // For other GPS errors (network, permissions, etc.), just log and continue
+      debugPrint('⚠️ GPS validation failed but continuing processing');
+    }
+  }
+
+  /// Show border selection dialog for officials with multiple borders
+  Future<String> _showBorderSelectionDialog(
+      List<AssignedBorder> borders, Position position) async {
+    return await showDialog<String>(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            title: const Text('Select Border Crossing'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                      'You are assigned to multiple borders. Please select which border you are currently working at:'),
+                  const SizedBox(height: 16),
+                  ...borders.map((border) => ListTile(
+                        leading: Icon(Icons.location_on,
+                            color: Colors.blue.shade600),
+                        title: Text(border.borderName),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(border.permissionsDisplay),
+                            if (border.distanceKm != null)
+                              Text(border.distanceDisplay,
+                                  style:
+                                      TextStyle(color: Colors.grey.shade600)),
+                          ],
+                        ),
+                        onTap: () => Navigator.of(context).pop(border.borderId),
+                      )),
+                ],
+              ),
+            ),
+          ),
+        ) ??
+        borders.first.borderId; // Fallback to first border if dialog dismissed
+  }
+
+  /// Show GPS violation warning dialog
+  Future<bool> _showGpsViolationDialog(GpsValidationResult validation) async {
+    return await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            title: Row(
+              children: [
+                Icon(Icons.warning_amber, color: Colors.orange.shade600),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text('GPS Distance Warning'),
+                ),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Location Verification Failed',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.orange.shade700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(validation.violationMessage),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Location Details:',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w500,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text('Border: ${validation.borderName}'),
+                      Text('Distance: ${validation.distanceDisplay}'),
+                      Text(
+                          'Max Allowed: ${validation.maxAllowedKm.toStringAsFixed(0)}km'),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'This action will be logged for audit purposes. Do you want to proceed anyway?',
+                  style: TextStyle(fontWeight: FontWeight.w500),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange.shade600,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Proceed Anyway'),
+              ),
+            ],
+          ),
+        ) ??
+        false; // Default to false if dialog dismissed
+  }
+
+  /// Show processing cancelled dialog
+  void _showProcessingCancelledDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.cancel, color: Colors.orange.shade600),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text('Processing Cancelled'),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '📍 GPS Distance Violation',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.orange.shade700,
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'You chose to cancel processing due to GPS distance violation. This is the correct action when you are not at the designated border location.',
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.blue.shade200),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'To proceed, please:',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w500,
+                      color: Colors.blue.shade700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text('• Move to the correct border location'),
+                  const Text(
+                      '• Or contact your supervisor if this is an emergency situation'),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue.shade600,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('I Understand'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Show full pass history using the existing PassHistoryWidget
+  void _showFullPassHistory() {
+    if (_scannedPass == null) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => PassHistoryWidget(
+          passId: _scannedPass!.passId,
+          shortCode: _scannedPass!.shortCode,
+        ),
       ),
     );
   }

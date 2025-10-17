@@ -759,8 +759,14 @@ class BusinessIntelligenceService {
       debugPrint(
           '✅ Non-compliance analytics calculated: ${expiredButActive.length} violations');
 
+      // Get illegal vehicles data
+      final illegalVehiclesData = await _getIllegalVehiclesData(authorityId);
+
       return {
         'overstayedVehicles': overstayedVehicles.length,
+        'illegalVehicles': illegalVehiclesData['count'],
+        'illegalVehiclesList': illegalVehiclesData['vehicles'],
+        'fraudAlerts': 0, // Placeholder for future fraud detection
         'revenueAtRisk': revenueAtRisk,
         'authorityCurrency': authorityCurrency,
         'overdueAnalysis': overdueAnalysis,
@@ -777,6 +783,38 @@ class BusinessIntelligenceService {
     } catch (e) {
       debugPrint('❌ Error fetching non-compliance analytics: $e');
       rethrow;
+    }
+  }
+
+  /// Get illegal vehicles data - vehicles found in-country but showing as departed
+  static Future<Map<String, dynamic>> _getIllegalVehiclesData(
+      String authorityId) async {
+    try {
+      debugPrint(
+          '🔍 Fetching illegal vehicles data for authority: $authorityId');
+
+      // Call the database function to get illegal vehicles
+      final response =
+          await _supabase.rpc('get_illegal_vehicles_in_country', params: {
+        'p_authority_id': authorityId,
+        'p_days_back': 30, // Look back 30 days
+      });
+
+      final vehicles = response as List<dynamic>? ?? [];
+
+      debugPrint('✅ Found ${vehicles.length} illegal vehicles');
+
+      return {
+        'count': vehicles.length,
+        'vehicles': vehicles,
+      };
+    } catch (e) {
+      debugPrint('❌ Error fetching illegal vehicles data: $e');
+      // Return empty data on error to prevent breaking the UI
+      return {
+        'count': 0,
+        'vehicles': [],
+      };
     }
   }
 

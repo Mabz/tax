@@ -43,6 +43,20 @@ class RoleColors {
           borderColor: Colors.green.shade200,
           icon: Icons.analytics_rounded,
         );
+      case 'border manager':
+        return RoleColorInfo(
+          backgroundColor: Colors.orange.shade50,
+          textColor: Colors.orange.shade700,
+          borderColor: Colors.orange.shade200,
+          icon: Icons.manage_accounts_rounded,
+        );
+      case 'compliance officer':
+        return RoleColorInfo(
+          backgroundColor: Colors.teal.shade50,
+          textColor: Colors.teal.shade700,
+          borderColor: Colors.teal.shade200,
+          icon: Icons.verified_user_rounded,
+        );
       default:
         return RoleColorInfo(
           backgroundColor: Colors.grey.shade50,

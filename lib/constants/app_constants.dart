@@ -41,6 +41,8 @@ class AppConstants {
   static const String roleBorderOfficial = 'border_official';
   static const String roleBusinessIntelligence = 'business_intelligence';
   static const String roleLocalAuthority = 'local_authority';
+  static const String roleBorderManager = 'border_manager';
+  static const String roleComplianceOfficer = 'compliance_officer';
   static const String roleSuperuser = 'superuser';
 
   /// Country codes (ISO 3166-1 alpha-3)

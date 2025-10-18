@@ -1126,6 +1126,11 @@ class _InviteUserDialogState extends State<_InviteUserDialog> {
       'display': 'Business Intelligence'
     },
     {'name': AppConstants.roleLocalAuthority, 'display': 'Local Authority'},
+    {'name': AppConstants.roleBorderManager, 'display': 'Border Manager'},
+    {
+      'name': AppConstants.roleComplianceOfficer,
+      'display': 'Compliance Officer'
+    },
   ];
 
   @override

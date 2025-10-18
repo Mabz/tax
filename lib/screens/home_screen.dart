@@ -18,6 +18,8 @@ import 'profile_management_screen.dart';
 import 'border_type_management_screen.dart';
 import 'border_management_screen.dart';
 import 'border_official_management_screen.dart';
+import 'border_manager_management_screen.dart';
+import 'border_manager_border_official_screen.dart';
 import 'audit_management_screen.dart';
 import 'country_user_management_screen.dart';
 import 'manage_users_screen.dart';
@@ -26,6 +28,8 @@ import 'bi/pass_analytics_screen.dart';
 import 'bi/non_compliance_screen.dart';
 import 'bi/revenue_analytics_screen.dart';
 import 'invitation_management_screen.dart';
+import 'border_analytics_screen.dart';
+import '../services/border_analytics_access_service.dart';
 import 'invitation_dashboard_screen.dart';
 import 'vehicle_tax_rate_management_screen.dart';
 import 'pass_template_management_screen.dart';
@@ -156,13 +160,13 @@ class _HomeScreenState extends State<HomeScreen> {
       await _loadPendingInvitations();
 
       // Setup real-time subscription for invitation changes
-      _setupInvitationRealtimeSubscription();
+      // _setupInvitationRealtimeSubscription(); // Disabled due to binding error
 
       // Setup real-time subscription for authority changes
-      _setupAuthorityRealtimeSubscription();
+      // _setupAuthorityRealtimeSubscription(); // Disabled due to binding error
 
       // Setup real-time subscription for profile role changes
-      _setupProfileRolesRealtimeSubscription();
+      // _setupProfileRolesRealtimeSubscription(); // Disabled due to binding error
     } catch (e) {
       debugPrint('❌ Error checking user roles: $e');
       if (mounted) {
@@ -479,7 +483,7 @@ class _HomeScreenState extends State<HomeScreen> {
       });
 
       // Set up real-time subscription for profile changes
-      _setupProfileRealtimeSubscription();
+      // _setupProfileRealtimeSubscription(); // Disabled due to binding error
 
       debugPrint('✅ Loaded profile: ${profile?.fullName ?? profile?.email}');
 
@@ -606,6 +610,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   bool _isBusinessIntelligenceForSelected() {
     return _hasCountryRole(AppConstants.roleBusinessIntelligence);
+  }
+
+  bool _isBorderManagerForSelected() {
+    return _hasCountryRole(AppConstants.roleBorderManager);
+  }
+
+  bool _isComplianceOfficerForSelected() {
+    return _hasCountryRole(AppConstants.roleComplianceOfficer);
   }
 
   bool _isLocalAuthorityForSelected() {
@@ -1162,8 +1174,11 @@ class _HomeScreenState extends State<HomeScreen> {
         Container(
           color: Colors.purple.shade50,
           child: ListTile(
-            leading: const Icon(Icons.public, color: Colors.purple),
-            title: const Text('Manage Countries'),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            leading: Icon(Icons.public, color: Colors.purple, size: 26),
+            title: const Text('Manage Countries',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
             subtitle: const Text('Add, edit, or remove countries'),
             onTap: () {
               Navigator.of(context).pop();
@@ -1178,8 +1193,11 @@ class _HomeScreenState extends State<HomeScreen> {
         Container(
           color: Colors.purple.shade50,
           child: ListTile(
-            leading: const Icon(Icons.people, color: Colors.purple),
-            title: const Text('Manage Users'),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            leading: Icon(Icons.people, color: Colors.purple, size: 26),
+            title: const Text('Manage Users',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
             subtitle: const Text('Search and manage user profiles'),
             onTap: () {
               Navigator.of(context).pop();
@@ -1194,8 +1212,12 @@ class _HomeScreenState extends State<HomeScreen> {
         Container(
           color: Colors.purple.shade50,
           child: ListTile(
-            leading: const Icon(Icons.account_balance, color: Colors.purple),
-            title: const Text('Manage Authorities'),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            leading:
+                Icon(Icons.account_balance, color: Colors.purple, size: 26),
+            title: const Text('Manage Authorities',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
             subtitle: const Text('Create and manage revenue authorities'),
             onTap: () {
               Navigator.of(context).pop();
@@ -1210,8 +1232,11 @@ class _HomeScreenState extends State<HomeScreen> {
         Container(
           color: Colors.purple.shade50,
           child: ListTile(
-            leading: const Icon(Icons.border_all, color: Colors.purple),
-            title: const Text('Manage Border Types'),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            leading: Icon(Icons.border_all, color: Colors.purple, size: 26),
+            title: const Text('Manage Border Types',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
             subtitle: const Text('Configure border crossing types'),
             onTap: () {
               Navigator.of(context).pop();
@@ -1443,6 +1468,36 @@ class _HomeScreenState extends State<HomeScreen> {
           },
         ),
         ListTile(
+          leading: const Icon(Icons.manage_accounts, color: Colors.orange),
+          title: const Text('Border Managers'),
+          subtitle: Text(_selectedAuthority != null
+              ? 'Assign managers for ${_selectedAuthority!.name}'
+              : 'Assign border managers to borders'),
+          onTap: () {
+            if (_selectedAuthority == null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Please select an authority first'),
+                  backgroundColor: Colors.orange,
+                ),
+              );
+              return;
+            }
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => BorderManagerManagementScreen(
+                  selectedCountry: {
+                    'id': _selectedAuthority!.countryId,
+                    'name': _selectedAuthority!.countryName,
+                    'authority_id': _selectedAuthority!.id,
+                    'authority_name': _selectedAuthority!.name,
+                  },
+                ),
+              ),
+            );
+          },
+        ),
+        ListTile(
           leading: const Icon(Icons.security, color: Colors.orange),
           title: const Text('Border Officials'),
           subtitle: Text(_selectedAuthority != null
@@ -1472,6 +1527,42 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
             );
+          },
+        ),
+        // Border Analytics - Available to country admins, auditors, compliance officers, and border managers
+        FutureBuilder<bool>(
+          future: BorderAnalyticsAccessService.canAccessBorderAnalytics(),
+          builder: (context, snapshot) {
+            if (snapshot.data == true) {
+              return ListTile(
+                leading: const Icon(Icons.analytics, color: Colors.orange),
+                title: const Text('Border Analytics'),
+                subtitle: Text(_selectedAuthority != null
+                    ? 'View analytics for ${_selectedAuthority!.name}'
+                    : 'View border performance and compliance analytics'),
+                onTap: () {
+                  if (_selectedAuthority == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Please select an authority first'),
+                        backgroundColor: Colors.orange,
+                      ),
+                    );
+                    return;
+                  }
+                  Navigator.of(context).pop();
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => BorderAnalyticsScreen(
+                        authorityId: _selectedAuthority!.id,
+                        authorityName: _selectedAuthority!.name,
+                      ),
+                    ),
+                  );
+                },
+              );
+            }
+            return const SizedBox.shrink();
           },
         ),
         ListTile(
@@ -1533,6 +1624,54 @@ class _HomeScreenState extends State<HomeScreen> {
                   authorityId: _selectedAuthority!.id,
                   authorityName: _selectedAuthority!.name,
                 ),
+              ),
+            );
+          },
+        ),
+      ],
+      // Border Management (Border Managers)
+      if (_selectedAuthority != null && _isBorderManagerForSelected()) ...[
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            children: [
+              Icon(Icons.manage_accounts,
+                  color: Colors.purple.shade600, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'Border Management',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.purple.shade700,
+                ),
+              ),
+            ],
+          ),
+        ),
+        ListTile(
+          leading: const Icon(Icons.people, color: Colors.purple),
+          title: const Text('Manage Border Officials'),
+          subtitle:
+              const Text('Assign and manage border officials for your borders'),
+          onTap: () {
+            Navigator.of(context).pop();
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => const BorderManagerBorderOfficialScreen(),
+              ),
+            );
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.analytics, color: Colors.purple),
+          title: const Text('Border Analytics'),
+          subtitle: const Text('View analytics for your assigned borders'),
+          onTap: () {
+            Navigator.of(context).pop();
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => const BorderAnalyticsScreen(),
               ),
             );
           },

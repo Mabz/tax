@@ -31,7 +31,7 @@ class _PassDashboardScreenState extends State<PassDashboardScreen>
     _tabController = TabController(length: 2, vsync: this);
     _pageController = PageController();
     _loadPasses();
-    _setupRealtimeSubscription();
+    // _setupRealtimeSubscription(); // Disabled due to binding error
   }
 
   @override

@@ -1,206 +1,324 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'role_service.dart';
+import '../constants/app_constants.dart';
+import '../models/authority_profile.dart';
 
-class AuthorityProfile {
-  final String id;
-  final String profileId;
-  final String displayName;
-  final bool isActive;
-  final String? notes;
-  final DateTime assignedAt;
-  final String? assignedByName;
-  final String profileEmail;
-  final String? profileFullName;
-  final String? profileImageUrl;
-  final List<String> roleNames;
-  final DateTime createdAt;
-  final DateTime updatedAt;
-
-  AuthorityProfile({
-    required this.id,
-    required this.profileId,
-    required this.displayName,
-    required this.isActive,
-    this.notes,
-    required this.assignedAt,
-    this.assignedByName,
-    required this.profileEmail,
-    this.profileFullName,
-    this.profileImageUrl,
-    required this.roleNames,
-    required this.createdAt,
-    required this.updatedAt,
-  });
-
-  factory AuthorityProfile.fromJson(Map<String, dynamic> json) {
-    return AuthorityProfile(
-      id: json['id'],
-      profileId: json['profile_id'],
-      displayName: json['display_name'],
-      isActive: json['is_active'],
-      notes: json['notes'],
-      assignedAt: DateTime.parse(json['assigned_at']),
-      assignedByName: json['assigned_by_name'],
-      profileEmail: json['profile_email'],
-      profileFullName: json['profile_full_name'],
-      profileImageUrl: json['profile_image_url'],
-      roleNames: List<String>.from(json['role_names'] ?? []),
-      createdAt: DateTime.parse(json['created_at']),
-      updatedAt: DateTime.parse(json['updated_at']),
-    );
-  }
-}
-
+/// Service for managing user profiles within authorities (User Management)
+/// This service handles authority_profiles table - separate from role management
 class AuthorityProfilesService {
-  final SupabaseClient _supabase = Supabase.instance.client;
+  static final SupabaseClient _supabase = Supabase.instance.client;
 
-  /// Get all authority profiles for a specific authority
-  Future<List<AuthorityProfile>> getAuthorityProfiles(
+  /// Get all profiles for a specific authority
+  static Future<List<AuthorityProfile>> getAuthorityProfiles(
       String authorityId) async {
     try {
-      // First check if user can manage this authority
-      final canManage = await _canManageAuthority(authorityId);
-      if (!canManage) {
-        throw Exception(
-            'User is not a country administrator for this authority');
-      }
+      final response = await _supabase
+          .from('authority_profiles')
+          .select('''
+            id,
+            profile_id,
+            authority_id,
+            is_active,
+            created_at,
+            updated_at,
+            profiles!authority_profiles_profile_id_fkey(
+              id,
+              full_name,
+              email,
+              profile_image_url
+            ),
+            authorities!inner(
+              id,
+              name,
+              code
+            )
+          ''')
+          .eq('authority_id', authorityId)
+          .order('created_at', ascending: false);
 
-      // Call the database function to get authority profiles
-      final response = await _supabase.rpc(
-        'get_authority_profiles_for_admin',
-        params: {'admin_authority_id': authorityId},
-      );
-
-      print(
-          '🔍 AuthorityProfiles: Database function returned: ${response?.length ?? 0} records');
-
-      if (response != null && response.isNotEmpty) {
-        print('🔍 AuthorityProfiles: Sample record: ${response[0]}');
-        print(
-            '🔍 AuthorityProfiles: Profile image URL in first record: ${response[0]['profile_image_url']}');
-      }
-
-      if (response == null) return [];
-
-      final profiles = (response as List)
+      return (response as List<dynamic>)
           .map((json) => AuthorityProfile.fromJson(json))
           .toList();
-
-      print(
-          '✅ AuthorityProfiles: Successfully parsed ${profiles.length} authority profiles');
-      if (profiles.isNotEmpty) {
-        print(
-            '🔍 AuthorityProfiles: First profile image URL: ${profiles[0].profileImageUrl}');
-      }
-
-      return profiles;
     } catch (e) {
-      throw Exception('Failed to fetch authority profiles: $e');
+      debugPrint('❌ AuthorityProfilesService.getAuthorityProfiles error: $e');
+      rethrow;
     }
   }
 
-  /// Update an authority profile
-  Future<bool> updateAuthorityProfile({
+  /// Add a user to an authority (User Management function)
+  /// This affects authority_profiles table only
+  static Future<void> addUserToAuthority({
     required String profileId,
-    required String displayName,
-    required bool isActive,
-    String? notes,
+    required String authorityId,
   }) async {
     try {
-      print('🔍 AuthorityProfiles: Updating profile $profileId');
-      print('🔍 AuthorityProfiles: Display name: $displayName');
-      print('🔍 AuthorityProfiles: Is active: $isActive');
-      print('🔍 AuthorityProfiles: Notes: $notes');
+      debugPrint('🔍 Adding user to authority: $profileId -> $authorityId');
 
-      final response = await _supabase.rpc(
-        'update_authority_profile',
-        params: {
-          'profile_record_id': profileId,
-          'new_display_name': displayName,
-          'new_is_active': isActive,
-          'new_notes': notes,
-        },
-      );
-
-      print('🔍 AuthorityProfiles: Update response: $response');
-
-      final success = response == true;
-      print(success
-          ? '✅ AuthorityProfiles: Update successful'
-          : '❌ AuthorityProfiles: Update failed - response was not true');
-
-      return success;
-    } catch (e) {
-      print('❌ AuthorityProfiles: Update error: $e');
-      throw Exception('Failed to update authority profile: $e');
-    }
-  }
-
-  /// Check if current user can manage a specific authority
-  Future<bool> _canManageAuthority(String authorityId) async {
-    try {
-      final userId = _supabase.auth.currentUser?.id;
-      print(
-          '🔍 AuthorityProfiles: Checking permissions for user $userId, authority $authorityId');
-
-      if (userId == null) {
-        print('❌ AuthorityProfiles: No user ID found');
-        return false;
-      }
-
-      // Check if user is superuser
-      final isSuperuser = await RoleService.isSuperuser();
-      print('🔍 AuthorityProfiles: Is superuser: $isSuperuser');
-      if (isSuperuser) {
-        print('✅ AuthorityProfiles: Access granted - superuser');
-        return true;
-      }
-
-      // Check if user has admin role (like other management screens do)
-      final hasAdminRole = await RoleService.hasAdminRole();
-      print('🔍 AuthorityProfiles: Has admin role: $hasAdminRole');
-      if (hasAdminRole) {
-        print('✅ AuthorityProfiles: Access granted - country administrator');
-        return true;
-      }
-
-      print('❌ AuthorityProfiles: Access denied - no admin privileges');
-      return false;
-    } catch (e) {
-      print('❌ AuthorityProfiles: Permission check error: $e');
-      return false;
-    }
-  }
-
-  /// Check if current user is a country administrator for any authority
-  Future<bool> isCountryAdministrator() async {
-    try {
-      final userId = _supabase.auth.currentUser?.id;
-      if (userId == null) return false;
-
-      final response = await _supabase
-          .from('profile_roles')
-          .select('authority_id, roles!inner(name)')
-          .eq('profile_id', userId)
-          .eq('is_active', true)
-          .eq('roles.name', 'country_administrator')
-          .limit(1)
+      // Check if user is already in the authority
+      final existing = await _supabase
+          .from('authority_profiles')
+          .select('id, is_active')
+          .eq('profile_id', profileId)
+          .eq('authority_id', authorityId)
           .maybeSingle();
 
-      return response != null;
+      if (existing != null) {
+        if (existing['is_active'] == false) {
+          // Reactivate existing inactive record
+          await _supabase.from('authority_profiles').update({
+            'is_active': true,
+            'updated_at': DateTime.now().toIso8601String(),
+          }).eq('id', existing['id']);
+          debugPrint('✅ User reactivated in authority');
+        } else {
+          throw Exception('User is already active in this authority');
+        }
+      } else {
+        // Create new authority profile record
+        await _supabase.from('authority_profiles').insert({
+          'profile_id': profileId,
+          'authority_id': authorityId,
+          'is_active': true,
+          'created_at': DateTime.now().toIso8601String(),
+          'updated_at': DateTime.now().toIso8601String(),
+        });
+        debugPrint('✅ User added to authority successfully');
+      }
     } catch (e) {
+      debugPrint('❌ AuthorityProfilesService.addUserToAuthority error: $e');
+      rethrow;
+    }
+  }
+
+  /// Remove a user from an authority (User Management function)
+  /// This affects authority_profiles table only - deactivates the user completely
+  /// This is different from role management which only affects specific roles
+  static Future<void> removeUserFromAuthority({
+    required String profileId,
+    required String authorityId,
+  }) async {
+    try {
+      debugPrint(
+          '🔍 Removing user from authority: $profileId from $authorityId');
+
+      // Deactivate the user in authority_profiles
+      await _supabase
+          .from('authority_profiles')
+          .update({
+            'is_active': false,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('profile_id', profileId)
+          .eq('authority_id', authorityId);
+
+      // Also deactivate all their roles in this authority
+      await _supabase
+          .from(AppConstants.tableProfileRoles)
+          .update({
+            AppConstants.fieldProfileRoleIsActive: false,
+            AppConstants.fieldUpdatedAt: DateTime.now().toIso8601String(),
+          })
+          .eq(AppConstants.fieldProfileRoleProfileId, profileId)
+          .eq('authority_id', authorityId);
+
+      debugPrint('✅ User removed from authority (and all roles deactivated)');
+    } catch (e) {
+      debugPrint(
+          '❌ AuthorityProfilesService.removeUserFromAuthority error: $e');
+      rethrow;
+    }
+  }
+
+  /// Reactivate a user in an authority (User Management function)
+  /// This affects authority_profiles table only
+  static Future<void> reactivateUserInAuthority({
+    required String profileId,
+    required String authorityId,
+  }) async {
+    try {
+      debugPrint(
+          '🔍 Reactivating user in authority: $profileId in $authorityId');
+
+      await _supabase
+          .from('authority_profiles')
+          .update({
+            'is_active': true,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('profile_id', profileId)
+          .eq('authority_id', authorityId);
+
+      debugPrint('✅ User reactivated in authority (roles remain as they were)');
+    } catch (e) {
+      debugPrint(
+          '❌ AuthorityProfilesService.reactivateUserInAuthority error: $e');
+      rethrow;
+    }
+  }
+
+  /// Check if a user is active in an authority
+  static Future<bool> isUserActiveInAuthority({
+    required String profileId,
+    required String authorityId,
+  }) async {
+    try {
+      final response = await _supabase
+          .from('authority_profiles')
+          .select('is_active')
+          .eq('profile_id', profileId)
+          .eq('authority_id', authorityId)
+          .maybeSingle();
+
+      return response?['is_active'] == true;
+    } catch (e) {
+      debugPrint(
+          '❌ AuthorityProfilesService.isUserActiveInAuthority error: $e');
       return false;
     }
   }
 
-  /// Get authority profiles with real-time updates for a specific authority
-  Stream<List<AuthorityProfile>> getAuthorityProfilesStream(
-      String authorityId) {
-    return Stream.periodic(const Duration(seconds: 30))
-        .asyncMap((_) => getAuthorityProfiles(authorityId))
-        .handleError((error) {
-      // Handle errors gracefully
-      return <AuthorityProfile>[];
-    });
+  /// Get all authorities a user belongs to
+  static Future<List<Map<String, dynamic>>> getUserAuthorities(
+      String profileId) async {
+    try {
+      final response = await _supabase
+          .from('authority_profiles')
+          .select('''
+            id,
+            is_active,
+            created_at,
+            authorities!inner(
+              id,
+              name,
+              code,
+              countries(name, country_code)
+            )
+          ''')
+          .eq('profile_id', profileId)
+          .eq('is_active', true)
+          .order('created_at', ascending: false);
+
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('❌ AuthorityProfilesService.getUserAuthorities error: $e');
+      rethrow;
+    }
+  }
+
+  /// Get user statistics for an authority
+  static Future<Map<String, dynamic>> getAuthorityUserStats(
+      String authorityId) async {
+    try {
+      // Get total users
+      final totalUsers = await _supabase
+          .from('authority_profiles')
+          .select('id')
+          .eq('authority_id', authorityId)
+          .count();
+
+      // Get active users
+      final activeUsers = await _supabase
+          .from('authority_profiles')
+          .select('id')
+          .eq('authority_id', authorityId)
+          .eq('is_active', true)
+          .count();
+
+      // Get inactive users
+      final inactiveUsers = await _supabase
+          .from('authority_profiles')
+          .select('id')
+          .eq('authority_id', authorityId)
+          .eq('is_active', false)
+          .count();
+
+      return {
+        'total_users': totalUsers,
+        'active_users': activeUsers,
+        'inactive_users': inactiveUsers,
+      };
+    } catch (e) {
+      debugPrint('❌ AuthorityProfilesService.getAuthorityUserStats error: $e');
+      return {
+        'total_users': 0,
+        'active_users': 0,
+        'inactive_users': 0,
+      };
+    }
+  }
+
+  /// Update authority profile information (display name, status)
+  static Future<bool> updateAuthorityProfile({
+    required String profileId,
+    String? displayName,
+    bool? isActive,
+    String? notes, // Keep parameter for compatibility but don't use it
+  }) async {
+    try {
+      debugPrint('🔍 Updating authority profile: $profileId');
+
+      final updateData = <String, dynamic>{
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+
+      if (isActive != null) {
+        updateData['is_active'] = isActive;
+      }
+
+      // Note: notes field is not stored in authority_profiles table
+      // It's kept as parameter for UI compatibility but not persisted
+
+      // Update authority profile
+      await _supabase
+          .from('authority_profiles')
+          .update(updateData)
+          .eq('profile_id', profileId);
+
+      // If display name is provided, update the profile table
+      if (displayName != null && displayName.isNotEmpty) {
+        await _supabase.from('profiles').update({
+          'full_name': displayName,
+          'updated_at': DateTime.now().toIso8601String(),
+        }).eq('id', profileId);
+      }
+
+      debugPrint('✅ Authority profile updated successfully');
+      return true;
+    } catch (e) {
+      debugPrint('❌ AuthorityProfilesService.updateAuthorityProfile error: $e');
+      return false;
+    }
+  }
+
+  /// Permanently delete a user from an authority (HARD DELETE)
+  /// Use with extreme caution - this cannot be undone
+  static Future<void> permanentlyDeleteUserFromAuthority({
+    required String profileId,
+    required String authorityId,
+  }) async {
+    try {
+      debugPrint(
+          '🔍 PERMANENTLY deleting user from authority: $profileId from $authorityId');
+
+      // First delete all role assignments
+      await _supabase
+          .from(AppConstants.tableProfileRoles)
+          .delete()
+          .eq(AppConstants.fieldProfileRoleProfileId, profileId)
+          .eq('authority_id', authorityId);
+
+      // Then delete the authority profile
+      await _supabase
+          .from('authority_profiles')
+          .delete()
+          .eq('profile_id', profileId)
+          .eq('authority_id', authorityId);
+
+      debugPrint('✅ User permanently deleted from authority');
+    } catch (e) {
+      debugPrint(
+          '❌ AuthorityProfilesService.permanentlyDeleteUserFromAuthority error: $e');
+      rethrow;
+    }
   }
 }

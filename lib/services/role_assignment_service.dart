@@ -2,7 +2,16 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../constants/app_constants.dart';
 
-/// Service for managing user role assignments
+/// Service for managing user role assignments (ROLE MANAGEMENT)
+///
+/// IMPORTANT: This service only manages the profile_roles table.
+/// It does NOT affect the authority_profiles table.
+///
+/// Use AuthorityProfilesService for user management (adding/removing users from authorities).
+///
+/// Separation of concerns:
+/// - RoleAssignmentService: Manages specific roles (profile_roles table)
+/// - AuthorityProfilesService: Manages user membership in authorities (authority_profiles table)
 class RoleAssignmentService {
   static final SupabaseClient _supabase = Supabase.instance.client;
 
@@ -39,15 +48,12 @@ class RoleAssignmentService {
   /// Get all available roles
   static Future<List<Map<String, dynamic>>> getAllRoles() async {
     try {
-      final response = await _supabase
-          .from(AppConstants.tableRoles)
-          .select('''
+      final response = await _supabase.from(AppConstants.tableRoles).select('''
             ${AppConstants.fieldId},
             ${AppConstants.fieldRoleName},
             ${AppConstants.fieldRoleDisplayName},
             ${AppConstants.fieldRoleDescription}
-          ''')
-          .order(AppConstants.fieldRoleDisplayName);
+          ''').order(AppConstants.fieldRoleDisplayName);
 
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
@@ -163,10 +169,13 @@ class RoleAssignmentService {
           .select(selectStatement)
           .eq(AppConstants.fieldProfileRoleProfileId, userId)
           .eq(AppConstants.fieldProfileRoleIsActive, true)
-          .eq('${AppConstants.tableRoles}.${AppConstants.fieldRoleName}', roleName);
+          .eq('${AppConstants.tableRoles}.${AppConstants.fieldRoleName}',
+              roleName);
 
       if (countryCode != null) {
-        query = query.eq('${AppConstants.tableCountries}.${AppConstants.fieldCountryCode}', countryCode);
+        query = query.eq(
+            '${AppConstants.tableCountries}.${AppConstants.fieldCountryCode}',
+            countryCode);
       }
 
       final response = await query;
@@ -201,7 +210,8 @@ class RoleAssignmentService {
           .eq('roles.${AppConstants.fieldRoleName}', roleName);
 
       if (countryCode != null) {
-        query = query.eq('countries.${AppConstants.fieldCountryCode}', countryCode);
+        query =
+            query.eq('countries.${AppConstants.fieldCountryCode}', countryCode);
       }
 
       final response = await query;
@@ -213,8 +223,9 @@ class RoleAssignmentService {
   }
 
   // Convenience wrapper methods for backward compatibility
-  
-  /// Assign a role to a user using Supabase function
+
+  /// Assign a role to a user using direct table insert (FIXED VERSION)
+  /// This only affects profile_roles table, not authority_profiles
   static Future<void> assignRoleToUser({
     required String userId,
     required String roleId,
@@ -222,39 +233,99 @@ class RoleAssignmentService {
     DateTime? expiresAt,
   }) async {
     try {
-      final response = await _supabase.rpc('assign_role_to_profile', params: {
-        'p_profile_id': userId,
-        'p_role_id': roleId,
-        'p_country_id': countryId,
-        'p_expires_at': expiresAt?.toIso8601String(),
+      debugPrint('🔍 Assigning role to user: $userId, role: $roleId');
+
+      final currentUser = _supabase.auth.currentUser;
+      if (currentUser == null) {
+        throw Exception('No authenticated user');
+      }
+
+      // Direct table insert - only insert into profile_roles
+      // Do NOT touch authority_profiles table
+      await _supabase.from(AppConstants.tableProfileRoles).insert({
+        AppConstants.fieldProfileRoleProfileId: userId,
+        AppConstants.fieldProfileRoleRoleId: roleId,
+        AppConstants.fieldProfileRoleCountryId: countryId,
+        AppConstants.fieldProfileRoleAssignedBy: currentUser.id,
+        AppConstants.fieldProfileRoleExpiresAt: expiresAt?.toIso8601String(),
+        AppConstants.fieldProfileRoleIsActive: true,
+        AppConstants.fieldCreatedAt: DateTime.now().toIso8601String(),
+        AppConstants.fieldUpdatedAt: DateTime.now().toIso8601String(),
       });
 
-      if (response['success'] != true) {
-        throw Exception(response['error'] ?? 'Failed to assign role');
-      }
+      debugPrint('✅ Role assigned successfully');
     } catch (e) {
       debugPrint('❌ RoleAssignmentService.assignRoleToUser error: $e');
       rethrow;
     }
   }
 
-  /// Remove a role from a user using Supabase function
+  /// Deactivate a role assignment (FIXED VERSION - SOFT DELETE)
+  /// This only affects profile_roles table, not authority_profiles
+  /// The user remains active in authority_profiles - only the specific role is deactivated
   static Future<void> removeRoleFromUser(String profileRoleId) async {
     try {
-      final response = await _supabase.rpc('remove_role_from_profile', params: {
-        'p_profile_role_id': profileRoleId,
-      });
+      debugPrint('🔍 Deactivating role assignment: $profileRoleId');
 
-      if (response['success'] != true) {
-        throw Exception(response['error'] ?? 'Failed to remove role');
-      }
+      // Direct table update - only deactivate the role in profile_roles
+      // Do NOT touch authority_profiles table
+      await _supabase.from(AppConstants.tableProfileRoles).update({
+        AppConstants.fieldProfileRoleIsActive: false,
+        AppConstants.fieldUpdatedAt: DateTime.now().toIso8601String(),
+      }).eq(AppConstants.fieldId, profileRoleId);
+
+      debugPrint(
+          '✅ Role assignment deactivated successfully (user remains active in authority)');
     } catch (e) {
       debugPrint('❌ RoleAssignmentService.removeRoleFromUser error: $e');
       rethrow;
     }
   }
 
-  /// Update a role assignment using Supabase function
+  /// Permanently delete a role assignment (HARD DELETE)
+  /// This only affects profile_roles table, not authority_profiles
+  /// Use with caution - this cannot be undone
+  static Future<void> deleteRoleFromUser(String profileRoleId) async {
+    try {
+      debugPrint('🔍 Permanently deleting role assignment: $profileRoleId');
+
+      // Direct table delete - only delete from profile_roles
+      // Do NOT touch authority_profiles table
+      await _supabase
+          .from(AppConstants.tableProfileRoles)
+          .delete()
+          .eq(AppConstants.fieldId, profileRoleId);
+
+      debugPrint(
+          '✅ Role assignment deleted permanently (user remains active in authority)');
+    } catch (e) {
+      debugPrint('❌ RoleAssignmentService.deleteRoleFromUser error: $e');
+      rethrow;
+    }
+  }
+
+  /// Reactivate a previously deactivated role assignment
+  /// This only affects profile_roles table, not authority_profiles
+  static Future<void> reactivateRoleForUser(String profileRoleId) async {
+    try {
+      debugPrint('🔍 Reactivating role assignment: $profileRoleId');
+
+      // Direct table update - only reactivate the role in profile_roles
+      // Do NOT touch authority_profiles table
+      await _supabase.from(AppConstants.tableProfileRoles).update({
+        AppConstants.fieldProfileRoleIsActive: true,
+        AppConstants.fieldUpdatedAt: DateTime.now().toIso8601String(),
+      }).eq(AppConstants.fieldId, profileRoleId);
+
+      debugPrint('✅ Role assignment reactivated successfully');
+    } catch (e) {
+      debugPrint('❌ RoleAssignmentService.reactivateRoleForUser error: $e');
+      rethrow;
+    }
+  }
+
+  /// Update a role assignment using direct table update (FIXED VERSION)
+  /// This only affects profile_roles table, not authority_profiles
   static Future<void> updateRoleAssignment({
     required String profileRoleId,
     String? countryId,
@@ -262,16 +333,33 @@ class RoleAssignmentService {
     bool? isActive,
   }) async {
     try {
-      final response = await _supabase.rpc('update_role_assignment', params: {
-        'p_profile_role_id': profileRoleId,
-        'p_country_id': countryId,
-        'p_expires_at': expiresAt?.toIso8601String(),
-        'p_is_active': isActive,
-      });
+      debugPrint('🔍 Updating role assignment: $profileRoleId');
 
-      if (response['success'] != true) {
-        throw Exception(response['error'] ?? 'Failed to update role assignment');
+      final updateData = <String, dynamic>{
+        AppConstants.fieldUpdatedAt: DateTime.now().toIso8601String(),
+      };
+
+      if (countryId != null) {
+        updateData[AppConstants.fieldProfileRoleCountryId] = countryId;
       }
+
+      if (expiresAt != null) {
+        updateData[AppConstants.fieldProfileRoleExpiresAt] =
+            expiresAt.toIso8601String();
+      }
+
+      if (isActive != null) {
+        updateData[AppConstants.fieldProfileRoleIsActive] = isActive;
+      }
+
+      // Direct table update - only update the role in profile_roles
+      // Do NOT touch authority_profiles table
+      await _supabase
+          .from(AppConstants.tableProfileRoles)
+          .update(updateData)
+          .eq(AppConstants.fieldId, profileRoleId);
+
+      debugPrint('✅ Role assignment updated successfully');
     } catch (e) {
       debugPrint('❌ RoleAssignmentService.updateRoleAssignment error: $e');
       rethrow;

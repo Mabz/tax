@@ -24,7 +24,7 @@ class _InvitationDashboardScreenState extends State<InvitationDashboardScreen> {
   void initState() {
     super.initState();
     _loadPendingInvitations();
-    _setupRealtimeSubscription();
+    // _setupRealtimeSubscription(); // Disabled due to binding error
   }
 
   @override

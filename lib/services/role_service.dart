@@ -108,6 +108,16 @@ class RoleService {
     return profileHasRole(AppConstants.roleBusinessIntelligence);
   }
 
+  /// Check if current user has border manager role (without country restriction)
+  static Future<bool> hasBorderManagerRole() async {
+    return profileHasRole(AppConstants.roleBorderManager);
+  }
+
+  /// Check if current user has compliance officer role (without country restriction)
+  static Future<bool> hasComplianceOfficerRole() async {
+    return profileHasRole(AppConstants.roleComplianceOfficer);
+  }
+
   /// Check if current user has any auditor role (country auditor or superuser)
   static Future<bool> hasAuditorRole() async {
     final isSuperuser = await RoleService.isSuperuser();
@@ -137,6 +147,12 @@ class RoleService {
     }
     if (await profileHasRole(AppConstants.roleLocalAuthority)) {
       roles.add(AppConstants.roleLocalAuthority);
+    }
+    if (await profileHasRole(AppConstants.roleBorderManager)) {
+      roles.add(AppConstants.roleBorderManager);
+    }
+    if (await profileHasRole(AppConstants.roleComplianceOfficer)) {
+      roles.add(AppConstants.roleComplianceOfficer);
     }
 
     return roles;
@@ -207,6 +223,8 @@ class RoleService {
             AppConstants.roleBorderOfficial,
             AppConstants.roleBusinessIntelligence,
             AppConstants.roleLocalAuthority,
+            AppConstants.roleBorderManager,
+            AppConstants.roleComplianceOfficer,
           ])
           .eq(AppConstants.fieldProfileRoleIsActive, true)
           .eq('${AppConstants.tableAuthorities}.${AppConstants.fieldAuthorityIsActive}',

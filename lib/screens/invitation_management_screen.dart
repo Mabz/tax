@@ -72,7 +72,7 @@ class _InvitationManagementScreenState
       await _loadData();
 
       // Set up real-time subscription for invitation changes
-      _setupInvitationRealtimeSubscription();
+      // _setupInvitationRealtimeSubscription(); // Disabled due to binding error
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -156,43 +156,62 @@ class _InvitationManagementScreenState
 
   /// Set up real-time subscription for invitation changes
   void _setupInvitationRealtimeSubscription() {
-    debugPrint(
-        '🔄 Setting up real-time subscription for invitation management');
-    debugPrint('   Authority ID: $_authorityId');
-    debugPrint('   Country ID: ${widget.selectedCountry?.id}');
+    try {
+      debugPrint(
+          '🔄 Setting up real-time subscription for invitation management');
+      debugPrint('   Authority ID: $_authorityId');
+      debugPrint('   Country ID: ${widget.selectedCountry?.id}');
 
-    _invitationRealtimeChannel = Supabase.instance.client
-        .channel('invitation_management_changes')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: AppConstants.tableRoleInvitations,
-          // No filter - listen to ALL changes to catch accept/decline from any authority
-          callback: (payload) {
-            debugPrint(
-                '🔄 Real-time invitation change detected in management screen: ${payload.eventType}');
-            debugPrint(
-                '   Invitation ID: ${payload.newRecord?['id'] ?? payload.oldRecord?['id'] ?? 'unknown'}');
-            debugPrint(
-                '   Email: ${payload.newRecord?['email'] ?? payload.oldRecord?['email'] ?? 'unknown'}');
-            debugPrint(
-                '   Status: ${payload.newRecord?['status'] ?? payload.oldRecord?['status'] ?? 'unknown'}');
-            debugPrint(
-                '   Authority ID: ${payload.newRecord?['authority_id'] ?? payload.oldRecord?['authority_id'] ?? 'unknown'}');
-            debugPrint('   Full payload: $payload');
+      // Clean up existing subscription first
+      _invitationRealtimeChannel?.unsubscribe();
 
-            // Add a small delay to avoid race conditions with manual refreshes
-            Future.delayed(const Duration(milliseconds: 500), () {
-              if (mounted) {
-                debugPrint('🔄 Real-time triggered reload of invitation list');
-                _loadData();
+      _invitationRealtimeChannel = Supabase.instance.client
+          .channel(
+              'invitation_management_changes_${DateTime.now().millisecondsSinceEpoch}')
+          .onPostgresChanges(
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            table: AppConstants.tableRoleInvitations,
+            // No filter - listen to ALL changes to catch accept/decline from any authority
+            callback: (payload) {
+              try {
+                debugPrint(
+                    '🔄 Real-time invitation change detected in management screen: ${payload.eventType}');
+                debugPrint(
+                    '   Invitation ID: ${payload.newRecord?['id'] ?? payload.oldRecord?['id'] ?? 'unknown'}');
+                debugPrint(
+                    '   Email: ${payload.newRecord?['email'] ?? payload.oldRecord?['email'] ?? 'unknown'}');
+                debugPrint(
+                    '   Status: ${payload.newRecord?['status'] ?? payload.oldRecord?['status'] ?? 'unknown'}');
+                debugPrint(
+                    '   Authority ID: ${payload.newRecord?['authority_id'] ?? payload.oldRecord?['authority_id'] ?? 'unknown'}');
+
+                // Add a small delay to avoid race conditions with manual refreshes
+                Future.delayed(const Duration(milliseconds: 500), () {
+                  if (mounted) {
+                    debugPrint(
+                        '🔄 Real-time triggered reload of invitation list');
+                    _loadData();
+                  }
+                });
+              } catch (e) {
+                debugPrint('🔄 Error processing realtime callback: $e');
               }
-            });
-          },
-        )
-        .subscribe();
-
-    debugPrint('✅ Real-time subscription set up for invitation management');
+            },
+          )
+          .subscribe((status, [error]) {
+        debugPrint('🔄 Subscription status: $status');
+        if (error != null) {
+          debugPrint('🔄 Subscription error: $error');
+        } else if (status == RealtimeSubscribeStatus.subscribed) {
+          debugPrint(
+              '✅ Real-time subscription set up for invitation management');
+        }
+      });
+    } catch (e) {
+      debugPrint('🔄 Failed to setup realtime subscription: $e');
+      // Continue without realtime - the app should still work
+    }
   }
 
   Future<void> _showInviteDialog() async {

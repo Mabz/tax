@@ -682,6 +682,8 @@ class InvitationService {
           AppConstants.roleBorderOfficial,
           AppConstants.roleBusinessIntelligence,
           AppConstants.roleLocalAuthority,
+          AppConstants.roleBorderManager,
+          AppConstants.roleComplianceOfficer,
         ]).order(AppConstants.fieldRoleDisplayName);
 
         debugPrint(

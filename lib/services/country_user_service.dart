@@ -269,6 +269,8 @@ class CountryUserService {
         AppConstants.roleBorderOfficial,
         AppConstants.roleBusinessIntelligence,
         AppConstants.roleLocalAuthority,
+        AppConstants.roleBorderManager,
+        AppConstants.roleComplianceOfficer,
       ]).order('display_name');
 
       debugPrint('✅ Fetched ${response.length} assignable roles');

@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/purchased_pass.dart';
+import 'fraud_detection_service.dart';
 
 /// Business Intelligence Service
 /// Provides analytics and insights data for BI dashboards
@@ -81,7 +82,8 @@ class BusinessIntelligenceService {
         'complianceRate': complianceRate,
         'expiredButActive': expiredButActive,
         'overstayedVehicles': overstayedVehicles,
-        'fraudAlerts': 0, // TODO: Implement fraud detection logic
+        'fraudAlerts': (await FraudDetectionService.getFraudStatistics(
+            authorityId))['total_alerts'],
         'revenueAtRisk': passes
             .where((p) => p.isExpired && p.currentStatus == 'checked_in')
             .fold<double>(0.0, (sum, p) => sum + p.amount),
@@ -297,7 +299,8 @@ class BusinessIntelligenceService {
         'activePasses': activePasses,
         'expiredPasses': expiredPasses,
         'overstayedVehicles': overstayedVehicles.length, // Consolidated metric
-        'fraudAlerts': 0, // TODO: Implement fraud detection
+        'fraudAlerts': (await FraudDetectionService.getFraudStatistics(
+            authorityId))['total_alerts'],
         'complianceRate': complianceRate,
         'revenueAtRisk': revenueAtRisk,
         'authorityCurrency': authorityCurrency,
@@ -1149,6 +1152,211 @@ class BusinessIntelligenceService {
     if (firstName != null && firstName.isNotEmpty) parts.add(firstName);
     if (lastName != null && lastName.isNotEmpty) parts.add(lastName);
     return parts.isEmpty ? 'Unknown Owner' : parts.join(' ');
+  }
+
+  /// Get distribution tax collection efficiency analytics
+  static Future<Map<String, dynamic>> getDistributionTaxCollectionEfficiency(
+      String authorityId) async {
+    try {
+      debugPrint(
+          '🔍 Analyzing distribution tax collection efficiency for authority: $authorityId');
+
+      // Get all passes and border data
+      final passesResponse = await _supabase
+          .from('purchased_passes')
+          .select('*')
+          .eq('authority_id', authorityId);
+
+      final passes =
+          passesResponse.map((json) => PurchasedPass.fromJson(json)).toList();
+
+      // Get borders for this authority
+      final bordersResponse = await _supabase
+          .from('borders')
+          .select('id, name, border_types(label)')
+          .eq('authority_id', authorityId)
+          .eq('is_active', true);
+
+      // Calculate collection efficiency by border/entry point
+      final borderEfficiency = <String, Map<String, dynamic>>{};
+      final borderRevenue = <String, double>{};
+      final borderPassCount = <String, int>{};
+
+      // Analyze entry points
+      for (final pass in passes) {
+        final entryPoint = pass.entryPointName ?? 'Unknown Entry Point';
+
+        borderRevenue[entryPoint] =
+            (borderRevenue[entryPoint] ?? 0.0) + pass.amount;
+        borderPassCount[entryPoint] = (borderPassCount[entryPoint] ?? 0) + 1;
+
+        // Calculate efficiency metrics per border
+        if (!borderEfficiency.containsKey(entryPoint)) {
+          borderEfficiency[entryPoint] = {
+            'total_revenue': 0.0,
+            'total_passes': 0,
+            'active_passes': 0,
+            'expired_passes': 0,
+            'compliance_rate': 0.0,
+            'collection_rate': 0.0,
+            'average_pass_value': 0.0,
+          };
+        }
+
+        final borderData = borderEfficiency[entryPoint]!;
+        borderData['total_revenue'] =
+            (borderData['total_revenue'] as double) + pass.amount;
+        borderData['total_passes'] = (borderData['total_passes'] as int) + 1;
+
+        if (pass.isExpired) {
+          borderData['expired_passes'] =
+              (borderData['expired_passes'] as int) + 1;
+        } else if (pass.status == 'active') {
+          borderData['active_passes'] =
+              (borderData['active_passes'] as int) + 1;
+        }
+      }
+
+      // Calculate final efficiency metrics
+      for (final entry in borderEfficiency.entries) {
+        final data = entry.value;
+        final totalPasses = data['total_passes'] as int;
+        final totalRevenue = data['total_revenue'] as double;
+        final expiredPasses = data['expired_passes'] as int;
+
+        if (totalPasses > 0) {
+          data['compliance_rate'] =
+              ((totalPasses - expiredPasses) / totalPasses * 100);
+          data['collection_rate'] =
+              100.0; // Assuming all passes are paid upfront
+          data['average_pass_value'] = totalRevenue / totalPasses;
+        }
+      }
+
+      // Calculate overall distribution metrics
+      final totalRevenue = passes.fold<double>(0.0, (sum, p) => sum + p.amount);
+      final totalPasses = passes.length;
+
+      // Distribution by border type
+      final borderTypeRevenue = <String, double>{};
+      final borderTypeCount = <String, int>{};
+
+      for (final border in bordersResponse) {
+        final borderName = border['name'] as String;
+        final borderType =
+            border['border_types']?['label'] as String? ?? 'Unknown';
+
+        final revenue = borderRevenue[borderName] ?? 0.0;
+        final count = borderPassCount[borderName] ?? 0;
+
+        borderTypeRevenue[borderType] =
+            (borderTypeRevenue[borderType] ?? 0.0) + revenue;
+        borderTypeCount[borderType] =
+            (borderTypeCount[borderType] ?? 0) + count;
+      }
+
+      // Top performing borders
+      final topBorders = borderEfficiency.entries
+          .map((e) => {
+                'name': e.key,
+                'revenue': e.value['total_revenue'],
+                'passes': e.value['total_passes'],
+                'compliance_rate': e.value['compliance_rate'],
+                'average_value': e.value['average_pass_value'],
+              })
+          .toList()
+        ..sort((a, b) =>
+            (b['revenue'] as double).compareTo(a['revenue'] as double));
+
+      // Calculate distribution efficiency score
+      final averageComplianceRate = borderEfficiency.values.isEmpty
+          ? 0.0
+          : borderEfficiency.values.fold<double>(0.0,
+                  (sum, data) => sum + (data['compliance_rate'] as double)) /
+              borderEfficiency.values.length;
+
+      final distributionScore =
+          (averageComplianceRate * 0.6 + (totalPasses > 0 ? 100.0 : 0.0) * 0.4)
+              .clamp(0.0, 100.0);
+
+      debugPrint('✅ Distribution efficiency analysis complete');
+
+      return {
+        'overall_efficiency_score': distributionScore,
+        'total_revenue': totalRevenue,
+        'total_passes': totalPasses,
+        'average_compliance_rate': averageComplianceRate,
+        'border_efficiency': borderEfficiency,
+        'border_type_distribution': {
+          'revenue': borderTypeRevenue,
+          'count': borderTypeCount,
+        },
+        'top_performing_borders': topBorders.take(10).toList(),
+        'underperforming_borders': topBorders.reversed.take(5).toList(),
+        'recommendations': _generateDistributionRecommendations(
+            borderEfficiency, averageComplianceRate),
+      };
+    } catch (e) {
+      debugPrint('❌ Error analyzing distribution efficiency: $e');
+      throw Exception(
+          'Failed to analyze distribution tax collection efficiency: $e');
+    }
+  }
+
+  /// Generate recommendations for distribution efficiency
+  static List<Map<String, dynamic>> _generateDistributionRecommendations(
+    Map<String, Map<String, dynamic>> borderEfficiency,
+    double averageComplianceRate,
+  ) {
+    final recommendations = <Map<String, dynamic>>[];
+
+    // Find borders with low compliance rates
+    final lowComplianceBorders = borderEfficiency.entries
+        .where((e) => (e.value['compliance_rate'] as double) < 80.0)
+        .toList();
+
+    if (lowComplianceBorders.isNotEmpty) {
+      recommendations.add({
+        'type': 'compliance',
+        'priority': 'high',
+        'title': 'Improve Border Compliance',
+        'description':
+            '${lowComplianceBorders.length} borders have compliance rates below 80%',
+        'action':
+            'Increase enforcement and monitoring at underperforming borders',
+        'affected_borders': lowComplianceBorders.map((e) => e.key).toList(),
+      });
+    }
+
+    // Find borders with low revenue per pass
+    final lowRevenueBorders = borderEfficiency.entries
+        .where((e) => (e.value['average_pass_value'] as double) < 50.0)
+        .toList();
+
+    if (lowRevenueBorders.isNotEmpty) {
+      recommendations.add({
+        'type': 'revenue',
+        'priority': 'medium',
+        'title': 'Review Pricing Strategy',
+        'description':
+            '${lowRevenueBorders.length} borders have low average pass values',
+        'action':
+            'Consider adjusting tax rates or pass types for these borders',
+        'affected_borders': lowRevenueBorders.map((e) => e.key).toList(),
+      });
+    }
+
+    if (averageComplianceRate < 90.0) {
+      recommendations.add({
+        'type': 'system',
+        'priority': 'medium',
+        'title': 'Enhance Overall Compliance',
+        'description': 'Overall compliance rate is below optimal levels',
+        'action': 'Implement automated compliance monitoring and alerts',
+      });
+    }
+
+    return recommendations;
   }
 
   /// Helper method to filter passes by time period

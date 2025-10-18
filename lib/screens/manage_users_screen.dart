@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/authority_profiles_service.dart';
 import '../widgets/profile_image_widget.dart';
+import '../models/authority_profile.dart';
 
 class ManageUsersScreen extends StatefulWidget {
   final Map<String, dynamic> selectedAuthority;
@@ -15,8 +16,6 @@ class ManageUsersScreen extends StatefulWidget {
 }
 
 class _ManageUsersScreenState extends State<ManageUsersScreen> {
-  final AuthorityProfilesService _authorityProfilesService =
-      AuthorityProfilesService();
   List<AuthorityProfile> _authorityProfiles = [];
   bool _isLoading = true;
   String? _error;
@@ -36,7 +35,7 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
 
       final authorityId = widget.selectedAuthority['authority_id'] as String;
       final profiles =
-          await _authorityProfilesService.getAuthorityProfiles(authorityId);
+          await AuthorityProfilesService.getAuthorityProfiles(authorityId);
 
       setState(() {
         _authorityProfiles = profiles;
@@ -53,7 +52,7 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
   Future<void> _showEditDialog(AuthorityProfile profile) async {
     final displayNameController =
         TextEditingController(text: profile.displayName);
-    final notesController = TextEditingController(text: profile.notes ?? '');
+    // Notes functionality disabled - not supported in current database schema
     bool isActive = profile.isActive;
 
     final result = await showDialog<bool>(
@@ -296,37 +295,7 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
                             ],
                           ),
                         ),
-                        const SizedBox(height: 20),
-
-                        // Notes
-                        Text(
-                          'Administrative Notes',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.grey.shade800,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: notesController,
-                          maxLines: 3,
-                          decoration: InputDecoration(
-                            hintText: 'Optional notes about this user...',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(
-                                color: Colors.orange.shade400,
-                                width: 2,
-                              ),
-                            ),
-                            prefixIcon: Icon(Icons.note_outlined,
-                                color: Colors.grey.shade600),
-                          ),
-                        ),
+                        // Notes functionality disabled - not supported in current database schema
                       ],
                     ),
                   ),
@@ -374,14 +343,13 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
                             }
 
                             try {
-                              final success = await _authorityProfilesService
+                              final success = await AuthorityProfilesService
                                   .updateAuthorityProfile(
-                                profileId: profile.id,
+                                profileId: profile.profileId,
                                 displayName: displayNameController.text.trim(),
                                 isActive: isActive,
-                                notes: notesController.text.trim().isEmpty
-                                    ? null
-                                    : notesController.text.trim(),
+                                notes:
+                                    null, // Notes not supported in current schema
                               );
 
                               Navigator.of(context).pop(success);
@@ -697,28 +665,7 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
                   ],
                 ),
 
-                // Notes section
-                if (profile.notes != null && profile.notes!.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    'Notes',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.grey.shade700,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    profile.notes!,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.grey.shade600,
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
-                ],
+                // Notes section removed - not supported in current database schema
 
                 // Last assigned info
                 const SizedBox(height: 12),

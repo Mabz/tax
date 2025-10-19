@@ -455,6 +455,32 @@ class _BorderManagementScreenState extends State<BorderManagementScreen> {
                                           'Type: ${_getBorderTypeName(border.borderTypeId)}'),
                                       if (border.description != null)
                                         Text(border.description!),
+                                      Row(
+                                        children: [
+                                          Icon(
+                                            Icons.schedule_outlined,
+                                            size: 16,
+                                            color:
+                                                border.allowOutOfScheduleScans
+                                                    ? Colors.orange.shade600
+                                                    : Colors.grey.shade400,
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            border.allowOutOfScheduleScans
+                                                ? 'Out-of-schedule scans allowed'
+                                                : 'Schedule enforcement active',
+                                            style: TextStyle(
+                                              color:
+                                                  border.allowOutOfScheduleScans
+                                                      ? Colors.orange.shade600
+                                                      : Colors.grey.shade600,
+                                              fontWeight: FontWeight.w500,
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                       Text(
                                         'Status: ${border.isActive ? 'Active' : 'Inactive'}',
                                         style: TextStyle(
@@ -574,6 +600,7 @@ class _AddEditBorderDialogState extends State<_AddEditBorderDialog> {
 
   BorderType? _selectedBorderType;
   bool _isActive = true;
+  bool _allowOutOfScheduleScans = false;
   bool _isLoading = false;
 
   @override
@@ -585,6 +612,7 @@ class _AddEditBorderDialogState extends State<_AddEditBorderDialog> {
       _latitudeController.text = widget.border!.latitude?.toString() ?? '';
       _longitudeController.text = widget.border!.longitude?.toString() ?? '';
       _isActive = widget.border!.isActive;
+      _allowOutOfScheduleScans = widget.border!.allowOutOfScheduleScans;
 
       // Find the selected border type
       _selectedBorderType = widget.borderTypes.firstWhere(
@@ -675,6 +703,7 @@ class _AddEditBorderDialogState extends State<_AddEditBorderDialog> {
           latitude: latitude,
           longitude: longitude,
           description: description,
+          allowOutOfScheduleScans: _allowOutOfScheduleScans,
         );
       } else {
         // Create new border using the authority ID directly
@@ -686,6 +715,7 @@ class _AddEditBorderDialogState extends State<_AddEditBorderDialog> {
           latitude: latitude,
           longitude: longitude,
           description: description,
+          allowOutOfScheduleScans: _allowOutOfScheduleScans,
         );
       }
 
@@ -892,6 +922,24 @@ class _AddEditBorderDialogState extends State<_AddEditBorderDialog> {
                 ),
               ),
               const SizedBox(height: 16),
+              SwitchListTile(
+                title: const Text('Allow Out-of-Schedule Scans'),
+                subtitle: const Text(
+                    'Allow border officials to scan passes outside their scheduled time slots'),
+                value: _allowOutOfScheduleScans,
+                onChanged: (bool value) {
+                  setState(() {
+                    _allowOutOfScheduleScans = value;
+                  });
+                },
+                secondary: Icon(
+                  Icons.schedule_outlined,
+                  color: _allowOutOfScheduleScans
+                      ? Colors.orange.shade600
+                      : Colors.grey.shade400,
+                ),
+              ),
+              const SizedBox(height: 8),
               SwitchListTile(
                 title: const Text('Active'),
                 subtitle: const Text('Border is available for operations'),

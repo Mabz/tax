@@ -80,6 +80,7 @@ class BorderService {
     double? latitude,
     double? longitude,
     String? description,
+    bool allowOutOfScheduleScans = false,
   }) async {
     try {
       debugPrint('🔄 Creating border: $name');
@@ -111,6 +112,7 @@ class BorderService {
         AppConstants.fieldBorderLatitude: latitude,
         AppConstants.fieldBorderLongitude: longitude,
         AppConstants.fieldBorderDescription: description,
+        'allow_out_of_schedule_scans': allowOutOfScheduleScans,
       };
 
       final response = await _supabase
@@ -136,6 +138,7 @@ class BorderService {
     double? latitude,
     double? longitude,
     String? description,
+    bool? allowOutOfScheduleScans,
   }) async {
     try {
       debugPrint('🔄 Updating border: $id');
@@ -147,6 +150,7 @@ class BorderService {
         AppConstants.fieldBorderLatitude: latitude,
         AppConstants.fieldBorderLongitude: longitude,
         AppConstants.fieldBorderDescription: description,
+        'allow_out_of_schedule_scans': allowOutOfScheduleScans,
         AppConstants.fieldUpdatedAt: DateTime.now().toIso8601String(),
       };
 

@@ -148,7 +148,7 @@ class _BorderOfficialsScreenState extends State<BorderOfficialsScreen>
         title: Text(widget.authorityName != null
             ? 'Border Officials - ${widget.authorityName}'
             : 'Border Officials Performance'),
-        backgroundColor: Colors.indigo.shade700,
+        backgroundColor: Colors.purple.shade700,
         elevation: 0,
         foregroundColor: Colors.white,
         bottom: TabBar(
@@ -371,7 +371,7 @@ class _BorderOfficialsScreenState extends State<BorderOfficialsScreen>
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
           gradient: LinearGradient(
-            colors: [Colors.indigo.shade50, Colors.indigo.shade100],
+            colors: [Colors.purple.shade50, Colors.purple.shade100],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -383,12 +383,12 @@ class _BorderOfficialsScreenState extends State<BorderOfficialsScreen>
             children: [
               Row(
                 children: [
-                  Icon(Icons.schedule, color: Colors.indigo.shade700, size: 24),
+                  Icon(Icons.schedule, color: Colors.purple.shade700, size: 24),
                   const SizedBox(width: 8),
                   Text(
                     'Analysis Time Period',
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          color: Colors.indigo.shade800,
+                          color: Colors.purple.shade800,
                           fontWeight: FontWeight.bold,
                         ),
                   ),
@@ -413,19 +413,19 @@ class _BorderOfficialsScreenState extends State<BorderOfficialsScreen>
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.indigo.shade100,
+                    color: Colors.purple.shade100,
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.indigo.shade300),
+                    border: Border.all(color: Colors.purple.shade300),
                   ),
                   child: Row(
                     children: [
                       Icon(Icons.calendar_today,
-                          color: Colors.indigo.shade700, size: 16),
+                          color: Colors.purple.shade700, size: 16),
                       const SizedBox(width: 8),
                       Text(
                         '${date_utils.DateUtils.formatFriendlyDateOnly(_customStartDate!)} - ${date_utils.DateUtils.formatFriendlyDateOnly(_customEndDate!)}',
                         style: TextStyle(
-                          color: Colors.indigo.shade800,
+                          color: Colors.purple.shade800,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -457,11 +457,11 @@ class _BorderOfficialsScreenState extends State<BorderOfficialsScreen>
           }
         }
       },
-      selectedColor: Colors.indigo.shade100,
-      checkmarkColor: Colors.indigo.shade700,
-      backgroundColor: Colors.indigo.shade50,
+      selectedColor: Colors.purple.shade100,
+      checkmarkColor: Colors.purple.shade700,
+      backgroundColor: Colors.purple.shade50,
       labelStyle: TextStyle(
-        color: isSelected ? Colors.indigo.shade800 : Colors.indigo.shade600,
+        color: isSelected ? Colors.purple.shade800 : Colors.purple.shade600,
         fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
       ),
     );
@@ -475,12 +475,12 @@ class _BorderOfficialsScreenState extends State<BorderOfficialsScreen>
       children: [
         Row(
           children: [
-            Icon(Icons.analytics, color: Colors.indigo.shade700, size: 24),
+            Icon(Icons.analytics, color: Colors.purple.shade700, size: 24),
             const SizedBox(width: 8),
             Text(
               'Performance Overview',
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    color: Colors.indigo.shade800,
+                    color: Colors.purple.shade800,
                     fontWeight: FontWeight.bold,
                   ),
             ),
@@ -506,7 +506,7 @@ class _BorderOfficialsScreenState extends State<BorderOfficialsScreen>
               'Scans Yesterday',
               overview.totalScansYesterday.toString(),
               Icons.history,
-              Colors.blue.shade600,
+              Colors.purple.shade600,
               'Total passes scanned yesterday',
             ),
             _buildMetricCard(
@@ -541,7 +541,7 @@ class _BorderOfficialsScreenState extends State<BorderOfficialsScreen>
               'Active Officials',
               '${overview.activeOfficials}/${overview.totalOfficials}',
               Icons.people,
-              Colors.indigo.shade600,
+              Colors.purple.shade600,
               'Currently active officials',
             ),
             _buildMetricCard(
@@ -627,12 +627,12 @@ class _BorderOfficialsScreenState extends State<BorderOfficialsScreen>
           children: [
             Row(
               children: [
-                Icon(Icons.schedule, color: Colors.indigo.shade700, size: 24),
+                Icon(Icons.schedule, color: Colors.purple.shade700, size: 24),
                 const SizedBox(width: 8),
                 Text(
                   'Hourly Activity Pattern',
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        color: Colors.indigo.shade800,
+                        color: Colors.purple.shade800,
                         fontWeight: FontWeight.bold,
                       ),
                 ),
@@ -671,7 +671,7 @@ class _BorderOfficialsScreenState extends State<BorderOfficialsScreen>
                 Container(
                   height: height,
                   decoration: BoxDecoration(
-                    color: Colors.indigo.shade400,
+                    color: Colors.purple.shade400,
                     borderRadius:
                         const BorderRadius.vertical(top: Radius.circular(2)),
                   ),
@@ -695,12 +695,12 @@ class _BorderOfficialsScreenState extends State<BorderOfficialsScreen>
         padding: const EdgeInsets.all(16),
         child: Row(
           children: [
-            Icon(Icons.people, color: Colors.indigo.shade700, size: 24),
+            Icon(Icons.people, color: Colors.purple.shade700, size: 24),
             const SizedBox(width: 8),
             Text(
               'Individual Official Performance',
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    color: Colors.indigo.shade800,
+                    color: Colors.purple.shade800,
                     fontWeight: FontWeight.bold,
                   ),
             ),
@@ -708,7 +708,7 @@ class _BorderOfficialsScreenState extends State<BorderOfficialsScreen>
             Text(
               '${_officialsData!.officials.length} Officials',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Colors.indigo.shade600,
+                    color: Colors.purple.shade600,
                   ),
             ),
           ],
@@ -797,7 +797,7 @@ class _BorderOfficialsScreenState extends State<BorderOfficialsScreen>
                       '${official.totalScans} scans',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.bold,
-                            color: Colors.indigo.shade700,
+                            color: Colors.purple.shade700,
                           ),
                     ),
                     Text(
@@ -822,7 +822,7 @@ class _BorderOfficialsScreenState extends State<BorderOfficialsScreen>
                     'Scans/Hour',
                     official.averageScansPerHour.toStringAsFixed(1),
                     Icons.speed,
-                    Colors.blue.shade600,
+                    Colors.purple.shade600,
                   ),
                 ),
                 Expanded(

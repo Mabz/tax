@@ -11,6 +11,7 @@ class Border {
   final double? latitude;
   final double? longitude;
   final String? description;
+  final bool allowOutOfScheduleScans;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -24,6 +25,7 @@ class Border {
     this.latitude,
     this.longitude,
     this.description,
+    this.allowOutOfScheduleScans = false,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -42,6 +44,8 @@ class Border {
         latitude: json['latitude'] as double?,
         longitude: json['longitude'] as double?,
         description: json['description'] as String?,
+        allowOutOfScheduleScans:
+            json['allow_out_of_schedule_scans'] as bool? ?? false,
         createdAt: json['created_at'] != null
             ? DateTime.parse(json['created_at'] as String)
             : DateTime.now(),
@@ -66,6 +70,8 @@ class Border {
         latitude: json[AppConstants.fieldBorderLatitude] as double?,
         longitude: json[AppConstants.fieldBorderLongitude] as double?,
         description: json[AppConstants.fieldBorderDescription] as String?,
+        allowOutOfScheduleScans:
+            json['allow_out_of_schedule_scans'] as bool? ?? false,
         createdAt: DateTime.parse(json[AppConstants.fieldCreatedAt] as String),
         updatedAt: DateTime.parse(json[AppConstants.fieldUpdatedAt] as String),
       );
@@ -83,6 +89,7 @@ class Border {
       AppConstants.fieldBorderLatitude: latitude,
       AppConstants.fieldBorderLongitude: longitude,
       AppConstants.fieldBorderDescription: description,
+      'allow_out_of_schedule_scans': allowOutOfScheduleScans,
       AppConstants.fieldCreatedAt: createdAt.toIso8601String(),
       AppConstants.fieldUpdatedAt: updatedAt.toIso8601String(),
     };
@@ -99,6 +106,7 @@ class Border {
     double? latitude,
     double? longitude,
     String? description,
+    bool? allowOutOfScheduleScans,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -112,6 +120,8 @@ class Border {
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,
       description: description ?? this.description,
+      allowOutOfScheduleScans:
+          allowOutOfScheduleScans ?? this.allowOutOfScheduleScans,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );

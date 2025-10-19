@@ -29,6 +29,8 @@ import 'bi/non_compliance_screen.dart';
 import 'bi/revenue_analytics_screen.dart';
 import 'invitation_management_screen.dart';
 import 'border_analytics_screen.dart';
+import 'border_schedule_management_screen.dart';
+import 'official_schedule_screen.dart';
 import '../services/border_analytics_access_service.dart';
 import 'invitation_dashboard_screen.dart';
 import 'vehicle_tax_rate_management_screen.dart';
@@ -1693,7 +1695,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         ListTile(
           leading: const Icon(Icons.people, color: Colors.purple),
-          title: const Text('Manage Border Officials'),
+          title: const Text('Border Officials'),
           subtitle:
               const Text('Assign and manage border officials for your borders'),
           onTap: () {
@@ -1701,6 +1703,22 @@ class _HomeScreenState extends State<HomeScreen> {
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (context) => const BorderManagerBorderOfficialScreen(),
+              ),
+            );
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.schedule, color: Colors.purple),
+          title: const Text('Border Schedules'),
+          subtitle: const Text('Manage border official schedules and shifts'),
+          onTap: () {
+            Navigator.of(context).pop();
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => BorderScheduleManagementScreen(
+                  authorityId: _selectedAuthority?.id,
+                  authorityName: _selectedAuthority?.name,
+                ),
               ),
             );
           },
@@ -1758,6 +1776,20 @@ class _HomeScreenState extends State<HomeScreen> {
                   currentAuthorityId: _selectedAuthority?.id,
                   currentCountryId: _selectedAuthority?.countryId,
                 ),
+              ),
+            );
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.schedule, color: Colors.red),
+          title: const Text('My Schedule'),
+          subtitle:
+              const Text('View your current and historical work schedule'),
+          onTap: () {
+            Navigator.of(context).pop();
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => const OfficialScheduleScreen(),
               ),
             );
           },

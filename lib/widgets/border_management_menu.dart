@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../screens/border_analytics_screen.dart';
+import '../screens/border_schedule_management_screen.dart';
+import '../screens/border_configuration_screen.dart';
 import '../services/border_analytics_access_service.dart';
 
 /// Border Management Menu Widget
@@ -26,22 +28,36 @@ class _BorderManagementMenuState extends State<BorderManagementMenu> {
   @override
   void initState() {
     super.initState();
+    debugPrint('🔍 BorderManagementMenu.initState() called');
     _checkAccess();
   }
 
   Future<void> _checkAccess() async {
+    debugPrint('🔍 _checkAccess() started');
     try {
+      debugPrint(
+          '🔍 Calling BorderAnalyticsAccessService.canAccessBorderAnalytics()');
       final canAccess =
           await BorderAnalyticsAccessService.canAccessBorderAnalytics();
+      debugPrint('🔍 canAccessBorderAnalytics result: $canAccess');
+
+      debugPrint(
+          '🔍 Calling BorderAnalyticsAccessService.getAccessibleAuthorities()');
       final authorities =
           await BorderAnalyticsAccessService.getAccessibleAuthorities();
+      debugPrint(
+          '🔍 getAccessibleAuthorities result: ${authorities.length} authorities');
 
+      debugPrint(
+          '🔍 Setting state: canAccess=$canAccess, authorities=${authorities.length}');
       setState(() {
         _canAccessAnalytics = canAccess;
         _accessibleAuthorities = authorities;
         _isLoading = false;
       });
+      debugPrint('🔍 setState completed successfully');
     } catch (e) {
+      debugPrint('❌ Error in _checkAccess(): $e');
       setState(() {
         _isLoading = false;
       });
@@ -50,7 +66,11 @@ class _BorderManagementMenuState extends State<BorderManagementMenu> {
 
   @override
   Widget build(BuildContext context) {
+    debugPrint(
+        '🔍 BorderManagementMenu.build() called. _isLoading: $_isLoading');
+
     if (_isLoading) {
+      debugPrint('🔍 Showing loading indicator');
       return const Card(
         child: Padding(
           padding: EdgeInsets.all(16),
@@ -58,6 +78,8 @@ class _BorderManagementMenuState extends State<BorderManagementMenu> {
         ),
       );
     }
+
+    debugPrint('🔍 About to render main BorderManagementMenu content');
 
     return Card(
       child: Padding(
@@ -79,7 +101,10 @@ class _BorderManagementMenuState extends State<BorderManagementMenu> {
               ],
             ),
             const SizedBox(height: 16),
-            _buildBorderManagementOptions(),
+            () {
+              debugPrint('🔍 About to call _buildBorderManagementOptions()');
+              return _buildBorderManagementOptions();
+            }(),
           ],
         ),
       ),
@@ -87,6 +112,11 @@ class _BorderManagementMenuState extends State<BorderManagementMenu> {
   }
 
   Widget _buildBorderManagementOptions() {
+    debugPrint(
+        '🔍 Building border management options. _canAccessAnalytics: $_canAccessAnalytics');
+    debugPrint(
+        '🔍 Accessible authorities count: ${_accessibleAuthorities.length}');
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -98,8 +128,47 @@ class _BorderManagementMenuState extends State<BorderManagementMenu> {
         ),
         const SizedBox(height: 12),
 
+        // Show message if no access to any management features
+        if (!_canAccessAnalytics) ...[
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.grey.shade300),
+            ),
+            child: Column(
+              children: [
+                Icon(Icons.lock_outline, size: 32, color: Colors.grey.shade400),
+                const SizedBox(height: 8),
+                Text(
+                  'No Management Access',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: Colors.grey.shade600,
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'You need Border Manager or Country Administrator permissions to access border management features.',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Colors.grey.shade600,
+                      ),
+                ),
+              ],
+            ),
+          ),
+        ],
+
         // Border Analytics - moved to top
         if (_canAccessAnalytics) ...[
+          // DEBUG: This block should execute if Border Analytics is visible
+          () {
+            debugPrint(
+                '🔍 Inside _canAccessAnalytics block - Border Analytics should be visible');
+            return const SizedBox.shrink();
+          }(),
           // Use selected authority if available, otherwise fall back to accessible authorities
           if (widget.selectedAuthorityId != null &&
               widget.selectedAuthorityName != null)
@@ -141,46 +210,52 @@ class _BorderManagementMenuState extends State<BorderManagementMenu> {
               () => _navigateToBorderAnalytics(null, null),
             ),
           const SizedBox(height: 8),
-        ],
 
-        // Other management options
-        _buildMenuOption(
-          'Manage Border Officials',
-          'Manage border official assignments',
-          Icons.admin_panel_settings,
-          () {
-            // Navigate to border officials management
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                  content: Text('Border Officials management - Coming soon')),
-            );
-          },
-        ),
-        const SizedBox(height: 8),
-        _buildMenuOption(
-          'Border Configuration',
-          'Configure border settings and parameters',
-          Icons.settings,
-          () {
-            // Navigate to border configuration
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                  content: Text('Border Configuration - Coming soon')),
-            );
-          },
-        ),
-        const SizedBox(height: 8),
-        _buildMenuOption(
-          'Compliance Reports',
-          'Generate and view compliance reports',
-          Icons.assessment,
-          () {
-            // Navigate to compliance reports
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Compliance Reports - Coming soon')),
-            );
-          },
-        ),
+          // Border Officials
+          _buildMenuOption(
+            'Border Officials',
+            'Manage border official assignments and performance',
+            Icons.admin_panel_settings,
+            () {
+              // Navigate to border officials management
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                    content: Text('Border Officials management - Coming soon')),
+              );
+            },
+          ),
+          const SizedBox(height: 8),
+
+          // Border Schedules
+          _buildMenuOption(
+            'Border Schedules',
+            'Manage border official schedules and time slots',
+            Icons.schedule,
+            _navigateToBorderSchedules,
+          ),
+          const SizedBox(height: 8),
+
+          _buildMenuOption(
+            'Border Configuration',
+            'Configure border settings and out-of-schedule scan policies',
+            Icons.settings,
+            _navigateToBorderConfiguration,
+          ),
+          const SizedBox(height: 8),
+
+          _buildMenuOption(
+            'Compliance Reports',
+            'Generate and view compliance reports',
+            Icons.assessment,
+            () {
+              // Navigate to compliance reports
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                    content: Text('Compliance Reports - Coming soon')),
+              );
+            },
+          ),
+        ],
       ],
     );
   }
@@ -283,5 +358,63 @@ class _BorderManagementMenuState extends State<BorderManagementMenu> {
         ),
       ),
     );
+  }
+
+  void _navigateToBorderSchedules() {
+    debugPrint('🔍 _navigateToBorderSchedules called');
+    debugPrint('🔍 authorityId: ${widget.selectedAuthorityId}');
+    debugPrint('🔍 authorityName: ${widget.selectedAuthorityName}');
+
+    try {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) {
+            debugPrint('🔍 Building BorderScheduleManagementScreen');
+            return BorderScheduleManagementScreen(
+              authorityId: widget.selectedAuthorityId,
+              authorityName: widget.selectedAuthorityName,
+            );
+          },
+        ),
+      );
+      debugPrint('✅ Navigation to BorderScheduleManagementScreen initiated');
+    } catch (e) {
+      debugPrint('❌ Error navigating to BorderScheduleManagementScreen: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error opening Border Schedules: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  void _navigateToBorderConfiguration() {
+    debugPrint('🔍 _navigateToBorderConfiguration called');
+    debugPrint('🔍 authorityId: ${widget.selectedAuthorityId}');
+    debugPrint('🔍 authorityName: ${widget.selectedAuthorityName}');
+
+    try {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) {
+            debugPrint('🔍 Building BorderConfigurationScreen');
+            return BorderConfigurationScreen(
+              authorityId: widget.selectedAuthorityId,
+              authorityName: widget.selectedAuthorityName,
+            );
+          },
+        ),
+      );
+      debugPrint('✅ Navigation to BorderConfigurationScreen initiated');
+    } catch (e) {
+      debugPrint('❌ Error navigating to BorderConfigurationScreen: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error opening Border Configuration: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 }

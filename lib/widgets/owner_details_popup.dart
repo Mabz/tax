@@ -174,12 +174,8 @@ class _OwnerDetailsPopupState extends State<OwnerDetailsPopup> {
       );
     }
 
-    // Debug: Print passport document URL
+    // Debug: Print owner data keys (without sensitive URLs)
     debugPrint('🔍 Owner Data Keys: ${_ownerData!.keys.toList()}');
-    debugPrint(
-        '🔍 Passport Document URL: ${_ownerData!['passport_document_url']}');
-    debugPrint(
-        '🔍 Passport Document URL Type: ${_ownerData!['passport_document_url'].runtimeType}');
 
     // Check if passport document URL exists and is not empty
     final passportUrl = _ownerData!['passport_document_url']?.toString();
@@ -362,7 +358,7 @@ class _OwnerDetailsPopupState extends State<OwnerDetailsPopup> {
   Widget _buildPassportImageSection() {
     final passportUrl = _ownerData!['passport_document_url']?.toString() ?? '';
 
-    debugPrint('🖼️ Building passport image section with URL: $passportUrl');
+    debugPrint('🖼️ Building passport image section');
 
     return Container(
       width: double.infinity,
@@ -489,7 +485,6 @@ class _OwnerDetailsPopupState extends State<OwnerDetailsPopup> {
             'Passport Number', _ownerData!['passport_number']?.toString()),
         _buildInfoRow(
             'Document Status', hasPassportUrl ? 'Uploaded' : 'Not uploaded'),
-        if (hasPassportUrl) _buildInfoRow('Document URL', passportUrl),
       ],
     );
   }

@@ -284,6 +284,33 @@ class _HomeScreenState extends State<HomeScreen> {
     debugPrint('✅ Profile roles real-time subscription set up successfully');
   }
 
+  Future<void> _refreshSelectedAuthority() async {
+    if (_selectedAuthority == null) return;
+
+    try {
+      debugPrint(
+          '🔄 Refreshing selected authority: ${_selectedAuthority!.name}');
+      final refreshedAuthority =
+          await AuthorityService.getAuthorityById(_selectedAuthority!.id);
+
+      if (refreshedAuthority != null && mounted) {
+        setState(() {
+          _selectedAuthority = refreshedAuthority;
+          // Also update the authority in the _authorities list
+          final index =
+              _authorities.indexWhere((a) => a.id == refreshedAuthority.id);
+          if (index != -1) {
+            _authorities[index] = refreshedAuthority;
+          }
+        });
+        debugPrint(
+            '✅ Selected authority refreshed: ${refreshedAuthority.name}');
+      }
+    } catch (e) {
+      debugPrint('❌ Error refreshing selected authority: $e');
+    }
+  }
+
   Future<void> _loadAuthorities() async {
     debugPrint(
         '🏛️ _loadAuthorities called - isLoading: $_isLoadingAuthorities');
@@ -354,15 +381,29 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (mounted) {
         setState(() {
-          // Filter out global authorities
+          // Filter out only the special GLOBAL authority (not all global type authorities)
           _authorities = authorities.where((authority) {
-            return authority.authorityType != 'global' &&
-                authority.code != 'GLOBAL';
+            return authority.code != 'GLOBAL';
           }).toList();
 
           if (_authorities.isNotEmpty && _selectedAuthority == null) {
             _selectedAuthority = _authorities.first;
             // Load roles for the selected authority's country
+            _loadAuthorityCountryRoles();
+          } else if (_selectedAuthority != null && _authorities.isNotEmpty) {
+            // Update the selected authority with fresh data from the loaded authorities
+            final updatedAuthority = _authorities.firstWhere(
+              (a) => a.id == _selectedAuthority!.id,
+              orElse: () => _authorities.first,
+            );
+            if (updatedAuthority.id != _selectedAuthority!.id) {
+              debugPrint(
+                  '🔄 Selected authority no longer available, switching to: ${updatedAuthority.name}');
+            } else {
+              debugPrint(
+                  '🔄 Updating selected authority with fresh data: ${updatedAuthority.name}');
+            }
+            _selectedAuthority = updatedAuthority;
             _loadAuthorityCountryRoles();
           }
           _isLoadingAuthorities = false;
@@ -1147,6 +1188,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 : () async {
                     debugPrint('🔄 Manual refresh requested...');
                     await _loadAuthorities();
+                    await _refreshSelectedAuthority();
                     await _checkSuperuserStatus();
                     setState(() {});
                   },
@@ -1666,12 +1708,17 @@ class _HomeScreenState extends State<HomeScreen> {
         ListTile(
           leading: const Icon(Icons.analytics, color: Colors.purple),
           title: const Text('Border Analytics'),
-          subtitle: const Text('View analytics for your assigned borders'),
+          subtitle: Text(_selectedAuthority != null
+              ? 'View analytics for ${_selectedAuthority!.name}'
+              : 'View analytics for your assigned borders'),
           onTap: () {
             Navigator.of(context).pop();
             Navigator.of(context).push(
               MaterialPageRoute(
-                builder: (context) => const BorderAnalyticsScreen(),
+                builder: (context) => BorderAnalyticsScreen(
+                  authorityId: _selectedAuthority?.id,
+                  authorityName: _selectedAuthority?.name,
+                ),
               ),
             );
           },

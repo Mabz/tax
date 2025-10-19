@@ -122,6 +122,10 @@ class Authority {
 
   /// Get display name for authority type
   String get authorityTypeDisplay {
+    if (authorityType.isEmpty) {
+      return 'Unknown Authority';
+    }
+
     switch (authorityType) {
       case 'revenue_service':
         return 'Revenue Service';
@@ -135,7 +139,11 @@ class Authority {
         return authorityType
             .replaceAll('_', ' ')
             .split(' ')
-            .map((word) => word[0].toUpperCase() + word.substring(1))
+            .where((word) => word.isNotEmpty) // Filter out empty strings
+            .map((word) => word.isNotEmpty
+                ? word[0].toUpperCase() + word.substring(1)
+                : '')
+            .where((word) => word.isNotEmpty) // Filter out empty results
             .join(' ');
     }
   }

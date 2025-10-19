@@ -29,9 +29,9 @@ class _EditAuthorityScreenState extends State<EditAuthorityScreen> {
 
   final List<String> _authorityTypes = [
     'revenue_service',
-    'customs_authority',
-    'border_control',
-    'local_authority',
+    'customs',
+    'immigration',
+    'global',
     'other',
   ];
 
@@ -76,20 +76,37 @@ class _EditAuthorityScreenState extends State<EditAuthorityScreen> {
     _descriptionController.text = widget.authority.description ?? '';
     _defaultPassAdvanceDaysController.text =
         widget.authority.defaultPassAdvanceDays?.toString() ?? '';
-    _selectedAuthorityType = widget.authority.authorityType;
-    _selectedCurrency = widget.authority.defaultCurrencyCode ?? 'USD';
+
+    // Ensure the authority type exists in our predefined list
+    if (_authorityTypes.contains(widget.authority.authorityType)) {
+      _selectedAuthorityType = widget.authority.authorityType;
+    } else {
+      // If the authority type doesn't exist in our list, default to 'other'
+      _selectedAuthorityType = 'other';
+      debugPrint(
+          '⚠️ Authority type "${widget.authority.authorityType}" not found in predefined list, defaulting to "other"');
+    }
+
+    // Ensure the currency exists in our predefined list
+    if (_currencies.contains(widget.authority.defaultCurrencyCode)) {
+      _selectedCurrency = widget.authority.defaultCurrencyCode!;
+    } else {
+      _selectedCurrency = 'USD';
+      debugPrint(
+          '⚠️ Currency "${widget.authority.defaultCurrencyCode}" not found in predefined list, defaulting to "USD"');
+    }
   }
 
   String _getAuthorityTypeDisplayName(String type) {
     switch (type) {
       case 'revenue_service':
         return 'Revenue Service';
-      case 'customs_authority':
+      case 'customs':
         return 'Customs Authority';
-      case 'border_control':
-        return 'Border Control';
-      case 'local_authority':
-        return 'Local Authority';
+      case 'immigration':
+        return 'Immigration Authority';
+      case 'global':
+        return 'Global Authority';
       case 'other':
         return 'Other';
       default:

@@ -5,7 +5,14 @@ import '../services/border_analytics_access_service.dart';
 /// Border Management Menu Widget
 /// Shows border management options based on user roles
 class BorderManagementMenu extends StatefulWidget {
-  const BorderManagementMenu({super.key});
+  final String? selectedAuthorityId;
+  final String? selectedAuthorityName;
+
+  const BorderManagementMenu({
+    super.key,
+    this.selectedAuthorityId,
+    this.selectedAuthorityName,
+  });
 
   @override
   State<BorderManagementMenu> createState() => _BorderManagementMenuState();
@@ -72,113 +79,14 @@ class _BorderManagementMenuState extends State<BorderManagementMenu> {
               ],
             ),
             const SizedBox(height: 16),
-            if (_canAccessAnalytics) ...[
-              _buildAnalyticsSection(),
-              const SizedBox(height: 16),
-            ],
-            _buildOtherBorderOptions(),
+            _buildBorderManagementOptions(),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildAnalyticsSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Analytics & Reporting',
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-        ),
-        const SizedBox(height: 12),
-        if (_accessibleAuthorities.length == 1)
-          // Single authority - direct access
-          _buildAnalyticsButton(
-            'Border Analytics',
-            'View comprehensive border analytics and compliance reports',
-            Icons.analytics,
-            () => _navigateToBorderAnalytics(
-              _accessibleAuthorities.first['id'],
-              _accessibleAuthorities.first['name'],
-            ),
-          )
-        else if (_accessibleAuthorities.length > 1)
-          // Multiple authorities - show selection
-          _buildAnalyticsButton(
-            'Border Analytics',
-            'Select authority to view border analytics',
-            Icons.analytics,
-            _showAuthoritySelection,
-          )
-        else
-          // No specific authority access - use current user's assigned borders
-          _buildAnalyticsButton(
-            'Border Analytics',
-            'View analytics for your assigned borders',
-            Icons.analytics,
-            () => _navigateToBorderAnalytics(null, null),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildAnalyticsButton(
-    String title,
-    String subtitle,
-    IconData icon,
-    VoidCallback onTap,
-  ) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          border: Border.all(color: Colors.grey.shade300),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.blue.shade50,
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Icon(icon, color: Colors.blue.shade700, size: 20),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                  ),
-                  Text(
-                    subtitle,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.grey.shade600,
-                        ),
-                  ),
-                ],
-              ),
-            ),
-            Icon(Icons.arrow_forward_ios,
-                size: 16, color: Colors.grey.shade400),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildOtherBorderOptions() {
+  Widget _buildBorderManagementOptions() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -189,10 +97,57 @@ class _BorderManagementMenuState extends State<BorderManagementMenu> {
               ),
         ),
         const SizedBox(height: 12),
+
+        // Border Analytics - moved to top
+        if (_canAccessAnalytics) ...[
+          // Use selected authority if available, otherwise fall back to accessible authorities
+          if (widget.selectedAuthorityId != null &&
+              widget.selectedAuthorityName != null)
+            // Use selected authority from home screen
+            _buildMenuOption(
+              'Border Analytics',
+              'Analytics, officials performance, and forecasts for ${widget.selectedAuthorityName}',
+              Icons.analytics,
+              () => _navigateToBorderAnalytics(
+                widget.selectedAuthorityId,
+                widget.selectedAuthorityName,
+              ),
+            )
+          else if (_accessibleAuthorities.length == 1)
+            // Single authority - direct access
+            _buildMenuOption(
+              'Border Analytics',
+              'Analytics, officials performance, compliance reports, and forecasts',
+              Icons.analytics,
+              () => _navigateToBorderAnalytics(
+                _accessibleAuthorities.first['id'],
+                _accessibleAuthorities.first['name'],
+              ),
+            )
+          else if (_accessibleAuthorities.length > 1)
+            // Multiple authorities - show selection
+            _buildMenuOption(
+              'Border Analytics',
+              'Select authority to view analytics, officials performance, and forecasts',
+              Icons.analytics,
+              _showAuthoritySelection,
+            )
+          else
+            // No specific authority access - use current user's assigned borders
+            _buildMenuOption(
+              'Border Analytics',
+              'Analytics, officials performance, and forecasts for your assigned borders',
+              Icons.analytics,
+              () => _navigateToBorderAnalytics(null, null),
+            ),
+          const SizedBox(height: 8),
+        ],
+
+        // Other management options
         _buildMenuOption(
-          'Border Officials',
+          'Manage Border Officials',
           'Manage border official assignments',
-          Icons.people,
+          Icons.admin_panel_settings,
           () {
             // Navigate to border officials management
             ScaffoldMessenger.of(context).showSnackBar(

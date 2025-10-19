@@ -89,7 +89,7 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
 
   // Scan purpose and notes
   String? _selectedScanPurpose; // No default - force user to select
-  String? _currentMovementId; // Track the movement ID for updates
+// Track the movement ID for updates
   final List<Map<String, String>> _scanPurposes = [
     {'value': 'routine_check', 'label': 'Routine Check'},
     {'value': 'roadblock', 'label': 'Roadblock'},
@@ -2190,7 +2190,6 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
       // Clear scan purpose and notes for next scan
       _selectedScanPurpose = null; // Reset to null to force selection
       _notesController.clear();
-      _currentMovementId = null;
     });
 
     // Clear the movement ID in the service

@@ -22,7 +22,7 @@ class AuthorityService {
         response = await _supabase
             .from('authorities')
             .select(
-                'id, name, country_id, code, authority_type, description, is_active, created_at, updated_at')
+                'id, name, country_id, code, authority_type, description, is_active, default_pass_advance_days, default_currency_code, created_at, updated_at')
             .eq('is_active', true)
             .order('name');
 
@@ -41,7 +41,7 @@ class AuthorityService {
               authority_type,
               description,
               is_active,
-              default_currency,
+              default_currency_code,
               created_at,
               updated_at,
               countries!inner(
@@ -65,7 +65,7 @@ class AuthorityService {
         response = await _supabase
             .from('authorities')
             .select(
-                'id, name, country_id, code, authority_type, description, is_active, default_currency, created_at, updated_at')
+                'id, name, country_id, code, authority_type, description, is_active, default_currency_code, created_at, updated_at')
             .eq('is_active', true)
             .order('name');
 
@@ -143,36 +143,9 @@ class AuthorityService {
         return [];
       }
 
-      // Use the new function that respects authority_profiles.is_active
-      try {
-        final response =
-            await _supabase.rpc('get_admin_authorities_for_user', params: {
-          'user_id': user.id,
-        });
-
-        final authorities = (response as List).map((json) {
-          return Authority(
-            id: json['id'] as String,
-            countryId: json['country_id'] as String,
-            name: json['name'] as String,
-            countryName: json['country_name'] as String,
-            countryCode: json['country_code'] as String,
-            code: '', // Not returned by this function, use empty string
-            authorityType:
-                '', // Not returned by this function, use empty string
-            description: '', // Not returned by this function, use empty string
-            isActive: true, // Only active authorities are returned
-            createdAt: DateTime.now(), // Not returned by this function
-            updatedAt: DateTime.now(), // Not returned by this function
-          );
-        }).toList();
-
-        debugPrint(
-            '✅ Fetched ${authorities.length} admin authorities (respecting authority_profiles.is_active)');
-        return authorities;
-      } catch (rpcError) {
-        debugPrint('⚠️ Admin authorities RPC function failed: $rpcError');
-      }
+      // Skip the problematic RPC function and use direct query instead
+      debugPrint(
+          '🔄 Using direct query instead of RPC function for better data completeness');
 
       // Fallback: Get authorities based on user's profile_roles for admin roles
       debugPrint(
@@ -194,6 +167,8 @@ class AuthorityService {
               authority_type,
               description,
               is_active,
+              default_pass_advance_days,
+              default_currency_code,
               created_at,
               updated_at,
               countries!inner(
@@ -213,9 +188,18 @@ class AuthorityService {
           .eq('authorities.countries.is_active', true)
           .inFilter('roles.name', ['country_admin', 'country_auditor']);
 
+      debugPrint('🔍 getAdminAuthorities response count: ${response.length}');
+
       final authorities = response.map<Authority>((item) {
         final authority = item['authorities'] as Map<String, dynamic>;
         final country = authority['countries'] as Map<String, dynamic>;
+
+        // Debug: Print raw authority data
+        debugPrint('🔍 Raw authority data: $authority');
+        debugPrint('🔍 Authority type: "${authority['authority_type']}"');
+        debugPrint(
+            '🔍 Default currency code: "${authority['default_currency_code']}"');
+        debugPrint('🔍 Description: "${authority['description']}"');
 
         // Flatten the data for the Authority model
         final flattenedJson = Map<String, dynamic>.from(authority);
@@ -223,7 +207,13 @@ class AuthorityService {
         flattenedJson['country_code'] = country['country_code'];
         flattenedJson.remove('countries');
 
-        return Authority.fromJson(flattenedJson);
+        final parsedAuthority = Authority.fromJson(flattenedJson);
+        debugPrint(
+            '🔍 Parsed authority type: "${parsedAuthority.authorityType}"');
+        debugPrint(
+            '🔍 Parsed currency: "${parsedAuthority.defaultCurrencyCode}"');
+
+        return parsedAuthority;
       }).toList();
 
       // Remove duplicates by authority ID
@@ -255,6 +245,22 @@ class AuthorityService {
         debugPrint(
             '🔍 AuthorityService: RPC response type: ${response.runtimeType}');
         debugPrint('🔍 AuthorityService: RPC response: $response');
+        if (response is List && response.isNotEmpty) {
+          final firstItem = response.first as Map<String, dynamic>;
+          debugPrint(
+              '🔍 AuthorityService: RPC authority_type: "${firstItem['authority_type']}"');
+          debugPrint(
+              '🔍 AuthorityService: RPC default_currency_code: "${firstItem['default_currency_code']}"');
+          debugPrint(
+              '🔍 AuthorityService: RPC description: "${firstItem['description']}"');
+        } else if (response is Map<String, dynamic>) {
+          debugPrint(
+              '🔍 AuthorityService: RPC authority_type: "${response['authority_type']}"');
+          debugPrint(
+              '🔍 AuthorityService: RPC default_currency_code: "${response['default_currency_code']}"');
+          debugPrint(
+              '🔍 AuthorityService: RPC description: "${response['description']}"');
+        }
 
         if (response != null && response is List && response.isNotEmpty) {
           final authorityData = response.first as Map<String, dynamic>;
@@ -264,6 +270,12 @@ class AuthorityService {
           final authority = Authority.fromJson(authorityData);
           debugPrint(
               '✅ AuthorityService: Successfully parsed authority via RPC: ${authority.name}');
+          debugPrint(
+              '🔍 AuthorityService: Authority description: ${authority.description}');
+          debugPrint(
+              '🔍 AuthorityService: Authority currency: ${authority.defaultCurrencyCode}');
+          debugPrint(
+              '🔍 AuthorityService: Authority advance days: ${authority.defaultPassAdvanceDays}');
           return authority;
         } else if (response != null && response is Map<String, dynamic>) {
           debugPrint('🔍 AuthorityService: Using direct RPC map response');
@@ -272,6 +284,12 @@ class AuthorityService {
           final authority = Authority.fromJson(response);
           debugPrint(
               '✅ AuthorityService: Successfully parsed authority via RPC: ${authority.name}');
+          debugPrint(
+              '🔍 AuthorityService: Authority description: ${authority.description}');
+          debugPrint(
+              '🔍 AuthorityService: Authority currency: ${authority.defaultCurrencyCode}');
+          debugPrint(
+              '🔍 AuthorityService: Authority advance days: ${authority.defaultPassAdvanceDays}');
           return authority;
         } else {
           debugPrint(
@@ -335,6 +353,14 @@ class AuthorityService {
       }
 
       debugPrint('🔍 AuthorityService: Direct query response: $response');
+      debugPrint(
+          '🔍 AuthorityService: Raw authority_type: "${response['authority_type']}"');
+      debugPrint(
+          '🔍 AuthorityService: Raw default_currency_code: "${response['default_currency_code']}"');
+      debugPrint(
+          '🔍 AuthorityService: Raw description: "${response['description']}"');
+      debugPrint(
+          '🔍 AuthorityService: Raw default_pass_advance_days: "${response['default_pass_advance_days']}"');
 
       if (response.isEmpty) {
         debugPrint(
@@ -359,6 +385,12 @@ class AuthorityService {
           '✅ AuthorityService: Successfully parsed authority via direct query: ${authority.name}');
       debugPrint(
           '🔍 AuthorityService: Authority details - ID: ${authority.id}, Name: ${authority.name}, Description: ${authority.description}');
+      debugPrint(
+          '🔍 AuthorityService: Authority currency: ${authority.defaultCurrencyCode}');
+      debugPrint(
+          '🔍 AuthorityService: Authority advance days: ${authority.defaultPassAdvanceDays}');
+      debugPrint(
+          '🔍 AuthorityService: Authority type: ${authority.authorityType}');
       return authority;
     } catch (e, stackTrace) {
       debugPrint('❌ AuthorityService: Error fetching authority by ID: $e');
@@ -372,17 +404,27 @@ class AuthorityService {
         final response = await _supabase
             .from('authorities')
             .select(
-                'id, country_id, name, code, authority_type, description, is_active, created_at, updated_at')
+                'id, country_id, name, code, authority_type, description, is_active, default_pass_advance_days, default_currency_code, created_at, updated_at')
             .eq('id', authorityId)
             .eq('is_active', true)
             .single();
 
         debugPrint('🔍 AuthorityService: Basic query response: $response');
+        debugPrint(
+            '🔍 AuthorityService: Basic query authority_type: "${response['authority_type']}"');
+        debugPrint(
+            '🔍 AuthorityService: Basic query default_currency_code: "${response['default_currency_code']}"');
+        debugPrint(
+            '🔍 AuthorityService: Basic query description: "${response['description']}"');
 
         if (response.isNotEmpty) {
           final authority = Authority.fromJson(response);
           debugPrint(
               '✅ AuthorityService: Successfully parsed authority via basic query: ${authority.name}');
+          debugPrint(
+              '🔍 AuthorityService: Basic query parsed currency: ${authority.defaultCurrencyCode}');
+          debugPrint(
+              '🔍 AuthorityService: Basic query parsed type: ${authority.authorityType}');
           return authority;
         }
       } catch (basicError) {
@@ -515,7 +557,13 @@ class AuthorityService {
   }) async {
     try {
       debugPrint('🔍 Updating authority: $authorityId');
+      debugPrint('🔍 Name: $name');
+      debugPrint('🔍 Code: $code');
+      debugPrint('🔍 Authority Type: $authorityType');
+      debugPrint('🔍 Description: $description');
       debugPrint('🔍 Default pass advance days: $defaultPassAdvanceDays');
+      debugPrint('🔍 Default currency code: $defaultCurrencyCode');
+      debugPrint('🔍 Is active: $isActive');
 
       // Check if optional columns exist first
       final optionalColumnsExist = await _checkOptionalColumnsExist();
@@ -543,11 +591,13 @@ class AuthorityService {
         }
 
         debugPrint('🔍 RPC params: $rpcParams');
-        await _supabase.rpc('update_authority', params: rpcParams);
-
+        final rpcResponse =
+            await _supabase.rpc('update_authority', params: rpcParams);
+        debugPrint('🔍 RPC response: $rpcResponse');
         debugPrint('✅ Updated authority: $authorityId via RPC');
-      } catch (rpcError) {
+      } catch (rpcError, rpcStackTrace) {
         debugPrint('⚠️ RPC update_authority failed: $rpcError');
+        debugPrint('⚠️ RPC stack trace: $rpcStackTrace');
         debugPrint('🔄 Falling back to direct table update...');
 
         // Fallback to direct table update
@@ -589,16 +639,24 @@ class AuthorityService {
         }
 
         debugPrint('🔍 Direct update data: $updateData');
-        await _supabase
+        debugPrint('🔍 Updating authority with ID: $authorityId');
+
+        final updateResponse = await _supabase
             .from('authorities')
             .update(updateData)
-            .eq('id', authorityId);
+            .eq('id', authorityId)
+            .select();
+
+        debugPrint('🔍 Update response: $updateResponse');
         debugPrint('✅ Updated authority: $authorityId via direct update');
 
         debugPrint('✅ Updated authority: $authorityId via direct update');
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       debugPrint('❌ Error updating authority: $e');
+      debugPrint('❌ Stack trace: $stackTrace');
+      debugPrint('❌ Authority ID: $authorityId');
+      debugPrint('❌ Update data: name=$name, code=$code, type=$authorityType');
       rethrow;
     }
   }

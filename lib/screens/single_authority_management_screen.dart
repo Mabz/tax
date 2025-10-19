@@ -27,6 +27,7 @@ class _SingleAuthorityManagementScreenState
   bool _isLoading = false;
   bool _hasAccess = false;
   bool _isCountryAdmin = false;
+  bool _hasChanges = false;
 
   @override
   void initState() {
@@ -130,6 +131,8 @@ class _SingleAuthorityManagementScreenState
     if (result == true) {
       debugPrint('✅ SingleAuthority: Changes detected, refreshing authority');
       await _refreshAuthority();
+      // Mark that changes were made so the home screen can refresh
+      _hasChanges = true;
     } else {
       debugPrint('ℹ️ SingleAuthority: No changes detected, skipping refresh');
     }
@@ -277,38 +280,52 @@ class _SingleAuthorityManagementScreenState
       );
     }
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('${_authority.name} Management'),
-        backgroundColor: Colors.orange.shade600,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        actions: [
-          IconButton(
-            onPressed: _navigateToInviteUsers,
-            icon: const Icon(Icons.person_add),
-            tooltip: 'Invite Users',
+    return WillPopScope(
+      onWillPop: () async {
+        // Return true if changes were made, so the home screen can refresh
+        Navigator.of(context).pop(_hasChanges);
+        return false; // Prevent default pop behavior since we handled it
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text('${_authority.name} Management'),
+          backgroundColor: Colors.orange.shade600,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () {
+              // Return true if changes were made, so the home screen can refresh
+              Navigator.of(context).pop(_hasChanges);
+            },
           ),
-        ],
-      ),
-      body: SafeArea(
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : RefreshIndicator(
-                onRefresh: _refreshAuthority,
-                child: SingleChildScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildAuthorityProfile(),
-                      const SizedBox(
-                          height: 100), // Extra space to prevent overflow
-                    ],
+          actions: [
+            IconButton(
+              onPressed: _navigateToInviteUsers,
+              icon: const Icon(Icons.person_add),
+              tooltip: 'Invite Users',
+            ),
+          ],
+        ),
+        body: SafeArea(
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : RefreshIndicator(
+                  onRefresh: _refreshAuthority,
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildAuthorityProfile(),
+                        const SizedBox(
+                            height: 100), // Extra space to prevent overflow
+                      ],
+                    ),
                   ),
                 ),
-              ),
+        ),
       ),
     );
   }

@@ -51,7 +51,8 @@ class _VehicleManagementScreenState extends State<VehicleManagementScreen> {
     );
 
     if (result == true) {
-      _loadVehicles();
+      // Force refresh the vehicle list
+      await _loadVehicles();
     }
   }
 
@@ -786,6 +787,9 @@ class _VehicleDialogState extends State<VehicleDialog> {
       }
 
       if (mounted) {
+        // Add a small delay to ensure database update completes
+        await Future.delayed(const Duration(milliseconds: 500));
+
         Navigator.of(context).pop(true);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

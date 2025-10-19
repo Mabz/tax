@@ -31,6 +31,9 @@ class PurchasedPass {
   final String? vehicleModel;
   final int? vehicleYear;
   final String? vehicleColor;
+  final String? vehicleTypeId;
+  final String? vehicleTypeLabel;
+  final String? vehicleTypeDescription;
   final String? secureCode;
   final DateTime? secureCodeExpiresAt;
 
@@ -64,6 +67,9 @@ class PurchasedPass {
     this.vehicleModel,
     this.vehicleYear,
     this.vehicleColor,
+    this.vehicleTypeId,
+    this.vehicleTypeLabel,
+    this.vehicleTypeDescription,
     this.secureCode,
     this.secureCodeExpiresAt,
   });
@@ -113,6 +119,22 @@ class PurchasedPass {
       }
     }
 
+    // Extract vehicle type information from nested vehicles data
+    String? vehicleTypeId;
+    String? vehicleTypeLabel;
+    String? vehicleTypeDescription;
+
+    if (json['vehicles'] != null) {
+      final vehicleData = json['vehicles'] as Map<String, dynamic>;
+      if (vehicleData['vehicle_types'] != null) {
+        final vehicleTypeData =
+            vehicleData['vehicle_types'] as Map<String, dynamic>;
+        vehicleTypeId = vehicleTypeData['id']?.toString();
+        vehicleTypeLabel = vehicleTypeData['label']?.toString();
+        vehicleTypeDescription = vehicleTypeData['description']?.toString();
+      }
+    }
+
     return PurchasedPass(
       passId: json['pass_id']?.toString() ?? json['id']?.toString() ?? '',
       vehicleDescription: json['vehicle_description']?.toString() ?? '',
@@ -152,6 +174,9 @@ class PurchasedPass {
           ? int.tryParse(json['vehicle_year'].toString())
           : null,
       vehicleColor: json['vehicle_color']?.toString(),
+      vehicleTypeId: vehicleTypeId,
+      vehicleTypeLabel: vehicleTypeLabel,
+      vehicleTypeDescription: vehicleTypeDescription,
       secureCode: json['secure_code']?.toString(),
       secureCodeExpiresAt: json['secure_code_expires_at'] != null
           ? DateTime.parse(json['secure_code_expires_at'].toString())
@@ -190,6 +215,9 @@ class PurchasedPass {
       'vehicle_model': vehicleModel,
       'vehicle_year': vehicleYear,
       'vehicle_color': vehicleColor,
+      'vehicle_type_id': vehicleTypeId,
+      'vehicle_type_label': vehicleTypeLabel,
+      'vehicle_type_description': vehicleTypeDescription,
       'secure_code': secureCode,
       'secure_code_expires_at': secureCodeExpiresAt?.toIso8601String(),
     };

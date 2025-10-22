@@ -24,9 +24,10 @@ class _BorderOfficialsHeatMapState extends State<BorderOfficialsHeatMap> {
   @override
   Widget build(BuildContext context) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         _buildControls(),
-        Expanded(
+        Flexible(
           child: Stack(
             children: [
               _buildMapPlaceholder(),
@@ -97,6 +98,7 @@ class _BorderOfficialsHeatMapState extends State<BorderOfficialsHeatMap> {
     // This is a placeholder for the actual map implementation
     // In a real app, you would use Google Maps, OpenStreetMap, or similar
     return Container(
+      height: 400, // Give it a fixed height to prevent unbounded constraints
       color: Colors.grey.shade100,
       child: Column(
         children: [

@@ -92,10 +92,6 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
   // Scan purpose and notes
   String? _selectedScanPurpose; // No default - force user to select
 
-  // Border selection for schedule validation
-  String? _selectedBorderId;
-  String? _selectedBorderName;
-  List<Map<String, dynamic>> _assignedBorders = [];
 // Track the movement ID for updates
   final List<Map<String, String>> _scanPurposes = [
     {'value': 'routine_check', 'label': 'Routine Check'},
@@ -160,53 +156,6 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
     _cooldownTimer?.cancel();
 
     super.dispose();
-  }
-
-  /// Load borders assigned to the current border official
-  Future<void> _loadAssignedBorders() async {
-    try {
-      debugPrint('🔍 Loading assigned borders for schedule validation');
-
-      final response = await _supabase
-          .from('border_official_borders')
-          .select('''
-            border_id,
-            borders!inner(
-              id,
-              name,
-              allow_out_of_schedule_scans
-            )
-          ''')
-          .eq('profile_id', _supabase.auth.currentUser!.id)
-          .eq('is_active', true);
-
-      final borders = List<Map<String, dynamic>>.from(response);
-
-      setState(() {
-        _assignedBorders = borders.map((item) {
-          final border = item['borders'];
-          return {
-            'id': border['id'],
-            'name': border['name'],
-            'allow_out_of_schedule_scans':
-                border['allow_out_of_schedule_scans'] ?? false,
-          };
-        }).toList();
-      });
-
-      debugPrint('✅ Loaded ${_assignedBorders.length} assigned borders');
-
-      // If only one border, select it automatically
-      if (_assignedBorders.length == 1) {
-        setState(() {
-          _selectedBorderId = _assignedBorders.first['id'];
-          _selectedBorderName = _assignedBorders.first['name'];
-        });
-        debugPrint('✅ Auto-selected single border: $_selectedBorderName');
-      }
-    } catch (e) {
-      debugPrint('❌ Error loading assigned borders: $e');
-    }
   }
 
   // 3-box secure code input similar to PIN UI
@@ -401,11 +350,6 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
           ),
         ),
 
-        // Border Selection (for Border Officials with multiple borders)
-        if (widget.role == AuthorityRole.borderOfficial &&
-            _assignedBorders.length > 1)
-          _buildBorderSelection(),
-
         // Scanner or Backup Code Input
         Expanded(
           child: _useBackupCode ? _buildBackupCodeInput() : _buildQRScanner(),
@@ -569,114 +513,6 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
           alignment: Alignment.topCenter,
           child: content,
         ),
-      ),
-    );
-  }
-
-  Widget _buildBorderSelection() {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(24, 16, 24, 8),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.orange.shade50,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.orange.shade200),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.location_on, color: Colors.orange.shade700, size: 20),
-              const SizedBox(width: 8),
-              Text(
-                'Select Border for Scanning',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.orange.shade800,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Choose which border you are currently scanning at:',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.orange.shade700,
-            ),
-          ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
-            value: _selectedBorderId,
-            decoration: InputDecoration(
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: Colors.orange.shade300),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: Colors.orange.shade300),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: Colors.orange.shade600, width: 2),
-              ),
-              filled: true,
-              fillColor: Colors.white,
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            ),
-            hint: const Text('Select a border...'),
-            items: _assignedBorders.map((border) {
-              return DropdownMenuItem<String>(
-                value: border['id'],
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.location_on,
-                      size: 16,
-                      color: border['allow_out_of_schedule_scans']
-                          ? Colors.orange.shade600
-                          : Colors.grey.shade600,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(border['name']),
-                    ),
-                    if (border['allow_out_of_schedule_scans'])
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.shade100,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          'Out-of-schedule OK',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: Colors.orange.shade700,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              );
-            }).toList(),
-            onChanged: (value) {
-              setState(() {
-                _selectedBorderId = value;
-                _selectedBorderName = _assignedBorders
-                    .firstWhere((border) => border['id'] == value)['name'];
-              });
-              debugPrint(
-                  '✅ Selected border: $_selectedBorderName ($_selectedBorderId)');
-            },
-          ),
-        ],
       ),
     );
   }
@@ -1631,9 +1467,6 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
     super.initState();
     controller = PlatformScannerController();
     _requestLocationPermission();
-    if (widget.role == AuthorityRole.borderOfficial) {
-      _loadAssignedBorders();
-    }
   }
 
   /// Request location permission and get current location
@@ -1818,81 +1651,8 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
         return;
       }
 
-      // Step 2: For Border Officials, validate schedule before proceeding
+      // Step 2: For Border Officials, determine action and check permissions
       if (widget.role == AuthorityRole.borderOfficial) {
-        // Check if border selection is required but not made
-        if (_assignedBorders.length > 1 && _selectedBorderId == null) {
-          debugPrint('❌ Border selection required but not made');
-          setState(() {
-            _errorMessage =
-                '🏢 Border Selection Required\n\nPlease select which border you are scanning at before proceeding.';
-            _isProcessing = false;
-          });
-          _startCooldownTimer();
-          return;
-        }
-
-        // Step 2.5: Schedule Validation
-        debugPrint('🕐 Validating border official schedule...');
-        final currentUser = Supabase.instance.client.auth.currentUser;
-        if (currentUser != null) {
-          final scheduleValidation =
-              await ScheduleValidationService.validateOfficialSchedule(
-            officialId: currentUser.id,
-            borderId: _selectedBorderId,
-          );
-
-          if (!scheduleValidation.allowed) {
-            // Schedule validation failed - block the scan
-            debugPrint(
-                '❌ Schedule validation failed: ${scheduleValidation.errorMessage}');
-            setState(() {
-              _errorMessage =
-                  '🕐 Schedule Validation Failed\n\n${scheduleValidation.errorMessage}';
-              _isProcessing = false;
-            });
-            _startCooldownTimer();
-            return;
-          } else if (!scheduleValidation.isWithinSchedule) {
-            // Out of schedule but border allows it - show confirmation dialog
-            debugPrint('⚠️ Out of schedule scan - showing confirmation dialog');
-            setState(() {
-              _isProcessing = false;
-            });
-
-            final confirmed = await ScheduleConfirmationDialog.show(
-              context: context,
-              validationResult: scheduleValidation,
-            );
-
-            if (!confirmed) {
-              debugPrint('❌ User declined out-of-schedule scan');
-              setState(() {
-                _errorMessage = 'Scan cancelled by user';
-              });
-              _startCooldownTimer();
-              return;
-            }
-
-            // User confirmed - log the out-of-schedule scan
-            debugPrint(
-                '✅ User confirmed out-of-schedule scan - logging for audit');
-            await ScheduleValidationService.logOutOfScheduleScan(
-              passId: pass.passId,
-              officialId: currentUser.id,
-              borderId: scheduleValidation.borderId ?? 'unknown',
-              todaySchedule: scheduleValidation.todaySchedule ?? [],
-              notes: 'Out-of-schedule scan confirmed by official',
-            );
-
-            setState(() {
-              _isProcessing = true;
-            });
-          } else {
-            debugPrint('✅ Schedule validation passed - within scheduled time');
-          }
-        }
-
         // Determine what action would be performed
         final action =
             await EnhancedBorderService.determinePassAction(pass.passId);
@@ -2337,6 +2097,68 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
 
             // Validate GPS distance to selected border
             await _validateGpsDistanceToBorder(borderIdToUse);
+          }
+        }
+
+        // Schedule validation for Border Officials (after border determination)
+        if (widget.role == AuthorityRole.borderOfficial) {
+          debugPrint('🕐 Validating schedule for border: $borderIdToUse');
+
+          final currentUser = Supabase.instance.client.auth.currentUser;
+          if (currentUser != null) {
+            final scheduleValidation =
+                await ScheduleValidationService.validateOfficialSchedule(
+              officialId: currentUser.id,
+              borderId: borderIdToUse,
+            );
+
+            if (!scheduleValidation.allowed) {
+              // Schedule validation failed - block the scan
+              debugPrint(
+                  '❌ Schedule validation failed: ${scheduleValidation.errorMessage}');
+              setState(() {
+                _errorMessage =
+                    '🕐 Schedule Validation Failed\n\n${scheduleValidation.errorMessage}';
+                _currentStep = ValidationStep.completed;
+                _isProcessing = false;
+              });
+              return;
+            } else if (!scheduleValidation.isWithinSchedule) {
+              // Out of schedule but border allows it - show confirmation dialog
+              debugPrint(
+                  '⚠️ Out of schedule scan - showing confirmation dialog');
+
+              final confirmed = await ScheduleConfirmationDialog.show(
+                context: context,
+                validationResult: scheduleValidation,
+              );
+
+              if (!confirmed) {
+                debugPrint('❌ User declined out-of-schedule scan');
+                setState(() {
+                  _errorMessage =
+                      '🚫 Out-of-Schedule Scan Cancelled\n\nYou chose not to proceed with the out-of-schedule scan.';
+                  _currentStep = ValidationStep.completed;
+                  _isProcessing = false;
+                });
+                return;
+              }
+
+              // User confirmed - log the out-of-schedule scan for audit
+              debugPrint(
+                  '✅ User confirmed out-of-schedule scan - logging for audit');
+              await ScheduleValidationService.logOutOfScheduleScan(
+                passId: _scannedPass!.passId,
+                officialId: currentUser.id,
+                borderId: borderIdToUse,
+                todaySchedule: scheduleValidation.todaySchedule ?? [],
+                notes:
+                    'Out-of-schedule scan confirmed by official at ${DateTime.now().toIso8601String()}',
+              );
+            } else {
+              debugPrint(
+                  '✅ Schedule validation passed - within scheduled time');
+            }
           }
         }
 
@@ -3004,27 +2826,35 @@ class _AuthorityValidationScreenState extends State<AuthorityValidationScreen> {
         // Build location string with available information
         List<String> locationParts = [];
 
-        // Try different combinations to get the best location description
-        if (placemark.subLocality != null &&
-            placemark.subLocality!.isNotEmpty) {
-          locationParts.add(placemark.subLocality!);
-        } else if (placemark.locality != null &&
-            placemark.locality!.isNotEmpty) {
-          locationParts.add(placemark.locality!);
-        } else if (placemark.name != null && placemark.name!.isNotEmpty) {
-          locationParts.add(placemark.name!);
-        }
+        try {
+          // Try different combinations to get the best location description
+          final subLocality = placemark.subLocality;
+          final locality = placemark.locality;
+          final name = placemark.name;
 
-        if (placemark.subAdministrativeArea != null &&
-            placemark.subAdministrativeArea!.isNotEmpty) {
-          locationParts.add(placemark.subAdministrativeArea!);
-        } else if (placemark.administrativeArea != null &&
-            placemark.administrativeArea!.isNotEmpty) {
-          locationParts.add(placemark.administrativeArea!);
-        }
+          if (subLocality != null && subLocality.isNotEmpty) {
+            locationParts.add(subLocality);
+          } else if (locality != null && locality.isNotEmpty) {
+            locationParts.add(locality);
+          } else if (name != null && name.isNotEmpty) {
+            locationParts.add(name);
+          }
 
-        if (placemark.country != null && placemark.country!.isNotEmpty) {
-          locationParts.add(placemark.country!);
+          final subAdminArea = placemark.subAdministrativeArea;
+          final adminArea = placemark.administrativeArea;
+
+          if (subAdminArea != null && subAdminArea.isNotEmpty) {
+            locationParts.add(subAdminArea);
+          } else if (adminArea != null && adminArea.isNotEmpty) {
+            locationParts.add(adminArea);
+          }
+
+          final country = placemark.country;
+          if (country != null && country.isNotEmpty) {
+            locationParts.add(country);
+          }
+        } catch (e) {
+          debugPrint('🌍 ❌ Error accessing placemark properties: $e');
         }
 
         String locationName = locationParts.isNotEmpty

@@ -31,87 +31,144 @@ class _PassDashboardScreenState extends State<PassDashboardScreen>
     _tabController = TabController(length: 2, vsync: this);
     _pageController = PageController();
     _loadPasses();
-    // _setupRealtimeSubscription(); // Disabled due to binding error
+
+    // Set up real-time subscription after the first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _setupRealtimeSubscription();
+      }
+    });
   }
 
   @override
   void dispose() {
-    // Only unsubscribe if realtime was actually set up
+    // Unsubscribe from real-time updates
     try {
       PassService.unsubscribeFromPassUpdates();
+      debugPrint('✅ Unsubscribed from pass updates');
     } catch (e) {
       debugPrint('🔄 Error unsubscribing from pass updates: $e');
     }
+
     _tabController.dispose();
     _pageController.dispose();
     super.dispose();
   }
 
   void _setupRealtimeSubscription() {
-    debugPrint('🔄 Setting up realtime subscriptions for secure code updates');
+    debugPrint('🔄 Setting up realtime subscriptions for pass updates');
 
     try {
       PassService.subscribeToPassUpdates(
         onPassChanged: (pass, eventType) {
-          if (mounted) {
-            debugPrint('🔄 Pass $eventType received: ${pass.passId}');
-            debugPrint('🔄 Secure code in update: ${pass.secureCode}');
+          if (!mounted) return;
 
-            setState(() {
-              switch (eventType) {
-                case 'INSERT':
+          debugPrint('🔄 Pass $eventType received: ${pass.passId}');
+          debugPrint('🔄 Pass status: ${pass.status}');
+          debugPrint('🔄 Entries remaining: ${pass.entriesRemaining}');
+          debugPrint('🔄 Secure code in update: ${pass.secureCode}');
+
+          setState(() {
+            switch (eventType) {
+              case 'INSERT':
+                _passes.add(pass);
+                _passes.sort((a, b) => b.issuedAt.compareTo(a.issuedAt));
+                debugPrint('🔄 Added new pass: ${pass.passId}');
+
+                // Show notification for new pass
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('New pass added: ${pass.passDescription}'),
+                    backgroundColor: Colors.blue,
+                    duration: const Duration(seconds: 3),
+                  ),
+                );
+                break;
+
+              case 'UPDATE':
+                final index =
+                    _passes.indexWhere((p) => p.passId == pass.passId);
+                if (index != -1) {
+                  final oldPass = _passes[index];
+                  _passes[index] = pass;
+                  debugPrint('🔄 Updated pass: ${pass.passId}');
+
+                  // Check for different types of updates and show appropriate notifications
+                  if (oldPass.secureCode != pass.secureCode &&
+                      pass.secureCode != null) {
+                    debugPrint(
+                        '🔄 Secure code changed: ${oldPass.secureCode} -> ${pass.secureCode}');
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                            '🔐 Secure code updated for ${pass.passDescription}'),
+                        backgroundColor: Colors.green,
+                        duration: const Duration(seconds: 4),
+                      ),
+                    );
+                  }
+
+                  if (oldPass.entriesRemaining != pass.entriesRemaining) {
+                    debugPrint(
+                        '🔄 Entries changed: ${oldPass.entriesRemaining} -> ${pass.entriesRemaining}');
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                            '📱 Pass scanned! ${pass.entriesRemaining} entries remaining'),
+                        backgroundColor: Colors.orange,
+                        duration: const Duration(seconds: 4),
+                      ),
+                    );
+                  }
+
+                  if (oldPass.status != pass.status) {
+                    debugPrint(
+                        '🔄 Status changed: ${oldPass.status} -> ${pass.status}');
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('📋 Pass status updated: ${pass.status}'),
+                        backgroundColor:
+                            pass.status == 'active' ? Colors.green : Colors.red,
+                        duration: const Duration(seconds: 3),
+                      ),
+                    );
+                  }
+                } else {
+                  // Pass not found in list, add it
                   _passes.add(pass);
                   _passes.sort((a, b) => b.issuedAt.compareTo(a.issuedAt));
-                  debugPrint('🔄 Added new pass: ${pass.passId}');
-                  break;
-                case 'UPDATE':
-                  final index =
-                      _passes.indexWhere((p) => p.passId == pass.passId);
-                  if (index != -1) {
-                    final oldSecureCode = _passes[index].secureCode;
-                    _passes[index] = pass;
-                    debugPrint('🔄 Updated pass: ${pass.passId}');
-                    debugPrint(
-                        '🔄 Secure code changed: $oldSecureCode -> ${pass.secureCode}');
+                  debugPrint('🔄 Added missing pass: ${pass.passId}');
+                }
+                break;
 
-                    // Show a snackbar if secure code was added
-                    if (oldSecureCode != pass.secureCode &&
-                        pass.secureCode != null) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                              'Secure code updated for ${pass.passDescription}'),
-                          backgroundColor: Colors.green,
-                          duration: const Duration(seconds: 3),
-                        ),
-                      );
-                    }
-                  } else {
-                    // Pass not found in list, add it
-                    _passes.add(pass);
-                    _passes.sort((a, b) => b.issuedAt.compareTo(a.issuedAt));
-                    debugPrint('🔄 Added missing pass: ${pass.passId}');
-                  }
-                  break;
-                case 'DELETE':
-                  _passes.removeWhere((p) => p.passId == pass.passId);
-                  if (_currentPassIndex >= _passes.length &&
-                      _passes.isNotEmpty) {
-                    _currentPassIndex = 0;
-                    _pageController.animateToPage(0,
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeInOut);
-                  }
-                  debugPrint('🔄 Removed pass: ${pass.passId}');
-                  break;
-              }
-              _isLoadingPasses = false;
-            });
-          }
+              case 'DELETE':
+                final removedPass = _passes.firstWhere(
+                    (p) => p.passId == pass.passId,
+                    orElse: () => pass);
+                _passes.removeWhere((p) => p.passId == pass.passId);
+
+                if (_currentPassIndex >= _passes.length && _passes.isNotEmpty) {
+                  _currentPassIndex = 0;
+                  _pageController.animateToPage(0,
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOut);
+                }
+
+                debugPrint('🔄 Removed pass: ${pass.passId}');
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content:
+                        Text('Pass removed: ${removedPass.passDescription}'),
+                    backgroundColor: Colors.red,
+                    duration: const Duration(seconds: 3),
+                  ),
+                );
+                break;
+            }
+          });
         },
         onError: (error) {
           debugPrint('🔄 Realtime error: $error');
-          // Show error to user if needed
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
@@ -123,9 +180,10 @@ class _PassDashboardScreenState extends State<PassDashboardScreen>
           }
         },
       );
+
+      debugPrint('✅ Real-time subscription setup completed');
     } catch (e) {
-      debugPrint('🔄 Failed to setup realtime subscription: $e');
-      // Show error to user
+      debugPrint('❌ Failed to setup realtime subscription: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -199,6 +257,33 @@ class _PassDashboardScreenState extends State<PassDashboardScreen>
         backgroundColor: Colors.blue.shade600,
         foregroundColor: Colors.white,
         elevation: 0,
+        actions: [
+          IconButton(
+            onPressed: _isLoadingPasses
+                ? null
+                : () async {
+                    await _loadPasses();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('🔄 Passes refreshed'),
+                        backgroundColor: Colors.green,
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                  },
+            icon: _isLoadingPasses
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  )
+                : const Icon(Icons.refresh),
+            tooltip: 'Refresh passes',
+          ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: Colors.white,

@@ -178,11 +178,13 @@ class ScheduleConfirmationDialog extends StatelessWidget {
                       size: 20,
                     ),
                     const SizedBox(width: 8),
-                    const Text(
-                      'No scheduled time slots for today',
-                      style: TextStyle(
-                        fontStyle: FontStyle.italic,
-                        color: Colors.grey,
+                    const Expanded(
+                      child: Text(
+                        'No scheduled time slots for today',
+                        style: TextStyle(
+                          fontStyle: FontStyle.italic,
+                          color: Colors.grey,
+                        ),
                       ),
                     ),
                   ],

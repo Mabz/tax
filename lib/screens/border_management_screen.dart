@@ -9,6 +9,7 @@ import '../services/border_service.dart';
 import '../services/border_type_service.dart';
 import '../services/role_service.dart';
 import '../widgets/platform_location_picker.dart';
+import 'border_official_assignment_screen.dart';
 
 class BorderManagementScreen extends StatefulWidget {
   final Map<String, dynamic>? selectedCountry; // For backward compatibility
@@ -198,6 +199,17 @@ class _BorderManagementScreenState extends State<BorderManagementScreen> {
         onSave: () {
           _loadBorders();
         },
+      ),
+    );
+  }
+
+  void _showAssignOfficialsScreen(border_model.Border border) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => BorderOfficialAssignmentScreen(
+          border: border,
+          authorityId: _selectedAuthority!.id,
+        ),
       ),
     );
   }
@@ -501,6 +513,9 @@ class _BorderManagementScreenState extends State<BorderManagementScreen> {
                                         case 'edit':
                                           _showEditBorderDialog(border);
                                           break;
+                                        case 'assign_officials':
+                                          _showAssignOfficialsScreen(border);
+                                          break;
                                         case 'delete':
                                           _deleteBorder(border);
                                           break;
@@ -534,6 +549,17 @@ class _BorderManagementScreenState extends State<BorderManagementScreen> {
                                             Icon(Icons.edit, size: 20),
                                             SizedBox(width: 8),
                                             Text('Edit'),
+                                          ],
+                                        ),
+                                      ),
+                                      const PopupMenuItem(
+                                        value: 'assign_officials',
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.people,
+                                                size: 20, color: Colors.purple),
+                                            SizedBox(width: 8),
+                                            Text('Assign Officials'),
                                           ],
                                         ),
                                       ),

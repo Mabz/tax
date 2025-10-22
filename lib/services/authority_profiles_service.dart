@@ -21,6 +21,7 @@ class AuthorityProfilesService {
             is_active,
             created_at,
             updated_at,
+            display_name,
             profiles!authority_profiles_profile_id_fkey(
               id,
               full_name,

@@ -49,6 +49,9 @@ class OfficialPerformance {
   final String officialId;
   final String officialName;
   final String? officialEmail;
+  final String? profilePictureUrl;
+  final String? position;
+  final String? department;
   final bool isCurrentlyActive;
   final int totalScans;
   final int successfulScans;
@@ -59,11 +62,15 @@ class OfficialPerformance {
   final DateTime? lastScanTime;
   final String? lastBorderLocation;
   final List<HourlyActivity> hourlyBreakdown;
+  final List<ChartData> scanTrend;
 
   OfficialPerformance({
     required this.officialId,
     required this.officialName,
     this.officialEmail,
+    this.profilePictureUrl,
+    this.position,
+    this.department,
     required this.isCurrentlyActive,
     required this.totalScans,
     required this.successfulScans,
@@ -74,7 +81,15 @@ class OfficialPerformance {
     this.lastScanTime,
     this.lastBorderLocation,
     required this.hourlyBreakdown,
+    required this.scanTrend,
   });
+}
+
+class ChartData {
+  final String label;
+  final double value;
+
+  ChartData({required this.label, required this.value});
 }
 
 class ScanLocationData {
@@ -150,6 +165,22 @@ class BorderOfficialsService {
       final scanLocations = await _generateRealScanLocations(scanData);
       final hourlyActivity = _generateMockHourlyActivity(scanData);
 
+      // Validate data consistency
+      final totalOfficialsScans =
+          officials.fold<int>(0, (sum, official) => sum + official.totalScans);
+      debugPrint('🔍 === DATA CONSISTENCY CHECK ===');
+      debugPrint(
+          '🔍 Overview total scans (custom): ${overview.totalScansCustom}');
+      debugPrint('🔍 Sum of individual official scans: $totalOfficialsScans');
+      if (overview.totalScansCustom != totalOfficialsScans) {
+        debugPrint(
+            '🔍 ❌ INCONSISTENCY DETECTED! Overview and individual totals don\'t match');
+        debugPrint('🔍 This explains why you see different numbers in the UI');
+      } else {
+        debugPrint('🔍 ✅ Data is consistent - totals match');
+      }
+      debugPrint('🔍 === END CONSISTENCY CHECK ===');
+
       return BorderOfficialsData(
         overview: overview,
         officials: officials,
@@ -191,14 +222,12 @@ class BorderOfficialsService {
           '🔍 Date range: ${dateRange.start.toIso8601String()} to ${dateRange.end.toIso8601String()}');
       debugPrint('🔍 Border ID filter: ${borderId ?? "None (all borders)"}');
 
-      // First try without movement_type filter to see if we get any data
+      // Query all pass movements within the date range
       var query = _supabase
           .from('pass_movements')
           .select('*')
           .gte('created_at', dateRange.start.toIso8601String())
           .lte('created_at', dateRange.end.toIso8601String());
-      // Temporarily removing movement_type filter to see all data
-      //.or('movement_type.eq.verification_scan,movement_type.eq.scan_attempt,movement_type.eq.border_scan');
 
       if (borderId != null) {
         query = query.eq('border_id', borderId);
@@ -210,18 +239,62 @@ class BorderOfficialsService {
 
       debugPrint('🔍 Query completed: Found ${scanData.length} records');
 
+      if (scanData.isNotEmpty) {
+        debugPrint('🔍 First few scan records with ALL available fields:');
+        for (int i = 0; i < math.min(3, scanData.length); i++) {
+          final record = scanData[i];
+          debugPrint('🔍   Scan ${i + 1}: ${record.toString()}');
+        }
+
+        // Check what official-related fields are available
+        final firstRecord = scanData.first;
+        final availableFields = firstRecord.keys.toList();
+        debugPrint(
+            '🔍 Available fields in pass_movements: ${availableFields.join(', ')}');
+
+        // Check for any field that might contain official/user references
+        final officialFields = availableFields
+            .where((field) =>
+                field.toLowerCase().contains('profile') ||
+                field.toLowerCase().contains('user') ||
+                field.toLowerCase().contains('official') ||
+                field.toLowerCase().contains('created') ||
+                field.toLowerCase().contains('updated') ||
+                field.toLowerCase().contains('scanned'))
+            .toList();
+        debugPrint(
+            '🔍 Potential official reference fields: ${officialFields.join(', ')}');
+      }
+
       // Log first few records for debugging
       if (scanData.isNotEmpty) {
-        debugPrint('🔍 Sample records:');
+        debugPrint('🔍 Sample records with ALL fields:');
         final movementTypes = <String>{};
-        for (int i = 0; i < math.min(5, scanData.length); i++) {
+        for (int i = 0; i < math.min(3, scanData.length); i++) {
           final record = scanData[i];
           final movementType = record['movement_type']?.toString() ?? 'null';
           movementTypes.add(movementType);
-          debugPrint(
-              '🔍   Record ${i + 1}: ${record['created_at']} - ${movementType} - ${record['pass_id']}');
+          debugPrint('🔍   Record ${i + 1}: ${record.toString()}');
         }
         debugPrint('🔍 Movement types found: ${movementTypes.join(', ')}');
+
+        // Filter for scan-related movements if we have data
+        final scanRelatedTypes = [
+          'verification_scan',
+          'scan_attempt',
+          'border_scan',
+          'check_in',
+          'check_out'
+        ];
+        final filteredData = scanData.where((record) {
+          final movementType = record['movement_type']?.toString();
+          return movementType != null &&
+              scanRelatedTypes.contains(movementType);
+        }).toList();
+
+        debugPrint(
+            '🔍 Filtered to ${filteredData.length} scan-related records');
+        return filteredData;
       } else {
         debugPrint('🔍 No records found. Let\'s check what\'s in the table...');
 
@@ -269,50 +342,30 @@ class BorderOfficialsService {
     final weekStart = today.subtract(Duration(days: now.weekday - 1));
     final monthStart = DateTime(now.year, now.month, 1);
 
-    // Get counts for different time periods by making separate queries
+    // Calculate all metrics from the SAME scanData that officials use
+    // This ensures consistency between overview and individual official counts
     int totalScansToday = 0;
     int totalScansYesterday = 0;
     int totalScansThisWeek = 0;
     int totalScansThisMonth = 0;
 
-    // Calculate from filtered data - this will show the correct counts for the selected timeframe
-    // For broader time periods, we'll make additional queries
-    try {
-      // Get broader data for comparison metrics
-      final broadQuery = _supabase
-          .from('pass_movements')
-          .select('created_at')
-          .gte('created_at', monthStart.toIso8601String())
-          .lte('created_at',
-              today.add(const Duration(days: 1)).toIso8601String())
-          .or('movement_type.eq.verification_scan,movement_type.eq.scan_attempt,movement_type.eq.border_scan');
+    // Count scans from the filtered data for different time periods
+    for (final scan in scanData) {
+      final scanTime = DateTime.parse(scan['created_at']);
 
-      final broadData = await broadQuery;
-      final allScans = List<Map<String, dynamic>>.from(broadData);
-
-      for (final scan in allScans) {
-        final scanTime = DateTime.parse(scan['created_at']);
-
-        if (scanTime.isAfter(today)) {
-          totalScansToday++;
-        }
-        if (scanTime.isAfter(yesterday) && scanTime.isBefore(today)) {
-          totalScansYesterday++;
-        }
-        if (scanTime.isAfter(weekStart)) {
-          totalScansThisWeek++;
-        }
-        if (scanTime.isAfter(monthStart)) {
-          totalScansThisMonth++;
-        }
+      if (scanTime.isAfter(today) || scanTime.isAtSameMomentAs(today)) {
+        totalScansToday++;
       }
-    } catch (e) {
-      debugPrint('⚠️ Could not fetch time-based scan counts: $e');
-      // Fallback: use the filtered data we have
-      totalScansToday = scanData.length;
-      totalScansYesterday = 0;
-      totalScansThisWeek = scanData.length;
-      totalScansThisMonth = scanData.length;
+      if (scanTime.isAfter(yesterday) && scanTime.isBefore(today)) {
+        totalScansYesterday++;
+      }
+      if (scanTime.isAfter(weekStart) || scanTime.isAtSameMomentAs(weekStart)) {
+        totalScansThisWeek++;
+      }
+      if (scanTime.isAfter(monthStart) ||
+          scanTime.isAtSameMomentAs(monthStart)) {
+        totalScansThisMonth++;
+      }
     }
 
     // Calculate hourly activity for peak detection
@@ -328,33 +381,71 @@ class BorderOfficialsService {
     int maxScans = 0;
     int minScans = 999999;
 
-    for (final entry in hourlyScans.entries) {
-      if (entry.value > maxScans) {
-        maxScans = entry.value;
-        peakHour = entry.key;
-      }
-      if (entry.value < minScans) {
-        minScans = entry.value;
-        slowestHour = entry.key;
+    if (hourlyScans.isNotEmpty) {
+      for (final entry in hourlyScans.entries) {
+        if (entry.value > maxScans) {
+          maxScans = entry.value;
+          peakHour = entry.key;
+        }
+        if (entry.value < minScans) {
+          minScans = entry.value;
+          slowestHour = entry.key;
+        }
       }
     }
 
-    final totalHours = dateRange.end.difference(dateRange.start).inHours;
+    // Calculate schedule-aware average scans per hour
+    // This should consider working hours and scheduled shifts
+    // Assume 8-hour working days for more realistic calculations
+    final totalDays = dateRange.end.difference(dateRange.start).inDays + 1;
+    final workingHours = totalDays * 8; // 8 hours per day
     final averageScansPerHour =
-        totalHours > 0 ? scanData.length / totalHours : 0.0;
+        workingHours > 0 ? scanData.length / workingHours : 0.0;
+
+    // Count unique officials in the scan data
+    final uniqueOfficials = <String>{};
+    final activeOfficials = <String>{};
+    final recentThreshold = DateTime.now().subtract(const Duration(hours: 24));
+
+    for (final scan in scanData) {
+      final officialId =
+          scan['profile_id']?.toString() ?? scan['created_by']?.toString();
+      if (officialId != null) {
+        uniqueOfficials.add(officialId);
+
+        final scanTime = DateTime.parse(scan['created_at']);
+        if (scanTime.isAfter(recentThreshold)) {
+          activeOfficials.add(officialId);
+        }
+      }
+    }
+
+    debugPrint('📊 Overview Metrics Calculation:');
+    debugPrint('📊 Total scan records: ${scanData.length}');
+    debugPrint('📊 Scans today: $totalScansToday');
+    debugPrint('📊 Scans this week: $totalScansThisWeek');
+    debugPrint('📊 Scans this month: $totalScansThisMonth');
+    debugPrint('📊 Custom period scans: ${scanData.length}');
+    debugPrint('📊 Active officials: ${activeOfficials.length}');
+    debugPrint('📊 Total officials: ${uniqueOfficials.length}');
+    debugPrint(
+        '📊 ⚠️  IMPORTANT: UI should use totalScansCustom (${scanData.length}) to match individual officials');
+    debugPrint(
+        '📊 ⚠️  The other time-based counts are for reference only and may not match the filtered dataset');
 
     return OverviewMetrics(
       totalScansToday: totalScansToday,
       totalScansYesterday: totalScansYesterday,
       totalScansThisWeek: totalScansThisWeek,
       totalScansThisMonth: totalScansThisMonth,
-      totalScansCustom: scanData.length,
+      totalScansCustom: scanData
+          .length, // This should match the sum of all individual officials
       averageScansPerHour: averageScansPerHour,
       peakHour: peakHour,
       slowestHour: slowestHour,
       averageProcessingTimeMinutes: 2.5,
-      activeOfficials: 3,
-      totalOfficials: 5,
+      activeOfficials: activeOfficials.length,
+      totalOfficials: uniqueOfficials.length,
     );
   }
 
@@ -368,31 +459,89 @@ class BorderOfficialsService {
     final Map<String, List<Map<String, dynamic>>> officialScans = {};
     final Set<String> profileIds = {};
 
+    debugPrint(
+        '👥 Processing ${scanData.length} scan records for officials...');
     for (final scan in scanData) {
-      final profileId =
-          scan['profile_id']?.toString() ?? scan['created_by']?.toString();
-      if (profileId != null && profileId.isNotEmpty) {
+      // Try multiple fields to find official reference
+      String? profileId = scan['profile_id']?.toString() ??
+          scan['created_by']?.toString() ??
+          scan['user_id']?.toString() ??
+          scan['official_id']?.toString() ??
+          scan['scanned_by']?.toString() ??
+          scan['updated_by']?.toString();
+
+      debugPrint(
+          '👥 Scan record fields: profile_id=${scan['profile_id']}, created_by=${scan['created_by']}, user_id=${scan['user_id']}, resolved_id=$profileId');
+
+      if (profileId != null && profileId.isNotEmpty && profileId != 'null') {
         profileIds.add(profileId);
         officialScans.putIfAbsent(profileId, () => []).add(scan);
+      } else {
+        debugPrint('👥 ⚠️ Scan record has no valid official reference field');
       }
     }
 
     debugPrint('👥 Found ${profileIds.length} unique officials in scan data');
 
-    // Fetch profile data for officials
+    // Fetch profile data from authority_profiles table for proper names and pictures
     Map<String, Map<String, dynamic>> profilesData = {};
     if (profileIds.isNotEmpty) {
       try {
-        final profilesResponse = await _supabase
-            .from('profiles')
-            .select('id, full_name, email, is_active')
-            .or(profileIds.map((id) => 'id.eq.$id').join(','));
+        // First try authority_profiles table for official border staff
+        final authorityProfilesResponse = await _supabase
+            .from('authority_profiles')
+            .select('profile_id, display_name, is_active, notes')
+            .or(profileIds.map((id) => 'profile_id.eq.$id').join(','));
 
-        for (final profile in profilesResponse) {
-          profilesData[profile['id']] = profile;
+        for (final profile in authorityProfilesResponse) {
+          profilesData[profile['profile_id']] = {
+            'id': profile['profile_id'],
+            'display_name': profile['display_name'],
+            'is_active': profile['is_active'],
+            'notes':
+                profile['notes'], // Use notes instead of position/department
+            'source': 'authority_profiles',
+          };
         }
+        debugPrint('👥 Retrieved ${profilesData.length} authority profiles');
+
+        // Get email and full_name from regular profiles table for ALL profile IDs
+        // (since authority_profiles doesn't have email or full_name)
+        if (profileIds.isNotEmpty) {
+          final regularProfilesResponse = await _supabase
+              .from('profiles')
+              .select('id, full_name, email, profile_image_url, is_active')
+              .or(profileIds.map((id) => 'id.eq.$id').join(','));
+
+          for (final profile in regularProfilesResponse) {
+            final profileId = profile['id'];
+            if (profilesData.containsKey(profileId)) {
+              // Merge with existing authority_profiles data
+              profilesData[profileId]!['full_name'] = profile['full_name'];
+              profilesData[profileId]!['email'] = profile['email'];
+              profilesData[profileId]!['profile_image_url'] =
+                  profile['profile_image_url'];
+              // Keep authority_profiles as source since it has the display_name
+            } else {
+              // Create new entry for profiles not in authority_profiles
+              profilesData[profileId] = {
+                'id': profile['id'],
+                'full_name': profile['full_name'],
+                'email': profile['email'],
+                'profile_image_url': profile['profile_image_url'],
+                'is_active': profile['is_active'],
+                'position': null,
+                'department': null,
+                'source': 'profiles',
+              };
+            }
+          }
+          debugPrint(
+              '👥 Retrieved ${regularProfilesResponse.length} regular profiles for email/full_name data');
+        }
+
         debugPrint(
-            '👥 Retrieved profile data for ${profilesData.length} officials');
+            '👥 Total profile data retrieved for ${profilesData.length} officials');
       } catch (e) {
         debugPrint('⚠️ Could not fetch profiles data: $e');
       }
@@ -405,13 +554,37 @@ class BorderOfficialsService {
       final scans = entry.value;
 
       final profile = profilesData[profileId];
-      final officialName = profile?['full_name'] ??
-          'Border Official ${profileId.substring(0, 8)}';
+      debugPrint('👤 Processing official $profileId: ${profile?.toString()}');
+
+      // Name resolution priority:
+      // 1. display_name from authority_profiles (if available)
+      // 2. full_name from regular profiles (fallback)
+      // 3. Generic name with profile ID
+      String officialName;
+      if (profile?['source'] == 'authority_profiles' &&
+          profile?['display_name'] != null) {
+        officialName = profile!['display_name'];
+      } else if (profile?['full_name'] != null) {
+        officialName = profile!['full_name'];
+      } else {
+        officialName = 'Border Official ${profileId.substring(0, 8)}';
+      }
+
+      debugPrint('👤 Official name resolved to: $officialName');
       final officialEmail = profile?['email'];
+      final profilePictureUrl =
+          profile?['profile_image_url']; // Get from profiles table
+      final position = profile?['notes']; // Use notes as position/role
+      final department = null; // department not available in authority_profiles
       final isCurrentlyActive = profile?['is_active'] ?? true;
 
       // Calculate performance metrics
       final totalScans = scans.length;
+      debugPrint(
+          '👤 Official $officialName has ${totalScans} scans in the filtered dataset');
+      debugPrint(
+          '👤 Scan dates range: ${scans.isNotEmpty ? DateTime.parse(scans.first['created_at']) : 'N/A'} to ${scans.isNotEmpty ? DateTime.parse(scans.last['created_at']) : 'N/A'}');
+
       final successfulScans =
           (totalScans * 0.95).round(); // Assume 95% success rate
       final failedScans = totalScans - successfulScans;
@@ -429,10 +602,16 @@ class BorderOfficialsService {
           lastScan.difference(firstScan).inHours.clamp(1, 24 * 30);
       final averageScansPerHour = totalScans / totalHours;
 
+      // Generate scan trend data (daily breakdown)
+      final scanTrend = _generateScanTrend(scans);
+
       officials.add(OfficialPerformance(
         officialId: profileId,
         officialName: officialName,
         officialEmail: officialEmail,
+        profilePictureUrl: profilePictureUrl,
+        position: position,
+        department: department,
         isCurrentlyActive: isCurrentlyActive,
         totalScans: totalScans,
         successfulScans: successfulScans,
@@ -443,85 +622,26 @@ class BorderOfficialsService {
         lastScanTime: lastScan,
         lastBorderLocation: 'Border Checkpoint',
         hourlyBreakdown: [],
+        scanTrend: scanTrend,
       ));
     }
 
     // Sort by total scans (most active first)
     officials.sort((a, b) => b.totalScans.compareTo(a.totalScans));
 
-    // If no real officials found, add some mock data
+    // If no real officials found, return empty data instead of mock data
     if (officials.isEmpty) {
       debugPrint(
-          '👥 No officials found in scan data, generating mock officials');
-      return _generateMockOfficials(math.max(scanData.length, 10), timeframe);
+          '👥 ❌ No officials found in scan data - returning empty officials list');
+      debugPrint(
+          '👥 ❌ Reason: No valid profile_id or created_by fields found in ${scanData.length} scan records');
+      debugPrint(
+          '👥 ❌ This suggests the scan data doesn\'t contain proper official references');
+      debugPrint('👥 ❌ SHOWING EMPTY DATA instead of fabricated mock data');
+      // Return empty officials list instead of mock data
     }
 
     debugPrint('👥 Generated ${officials.length} real officials');
-    return officials;
-  }
-
-  /// Generate mock officials data for demonstration (fallback)
-  static List<OfficialPerformance> _generateMockOfficials(
-      int totalScans, String timeframe) {
-    final officials = <OfficialPerformance>[];
-
-    final officialNames = [
-      'John Smith',
-      'Sarah Johnson',
-      'Michael Brown',
-      'Emily Davis',
-      'David Wilson',
-    ];
-
-    for (int i = 0; i < officialNames.length; i++) {
-      // Distribute scans among officials, with some variation
-      final baseScans = totalScans / officialNames.length;
-      final variation = (i * 0.3) - 0.6; // Range from -0.6 to +0.6
-      final scans =
-          (baseScans * (1.0 + variation)).round().clamp(0, totalScans);
-      final successRate = 85.0 + (math.Random().nextDouble() * 10);
-
-      // Adjust hours per scan based on timeframe
-      double hoursPerScan = 1.0;
-      switch (timeframe) {
-        case 'today':
-          hoursPerScan = 0.5; // More intensive during a single day
-          break;
-        case 'yesterday':
-          hoursPerScan = 0.5;
-          break;
-        case 'this_week':
-          hoursPerScan = 2.0; // Spread over a week
-          break;
-        case 'this_month':
-          hoursPerScan = 8.0; // Spread over a month
-          break;
-        default:
-          hoursPerScan = 4.0;
-      }
-
-      final averageScansPerHour = scans > 0 ? scans / hoursPerScan : 0.0;
-
-      officials.add(OfficialPerformance(
-        officialId: 'official-${i + 1}',
-        officialName: officialNames[i],
-        officialEmail:
-            '${officialNames[i].toLowerCase().replaceAll(' ', '.')}@border.gov',
-        isCurrentlyActive: i < 3, // First 3 are active, last 2 are former
-        totalScans: scans,
-        successfulScans: (scans * successRate / 100).round(),
-        failedScans: (scans * (100 - successRate) / 100).round(),
-        successRate: successRate,
-        averageScansPerHour: averageScansPerHour.clamp(0.0, 50.0),
-        averageProcessingTimeMinutes: 1.5 + (math.Random().nextDouble() * 2),
-        lastScanTime: DateTime.now().subtract(Duration(hours: i + 1)),
-        lastBorderLocation: 'Border Checkpoint ${String.fromCharCode(65 + i)}',
-        hourlyBreakdown: [],
-      ));
-    }
-
-    // Sort by total scans (most active first)
-    officials.sort((a, b) => b.totalScans.compareTo(a.totalScans));
     return officials;
   }
 
@@ -573,8 +693,18 @@ class BorderOfficialsService {
           scan['created_by']?.toString() ??
           'unknown';
       final profile = profilesData[profileId];
-      final officialName = profile?['full_name'] ??
-          'Border Official ${profileId.substring(0, 8)}';
+
+      // Name resolution for scan locations
+      String officialName;
+      if (profile?['source'] == 'authority_profiles' &&
+          profile?['display_name'] != null) {
+        officialName = profile!['display_name'];
+      } else if (profile?['full_name'] != null) {
+        officialName = profile!['full_name'];
+      } else {
+        officialName = 'Border Official ${profileId.substring(0, 8)}';
+      }
+
       final scanTime = DateTime.parse(scan['created_at']);
 
       // Create location key (group nearby scans)
@@ -618,48 +748,13 @@ class BorderOfficialsService {
     final realLocations = locationGroups.values.toList();
     debugPrint('📍 Generated ${realLocations.length} real scan locations');
 
-    // If no real locations, return mock data
+    // If no real locations, return empty data instead of mock data
     if (realLocations.isEmpty) {
-      debugPrint('📍 No location data found, generating mock locations');
-      return _generateMockScanLocations();
+      debugPrint('📍 No location data found, returning empty locations list');
+      return [];
     }
 
     return realLocations;
-  }
-
-  /// Generate mock scan locations for heat map (fallback)
-  static List<ScanLocationData> _generateMockScanLocations() {
-    final locations = <ScanLocationData>[];
-
-    // Mock coordinates around a central border location
-    final baseLat = -26.2041; // Example: Eswatini border area
-    final baseLng = 31.9369;
-
-    for (int i = 0; i < 8; i++) {
-      final latOffset = (math.Random().nextDouble() - 0.5) * 0.1;
-      final lngOffset = (math.Random().nextDouble() - 0.5) * 0.1;
-      final scanCount = 5 + math.Random().nextInt(20);
-
-      // Make some locations outliers (far from border)
-      final isOutlier = i > 5;
-      final distance = isOutlier
-          ? 8.0 + math.Random().nextDouble() * 5
-          : math.Random().nextDouble() * 3;
-
-      locations.add(ScanLocationData(
-        latitude: baseLat + (isOutlier ? latOffset * 10 : latOffset),
-        longitude: baseLng + (isOutlier ? lngOffset * 10 : lngOffset),
-        scanCount: scanCount,
-        officialId: 'official-${(i % 3) + 1}',
-        officialName: ['John Smith', 'Sarah Johnson', 'Michael Brown'][i % 3],
-        isOutlier: isOutlier,
-        distanceFromBorderKm: distance,
-        borderName: 'Main Border Checkpoint',
-        lastScanTime: DateTime.now().subtract(Duration(hours: i)),
-      ));
-    }
-
-    return locations;
   }
 
   /// Generate hourly activity from real scan data
@@ -710,6 +805,33 @@ class BorderOfficialsService {
     }
 
     return hourlyActivity;
+  }
+
+  /// Generate scan trend data for an official
+  static List<ChartData> _generateScanTrend(List<Map<String, dynamic>> scans) {
+    final Map<String, int> dailyScans = {};
+
+    for (final scan in scans) {
+      final scanDate = DateTime.parse(scan['created_at']);
+      final dayKey = '${scanDate.day}/${scanDate.month}';
+      dailyScans[dayKey] = (dailyScans[dayKey] ?? 0) + 1;
+    }
+
+    // Get last 7 days
+    final now = DateTime.now();
+    final trendData = <ChartData>[];
+
+    for (int i = 6; i >= 0; i--) {
+      final date = now.subtract(Duration(days: i));
+      final dayKey = '${date.day}/${date.month}';
+      final scanCount = dailyScans[dayKey] ?? 0;
+      trendData.add(ChartData(
+        label: dayKey,
+        value: scanCount.toDouble(),
+      ));
+    }
+
+    return trendData;
   }
 
   /// Get date range based on timeframe

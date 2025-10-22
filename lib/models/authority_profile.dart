@@ -19,6 +19,7 @@ class AuthorityProfile {
   // Additional fields for UI
   final String? assignedByName;
   final String? notes;
+  final String? displayNameFromDb; // display_name from authority_profiles table
 
   AuthorityProfile({
     required this.id,
@@ -34,6 +35,7 @@ class AuthorityProfile {
     this.authorityCode,
     this.assignedByName,
     this.notes,
+    this.displayNameFromDb,
   });
 
   /// Create AuthorityProfile from JSON (from database)
@@ -56,6 +58,7 @@ class AuthorityProfile {
       authorityName: authorityData?['name'] as String?,
       authorityCode: authorityData?['code'] as String?,
       notes: null, // Notes field doesn't exist in current database schema
+      displayNameFromDb: json['display_name'] as String?,
     );
   }
 
@@ -74,6 +77,11 @@ class AuthorityProfile {
 
   /// Get display name for the user
   String get displayName {
+    // Prioritize display_name from authority_profiles table
+    if (displayNameFromDb != null && displayNameFromDb!.isNotEmpty) {
+      return displayNameFromDb!;
+    }
+    // Fallback to full_name from profiles table
     if (profileFullName != null && profileFullName!.isNotEmpty) {
       return profileFullName!;
     }
@@ -95,6 +103,7 @@ class AuthorityProfile {
     String? authorityCode,
     String? assignedByName,
     String? notes,
+    String? displayNameFromDb,
   }) {
     return AuthorityProfile(
       id: id ?? this.id,
@@ -110,6 +119,7 @@ class AuthorityProfile {
       authorityCode: authorityCode ?? this.authorityCode,
       assignedByName: assignedByName ?? this.assignedByName,
       notes: notes ?? this.notes,
+      displayNameFromDb: displayNameFromDb ?? this.displayNameFromDb,
     );
   }
 

@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:mobile_scanner/mobile_scanner_web.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/purchased_pass.dart';
 import '../enums/pass_verification_method.dart';

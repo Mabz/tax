@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../services/enhanced_border_service.dart';
 import '../services/pass_service.dart';
 import '../models/purchased_pass.dart';
@@ -46,9 +47,22 @@ class _AuditActivityDetailsDialogState
         _error = null;
       });
 
+      // Check if we have a pass ID to fetch details
+      if (widget.movement.passId == null) {
+        debugPrint(
+            '⚠️ No pass ID available for movement: ${widget.movement.movementId}');
+        if (mounted) {
+          setState(() {
+            _passDetails = null;
+            _isLoading = false;
+          });
+        }
+        return;
+      }
+
       // Get the full pass details using the movement's pass ID
       final passDetails =
-          await PassService.getPassById(widget.movement.movementId);
+          await PassService.getPassById(widget.movement.passId!);
 
       if (mounted) {
         setState(() {
@@ -98,10 +112,11 @@ class _AuditActivityDetailsDialogState
                                 const SizedBox(height: 20),
                                 _buildOwnerInfo(context),
                                 const SizedBox(height: 20),
+                              ] else if (widget.movement.passId == null) ...[
+                                _buildNoPassDataInfo(context),
+                                const SizedBox(height: 20),
                               ],
                               _buildLocationInfo(context),
-                              const SizedBox(height: 20),
-                              _buildAdditionalInfo(context),
                             ],
                           ),
                         ),
@@ -151,7 +166,8 @@ class _AuditActivityDetailsDialogState
                       ),
                 ),
                 Text(
-                  _getMovementDescription(widget.movement.movementType),
+                  _getMovementDescription(widget.movement.movementType,
+                      scanPurpose: widget.movement.scanPurpose),
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: Colors.white.withValues(alpha: 0.9),
                       ),
@@ -221,14 +237,15 @@ class _AuditActivityDetailsDialogState
             const SizedBox(height: 16),
             _buildInfoRow(context, 'Movement ID', widget.movement.movementId,
                 copyable: true),
-            _buildInfoRow(context, 'Type',
-                _getMovementDescription(widget.movement.movementType)),
+            _buildInfoRow(
+                context,
+                'Type',
+                _getMovementDescription(widget.movement.movementType,
+                    scanPurpose: widget.movement.scanPurpose)),
             _buildInfoRow(
                 context, 'Status', widget.movement.newStatus.toUpperCase()),
             _buildInfoRow(context, 'Processed At',
                 _formatDateTime(widget.movement.processedAt)),
-            if (widget.movement.scanPurpose != null)
-              _buildInfoRow(context, 'Purpose', widget.movement.scanPurpose!),
             if (widget.movement.notes != null)
               _buildInfoRow(context, 'Notes', widget.movement.notes!),
           ],
@@ -249,7 +266,7 @@ class _AuditActivityDetailsDialogState
                 Icon(Icons.badge, color: Colors.blue.shade600),
                 const SizedBox(width: 8),
                 Text(
-                  'Border Official',
+                  'Authority',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.bold,
                       ),
@@ -300,32 +317,13 @@ class _AuditActivityDetailsDialogState
                         ),
                       ),
                       Text(
-                        widget.movement.borderName,
+                        _formatBorderName(widget.movement.borderName,
+                            widget.movement.movementType),
                         style: TextStyle(
                           color: Colors.grey.shade600,
                           fontSize: 14,
                         ),
                       ),
-                      if (widget.movement.authorityType != null)
-                        Container(
-                          margin: const EdgeInsets.only(top: 4),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.blue.shade100,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            widget.movement.authorityType!
-                                .replaceAll('_', ' ')
-                                .toUpperCase(),
-                            style: TextStyle(
-                              color: Colors.blue.shade800,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
                     ],
                   ),
                 ),
@@ -361,9 +359,6 @@ class _AuditActivityDetailsDialogState
             const SizedBox(height: 16),
             _buildInfoRow(context, 'Pass ID', _passDetails!.passId,
                 copyable: true),
-            _buildInfoRow(context, 'Short Code', _passDetails!.displayShortCode,
-                copyable: true),
-            _buildInfoRow(context, 'Pass Type', _passDetails!.passDescription),
             _buildInfoRow(context, 'Status', _passDetails!.statusDisplay),
             _buildInfoRow(context, 'Amount',
                 '${_getCurrencySymbol(_passDetails!.currency)}${_passDetails!.amount.toStringAsFixed(2)}'),
@@ -378,9 +373,24 @@ class _AuditActivityDetailsDialogState
                 'Valid Until',
                 date_utils.DateUtils.formatFriendlyDateOnly(
                     _passDetails!.expiresAt)),
+            _buildInfoRow(context, 'Valid Days', _calculateValidDays()),
             if (_passDetails!.currentStatus != null)
-              _buildInfoRow(context, 'Vehicle Status',
-                  _passDetails!.vehicleStatusDisplay),
+              _buildVehicleStatusRow(context),
+            const SizedBox(height: 12),
+            // Pass Movements Button
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () => _showPassMovements(context),
+                icon: const Icon(Icons.timeline),
+                label: const Text('View Pass Movement History'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green.shade600,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -411,8 +421,6 @@ class _AuditActivityDetailsDialogState
               ],
             ),
             const SizedBox(height: 16),
-            _buildInfoRow(context, 'Description',
-                _passDetails!.displayVehicleDescription),
             if (_passDetails!.vehicleRegistrationNumber != null)
               _buildInfoRow(context, 'Registration',
                   _passDetails!.vehicleRegistrationNumber!),
@@ -504,6 +512,56 @@ class _AuditActivityDetailsDialogState
     );
   }
 
+  Widget _buildNoPassDataInfo(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.info_outline, color: Colors.amber.shade600),
+                const SizedBox(width: 8),
+                Text(
+                  'Pass Information',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.amber.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.amber.shade200),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.warning_amber_outlined,
+                      color: Colors.amber.shade700, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Vehicle and owner details are not available for this movement. This may be a system activity or the pass information is not linked to this movement record.',
+                      style: TextStyle(
+                        color: Colors.amber.shade800,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildLocationInfo(BuildContext context) {
     return Card(
       child: Padding(
@@ -525,75 +583,73 @@ class _AuditActivityDetailsDialogState
             ),
             const SizedBox(height: 16),
             _buildInfoRow(
-                context, 'Border/Checkpoint', widget.movement.borderName),
+                context,
+                'Border/Checkpoint',
+                _formatBorderName(
+                    widget.movement.borderName, widget.movement.movementType)),
             _buildInfoRow(context, 'Coordinates',
                 '${widget.movement.latitude.toStringAsFixed(6)}, ${widget.movement.longitude.toStringAsFixed(6)}'),
             const SizedBox(height: 12),
-            // Map preview (placeholder)
+            // Google Maps widget
             Container(
-              height: 120,
+              height: 200,
               width: double.infinity,
               decoration: BoxDecoration(
-                color: Colors.grey.shade100,
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: Colors.grey.shade300),
               ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.map, size: 32, color: Colors.grey.shade400),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Location: ${widget.movement.borderName}',
-                    style: TextStyle(
-                      color: Colors.grey.shade600,
-                      fontWeight: FontWeight.w500,
-                    ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: GoogleMap(
+                  initialCameraPosition: CameraPosition(
+                    target: LatLng(
+                        widget.movement.latitude, widget.movement.longitude),
+                    zoom: 15,
                   ),
-                  Text(
-                    '${widget.movement.latitude.toStringAsFixed(4)}, ${widget.movement.longitude.toStringAsFixed(4)}',
-                    style: TextStyle(
-                      color: Colors.grey.shade500,
-                      fontSize: 12,
+                  markers: {
+                    Marker(
+                      markerId: const MarkerId('activity_location'),
+                      position: LatLng(
+                          widget.movement.latitude, widget.movement.longitude),
+                      infoWindow: InfoWindow(
+                        title: _formatBorderName(widget.movement.borderName,
+                            widget.movement.movementType),
+                        snippet:
+                            '${widget.movement.latitude.toStringAsFixed(4)}, ${widget.movement.longitude.toStringAsFixed(4)}',
+                      ),
+                      icon: BitmapDescriptor.defaultMarkerWithHue(
+                        _getMarkerColor(widget.movement.movementType),
+                      ),
                     ),
-                  ),
-                ],
+                  },
+                  mapType: MapType.normal,
+                  myLocationButtonEnabled: false,
+                  zoomControlsEnabled: true,
+                  mapToolbarEnabled: false,
+                  compassEnabled: true,
+                  rotateGesturesEnabled: true,
+                  scrollGesturesEnabled: true,
+                  tiltGesturesEnabled: true,
+                  zoomGesturesEnabled: true,
+                ),
               ),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAdditionalInfo(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.info, color: Colors.grey.shade600),
-                const SizedBox(width: 8),
-                Text(
-                  'Additional Information',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                ),
-              ],
+            const SizedBox(height: 8),
+            Text(
+              'Location: ${_formatBorderName(widget.movement.borderName, widget.movement.movementType)}',
+              style: TextStyle(
+                color: Colors.grey.shade600,
+                fontWeight: FontWeight.w500,
+                fontSize: 12,
+              ),
             ),
-            const SizedBox(height: 16),
-            _buildInfoRow(
-                context, 'Previous Status', widget.movement.previousStatus),
-            _buildInfoRow(context, 'New Status', widget.movement.newStatus),
-            if (widget.movement.entriesDeducted > 0)
-              _buildInfoRow(context, 'Entries Deducted',
-                  widget.movement.entriesDeducted.toString()),
-            _buildInfoRow(context, 'Processed At',
-                _formatDateTime(widget.movement.processedAt)),
+            Text(
+              '${widget.movement.latitude.toStringAsFixed(4)}, ${widget.movement.longitude.toStringAsFixed(4)}',
+              style: TextStyle(
+                color: Colors.grey.shade500,
+                fontSize: 12,
+              ),
+            ),
           ],
         ),
       ),
@@ -715,7 +771,7 @@ class _AuditActivityDetailsDialogState
     }
   }
 
-  String _getMovementDescription(String movementType) {
+  String _getMovementDescription(String movementType, {String? scanPurpose}) {
     switch (movementType.toLowerCase()) {
       case 'check_in':
       case 'entry':
@@ -728,9 +784,111 @@ class _AuditActivityDetailsDialogState
         return 'Pass Verification Scan';
       case 'manual_verification':
         return 'Manual Document Verification';
+      case 'local_authority_scan':
+        if (scanPurpose != null && scanPurpose.isNotEmpty) {
+          return _formatScanPurpose(scanPurpose);
+        }
+        return 'Local Authority Scan';
       default:
         return 'Border Activity';
     }
+  }
+
+  String _formatScanPurpose(String scanPurpose) {
+    // Convert snake_case to Title Case
+    return scanPurpose
+        .split('_')
+        .map((word) => word[0].toUpperCase() + word.substring(1).toLowerCase())
+        .join(' ');
+  }
+
+  String _formatBorderName(String borderName, String movementType) {
+    // If it's "Unknown Border" and it's a local authority scan, show "Local Authority"
+    if (borderName.toLowerCase() == 'unknown border' &&
+        movementType.toLowerCase() == 'local_authority_scan') {
+      return 'Local Authority';
+    }
+    return borderName;
+  }
+
+  double _getMarkerColor(String movementType) {
+    switch (movementType.toLowerCase()) {
+      case 'check_in':
+      case 'entry':
+        return BitmapDescriptor.hueGreen;
+      case 'check_out':
+      case 'exit':
+        return BitmapDescriptor.hueOrange;
+      case 'verification_scan':
+      case 'scan':
+      case 'local_authority_scan':
+        return BitmapDescriptor.hueBlue;
+      case 'manual_verification':
+        return BitmapDescriptor.hueViolet;
+      default:
+        return BitmapDescriptor.hueRed;
+    }
+  }
+
+  Widget? _buildMovementTrailing(PassMovement movement) {
+    final isCurrent = movement.movementId == widget.movement.movementId;
+    final hasEntriesDeducted = movement.entriesDeducted > 0;
+
+    if (!isCurrent && !hasEntriesDeducted) {
+      return null;
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        if (isCurrent)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.indigo.shade100,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              'Current',
+              style: TextStyle(
+                color: Colors.indigo.shade700,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        if (hasEntriesDeducted) ...[
+          if (isCurrent) const SizedBox(height: 4),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.red.shade100,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.remove_circle_outline,
+                  size: 14,
+                  color: Colors.red.shade700,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  '${movement.entriesDeducted} ${movement.entriesDeducted == 1 ? 'entry' : 'entries'}',
+                  style: TextStyle(
+                    color: Colors.red.shade700,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
   }
 
   String _formatDateTime(DateTime dateTime) {
@@ -752,5 +910,284 @@ class _AuditActivityDetailsDialogState
       default:
         return '$currencyCode ';
     }
+  }
+
+  String _calculateValidDays() {
+    if (_passDetails == null) return 'N/A';
+
+    final now = DateTime.now();
+    final expiresAt = _passDetails!.expiresAt;
+    final activationDate = _passDetails!.activationDate;
+
+    // Calculate total validity period
+    final totalDays = expiresAt.difference(activationDate).inDays;
+
+    // Calculate remaining days
+    final remainingDays = expiresAt.difference(now).inDays;
+
+    if (remainingDays < 0) {
+      return 'Expired ${(-remainingDays)} days ago (Total: $totalDays days)';
+    } else if (remainingDays == 0) {
+      return 'Expires today (Total: $totalDays days)';
+    } else {
+      return '$remainingDays days remaining (Total: $totalDays days)';
+    }
+  }
+
+  Widget _buildVehicleStatusRow(BuildContext context) {
+    final status = _passDetails!.vehicleStatusDisplay;
+    Color statusColor;
+    IconData statusIcon;
+
+    // Color code based on vehicle status
+    switch (status.toLowerCase()) {
+      case 'active':
+      case 'checked_in':
+        statusColor = Colors.green.shade600;
+        statusIcon = Icons.check_circle;
+        break;
+      case 'checked_out':
+        statusColor = Colors.blue.shade600;
+        statusIcon = Icons.logout;
+        break;
+      case 'expired':
+        statusColor = Colors.red.shade600;
+        statusIcon = Icons.error;
+        break;
+      case 'suspended':
+      case 'blocked':
+        statusColor = Colors.orange.shade600;
+        statusIcon = Icons.warning;
+        break;
+      default:
+        statusColor = Colors.grey.shade600;
+        statusIcon = Icons.info;
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(
+            width: 120,
+            child: Text(
+              'Vehicle Status',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: Colors.grey,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: statusColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: statusColor.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(statusIcon, color: statusColor, size: 16),
+                  const SizedBox(width: 6),
+                  Text(
+                    status,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: statusColor,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showPassMovements(BuildContext context) async {
+    if (_passDetails == null) return;
+
+    try {
+      // Show loading dialog
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: Card(
+            child: Padding(
+              padding: EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Loading pass movements...'),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+
+      // Fetch pass movements
+      final movements = await EnhancedBorderService.getPassMovementHistory(
+          _passDetails!.passId);
+
+      // Close loading dialog
+      if (context.mounted) Navigator.of(context).pop();
+
+      // Show movements dialog
+      if (context.mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => _buildPassMovementsDialog(context, movements),
+        );
+      }
+    } catch (e) {
+      // Close loading dialog
+      if (context.mounted) Navigator.of(context).pop();
+
+      // Show error
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error loading pass movements: $e'),
+            backgroundColor: Colors.red.shade600,
+          ),
+        );
+      }
+    }
+  }
+
+  Widget _buildPassMovementsDialog(
+      BuildContext context, List<PassMovement> movements) {
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 600, maxHeight: 500),
+        child: Column(
+          children: [
+            // Header
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.green.shade700,
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(16)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.timeline, color: Colors.white),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Pass Movement History',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18,
+                          ),
+                        ),
+                        Text(
+                          'Pass ID: ${_passDetails!.passId}',
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close, color: Colors.white),
+                  ),
+                ],
+              ),
+            ),
+            // Content
+            Expanded(
+              child: movements.isEmpty
+                  ? const Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.timeline, size: 64, color: Colors.grey),
+                          SizedBox(height: 16),
+                          Text(
+                            'No movements found',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.grey,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : ListView.separated(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: movements.length,
+                      separatorBuilder: (context, index) => const Divider(),
+                      itemBuilder: (context, index) {
+                        final movement = movements[index];
+                        return ListTile(
+                          leading: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: _getMovementColor(movement.movementType)
+                                  .withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(
+                              _getMovementIcon(movement.movementType),
+                              color: _getMovementColor(movement.movementType),
+                              size: 20,
+                            ),
+                          ),
+                          title: Text(
+                            _getMovementDescription(movement.movementType,
+                                scanPurpose: movement.scanPurpose),
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                  '${movement.officialName} • ${_formatBorderName(movement.borderName, movement.movementType)}'),
+                              Text(
+                                _formatDateTime(movement.processedAt),
+                                style: TextStyle(
+                                  color: Colors.grey.shade600,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                          trailing: _buildMovementTrailing(movement),
+                          onTap:
+                              movement.movementId != widget.movement.movementId
+                                  ? () {
+                                      Navigator.of(context)
+                                          .pop(); // Close movements dialog
+                                      AuditActivityDetailsDialog.show(
+                                          context, movement);
+                                    }
+                                  : null,
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

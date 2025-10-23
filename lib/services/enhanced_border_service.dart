@@ -200,13 +200,93 @@ class EnhancedBorderService {
 
       // Convert to PassMovement objects and enhance with additional data
       final movements = <PassMovement>[];
+
+      // Get unique profile IDs to fetch enhanced official data
+      final profileIds = <String>{};
       for (final item in response as List) {
         final movementData = item as Map<String, dynamic>;
+        final profileId = movementData['profile_id'] as String?;
+        if (profileId != null) {
+          profileIds.add(profileId);
+        }
+      }
+
+      // Fetch enhanced official data (display names and profile images)
+      final Map<String, Map<String, dynamic>> enhancedOfficialData = {};
+      if (profileIds.isNotEmpty) {
+        try {
+          // First, get authority_profiles data (priority for display_name)
+          final authorityProfilesResponse = await _supabase
+              .from('authority_profiles')
+              .select('profile_id, display_name, is_active, notes')
+              .inFilter('profile_id', profileIds.toList());
+
+          for (final profile in authorityProfilesResponse) {
+            enhancedOfficialData[profile['profile_id']] = {
+              'display_name': profile['display_name'],
+              'source': 'authority_profiles',
+            };
+          }
+
+          // Then get regular profiles data for profile images and fallback names
+          final profilesResponse = await _supabase
+              .from('profiles')
+              .select('id, full_name, profile_image_url')
+              .inFilter('id', profileIds.toList());
+
+          for (final profile in profilesResponse) {
+            final profileId = profile['id'];
+            if (enhancedOfficialData.containsKey(profileId)) {
+              // Add profile image to existing authority_profiles data
+              enhancedOfficialData[profileId]!['profile_image_url'] =
+                  profile['profile_image_url'];
+            } else {
+              // Create new entry for profiles not in authority_profiles
+              enhancedOfficialData[profileId] = {
+                'full_name': profile['full_name'],
+                'profile_image_url': profile['profile_image_url'],
+                'source': 'profiles',
+              };
+            }
+          }
+        } catch (e) {
+          debugPrint('⚠️ Error fetching enhanced official data: $e');
+        }
+      }
+
+      for (final item in response as List) {
+        final movementData = item as Map<String, dynamic>;
+        final profileId = movementData['profile_id'] as String?;
 
         // Debug: Print the movement data to see what we're getting
         debugPrint('🔍 Movement data: ${movementData.toString()}');
         debugPrint(
             '🖼️ Profile image URL from DB: ${movementData['official_profile_image_url']}');
+
+        // Get enhanced official data
+        String officialName =
+            movementData['official_name'] as String? ?? 'Unknown Official';
+        String? officialProfileImageUrl =
+            movementData['official_profile_image_url'] as String?;
+
+        if (profileId != null && enhancedOfficialData.containsKey(profileId)) {
+          final officialData = enhancedOfficialData[profileId]!;
+
+          // Name resolution priority:
+          // 1. display_name from authority_profiles (if available)
+          // 2. full_name from regular profiles (fallback)
+          if (officialData['source'] == 'authority_profiles' &&
+              officialData['display_name'] != null) {
+            officialName = officialData['display_name'];
+          } else if (officialData['full_name'] != null) {
+            officialName = officialData['full_name'];
+          }
+
+          // Use profile image from enhanced data if available
+          if (officialData['profile_image_url'] != null) {
+            officialProfileImageUrl = officialData['profile_image_url'];
+          }
+        }
 
         // Get additional data for local authority scans
         String? scanPurpose;
@@ -233,10 +313,11 @@ class EnhancedBorderService {
 
         movements.add(PassMovement(
           movementId: movementData['movement_id'] as String,
+          passId: passId, // Include the pass ID for vehicle/owner details
           borderName:
               movementData['border_name'] as String? ?? 'Unknown Location',
-          officialName:
-              movementData['official_name'] as String? ?? 'Unknown Official',
+          officialName: officialName,
+          officialProfileImageUrl: officialProfileImageUrl,
           movementType: movementData['movement_type'] as String,
           latitude: (movementData['latitude'] as num?)?.toDouble() ?? 0.0,
           longitude: (movementData['longitude'] as num?)?.toDouble() ?? 0.0,
@@ -249,6 +330,10 @@ class EnhancedBorderService {
           scanPurpose: scanPurpose,
           notes: notes,
           authorityType: authorityType,
+          vehicleDescription: null, // Not available in this context
+          vehicleRegistration: null,
+          vehicleMake: null,
+          vehicleModel: null,
         ));
       }
 
@@ -698,6 +783,7 @@ class PassActionInfo {
 /// Pass movement history record
 class PassMovement {
   final String movementId;
+  final String? passId; // Add pass ID for fetching vehicle/owner details
   final String borderName;
   final String officialName;
   final String? officialProfileImageUrl;
@@ -711,9 +797,14 @@ class PassMovement {
   final String? scanPurpose;
   final String? notes;
   final String? authorityType;
+  final String? vehicleDescription;
+  final String? vehicleRegistration;
+  final String? vehicleMake;
+  final String? vehicleModel;
 
   PassMovement({
     required this.movementId,
+    this.passId,
     required this.borderName,
     required this.officialName,
     this.officialProfileImageUrl,
@@ -727,11 +818,16 @@ class PassMovement {
     this.scanPurpose,
     this.notes,
     this.authorityType,
+    this.vehicleDescription,
+    this.vehicleRegistration,
+    this.vehicleMake,
+    this.vehicleModel,
   });
 
   factory PassMovement.fromJson(Map<String, dynamic> json) {
     return PassMovement(
       movementId: json['movement_id'] as String,
+      passId: json['pass_id'] as String?,
       borderName: json['border_name'] as String? ?? 'Local Authority',
       officialName: json['official_name'] as String? ?? 'Unknown Official',
       officialProfileImageUrl: json['official_profile_image_url'] as String?,
@@ -747,6 +843,10 @@ class PassMovement {
       scanPurpose: json['scan_purpose'] as String?,
       notes: json['notes'] as String?,
       authorityType: json['authority_type'] as String?,
+      vehicleDescription: json['vehicle_description'] as String?,
+      vehicleRegistration: json['vehicle_registration'] as String?,
+      vehicleMake: json['vehicle_make'] as String?,
+      vehicleModel: json['vehicle_model'] as String?,
     );
   }
 
@@ -765,6 +865,7 @@ class PassMovement {
   factory PassMovement.fromAuditJson(Map<String, dynamic> json) {
     return PassMovement(
       movementId: json['id'] as String,
+      passId: json['pass_id'] as String?,
       borderName: json['border_name'] as String? ?? 'Local Authority',
       officialName: json['official_name'] as String? ?? 'Unknown Official',
       officialProfileImageUrl: json['official_profile_image_url'] as String?,
@@ -780,6 +881,10 @@ class PassMovement {
       scanPurpose: json['scan_purpose'] as String?,
       notes: json['notes'] as String?,
       authorityType: json['authority_type'] as String?,
+      vehicleDescription: json['vehicle_description'] as String?,
+      vehicleRegistration: json['vehicle_registration'] as String?,
+      vehicleMake: json['vehicle_make'] as String?,
+      vehicleModel: json['vehicle_model'] as String?,
     );
   }
 

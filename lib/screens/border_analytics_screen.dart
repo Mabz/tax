@@ -7,8 +7,9 @@ import '../services/border_officials_service_simple.dart' as officials;
 import '../services/authority_service.dart';
 import '../utils/date_utils.dart' as date_utils;
 import '../widgets/pass_details_dialog.dart';
-import '../widgets/border_officials_heat_map.dart';
+import '../widgets/enhanced_border_officials_heat_map.dart';
 import '../widgets/official_audit_dialog.dart';
+import '../screens/border_movement_screen_enhanced.dart';
 
 class BorderAnalyticsScreen extends StatefulWidget {
   final String? authorityId;
@@ -52,7 +53,7 @@ class _BorderAnalyticsScreenState extends State<BorderAnalyticsScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _loadAuthorityCurrency();
     _loadAvailableBorders();
   }
@@ -286,10 +287,12 @@ class _BorderAnalyticsScreenState extends State<BorderAnalyticsScreen>
           indicatorColor: Colors.white,
           labelColor: Colors.white,
           unselectedLabelColor: Colors.white70,
+          isScrollable: true,
           tabs: const [
             Tab(icon: Icon(Icons.analytics), text: 'Analytics'),
             Tab(icon: Icon(Icons.people), text: 'Officials'),
             Tab(icon: Icon(Icons.trending_up), text: 'Forecast'),
+            Tab(icon: Icon(Icons.timeline), text: 'Movement'),
           ],
         ),
         actions: [
@@ -311,6 +314,9 @@ class _BorderAnalyticsScreenState extends State<BorderAnalyticsScreen>
                 case 2:
                   _loadForecastData();
                   break;
+                case 3:
+                  // Movement tab - no refresh needed as it has its own refresh
+                  break;
               }
             },
             tooltip: 'Refresh Data',
@@ -327,6 +333,7 @@ class _BorderAnalyticsScreenState extends State<BorderAnalyticsScreen>
                     _buildAnalyticsContent(),
                     _buildOfficialsContent(),
                     _buildForecastContent(),
+                    _buildMovementContent(),
                   ],
                 ),
     );
@@ -2631,9 +2638,12 @@ class _BorderAnalyticsScreenState extends State<BorderAnalyticsScreen>
       );
     }
 
-    return BorderOfficialsHeatMap(
+    return EnhancedBorderOfficialsHeatMap(
       scanLocations: _officialsData!.scanLocations,
       selectedBorder: _selectedBorder,
+      timeframe: _selectedTimeframe,
+      customStartDate: _customStartDate,
+      customEndDate: _customEndDate,
     );
   }
 
@@ -3351,6 +3361,34 @@ class _BorderAnalyticsScreenState extends State<BorderAnalyticsScreen>
           }).toList(),
         ),
       ],
+    );
+  }
+
+  Widget _buildMovementContent() {
+    if (_selectedBorder == null) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.timeline, size: 64, color: Colors.grey),
+            SizedBox(height: 16),
+            Text(
+              'No Border Selected',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 8),
+            Text(
+              'Please select a border to view vehicle movements.',
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      );
+    }
+
+    return BorderMovementScreen(
+      authorityId: widget.authorityId,
+      authorityName: widget.authorityName,
     );
   }
 }

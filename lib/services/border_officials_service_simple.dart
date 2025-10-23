@@ -48,6 +48,7 @@ class OverviewMetrics {
 class OfficialPerformance {
   final String officialId;
   final String officialName;
+  final String? displayName;
   final String? officialEmail;
   final String? profilePictureUrl;
   final String? position;
@@ -67,6 +68,7 @@ class OfficialPerformance {
   OfficialPerformance({
     required this.officialId,
     required this.officialName,
+    this.displayName,
     this.officialEmail,
     this.profilePictureUrl,
     this.position,
@@ -83,6 +85,9 @@ class OfficialPerformance {
     required this.hourlyBreakdown,
     required this.scanTrend,
   });
+
+  /// Get the display name, falling back to officialName if displayName is null
+  String get effectiveDisplayName => displayName ?? officialName;
 }
 
 class ChartData {
@@ -98,6 +103,8 @@ class ScanLocationData {
   final int scanCount;
   final String officialId;
   final String officialName;
+  final String? displayName;
+  final String? profileImageUrl;
   final bool isOutlier;
   final double? distanceFromBorderKm;
   final String? borderName;
@@ -109,11 +116,16 @@ class ScanLocationData {
     required this.scanCount,
     required this.officialId,
     required this.officialName,
+    this.displayName,
+    this.profileImageUrl,
     required this.isOutlier,
     this.distanceFromBorderKm,
     this.borderName,
     required this.lastScanTime,
   });
+
+  /// Get the display name, falling back to officialName if displayName is null
+  String get effectiveDisplayName => displayName ?? officialName;
 }
 
 class HourlyActivity {
@@ -561,13 +573,17 @@ class BorderOfficialsService {
       // 2. full_name from regular profiles (fallback)
       // 3. Generic name with profile ID
       String officialName;
+      String? displayName;
       if (profile?['source'] == 'authority_profiles' &&
           profile?['display_name'] != null) {
         officialName = profile!['display_name'];
+        displayName = profile['display_name'];
       } else if (profile?['full_name'] != null) {
         officialName = profile!['full_name'];
+        displayName = null; // No display_name available
       } else {
         officialName = 'Border Official ${profileId.substring(0, 8)}';
+        displayName = null;
       }
 
       debugPrint('👤 Official name resolved to: $officialName');
@@ -653,30 +669,93 @@ class BorderOfficialsService {
 
     final Map<String, ScanLocationData> locationGroups = {};
     final Set<String> profileIds = {};
+    final Set<String> borderIds = {};
 
-    // Collect profile IDs
+    // Collect profile IDs and border IDs
     for (final scan in scanData) {
       final profileId =
           scan['profile_id']?.toString() ?? scan['created_by']?.toString();
       if (profileId != null) {
         profileIds.add(profileId);
       }
+
+      final borderId = scan['border_id']?.toString();
+      if (borderId != null) {
+        borderIds.add(borderId);
+      }
     }
 
-    // Fetch profile data
+    // Fetch profile data using the same pattern as Border Officials Performance
     Map<String, Map<String, dynamic>> profilesData = {};
     if (profileIds.isNotEmpty) {
       try {
+        // First, get authority_profiles data (priority for display_name)
+        final authorityProfilesResponse = await _supabase
+            .from('authority_profiles')
+            .select('profile_id, display_name, is_active, notes')
+            .or(profileIds.map((id) => 'profile_id.eq.$id').join(','));
+
+        for (final profile in authorityProfilesResponse) {
+          profilesData[profile['profile_id']] = {
+            'id': profile['profile_id'],
+            'display_name': profile['display_name'],
+            'is_active': profile['is_active'],
+            'notes': profile['notes'],
+            'source': 'authority_profiles',
+          };
+        }
+
+        // Then get regular profiles data for profile images and fallback names
         final profilesResponse = await _supabase
             .from('profiles')
-            .select('id, full_name, email, is_active')
+            .select('id, full_name, email, is_active, profile_image_url')
             .or(profileIds.map((id) => 'id.eq.$id').join(','));
 
         for (final profile in profilesResponse) {
-          profilesData[profile['id']] = profile;
+          final profileId = profile['id'];
+          if (profilesData.containsKey(profileId)) {
+            // Add profile data to existing authority_profiles entry
+            profilesData[profileId]!['full_name'] = profile['full_name'];
+            profilesData[profileId]!['email'] = profile['email'];
+            profilesData[profileId]!['profile_image_url'] =
+                profile['profile_image_url'];
+            // Keep authority_profiles as source since it has the display_name
+          } else {
+            // Create new entry for profiles not in authority_profiles
+            profilesData[profileId] = {
+              'id': profile['id'],
+              'full_name': profile['full_name'],
+              'email': profile['email'],
+              'is_active': profile['is_active'],
+              'profile_image_url': profile['profile_image_url'],
+              'source': 'profiles',
+            };
+          }
         }
+
+        debugPrint(
+            '👥 Fetched profile data for ${profilesData.length} officials');
       } catch (e) {
         debugPrint('⚠️ Could not fetch profiles for locations: $e');
+      }
+    }
+
+    // Fetch border coordinates for distance calculation
+    Map<String, Map<String, dynamic>> borderData = {};
+    if (borderIds.isNotEmpty) {
+      try {
+        final borderResponse = await _supabase
+            .from('borders')
+            .select('id, name, latitude, longitude')
+            .or(borderIds.map((id) => 'id.eq.$id').join(','));
+
+        for (final border in borderResponse) {
+          borderData[border['id']] = border;
+        }
+        debugPrint(
+            '📍 Fetched ${borderData.length} border coordinates for distance calculation');
+      } catch (e) {
+        debugPrint('⚠️ Could not fetch border coordinates: $e');
       }
     }
 
@@ -696,24 +775,59 @@ class BorderOfficialsService {
 
       // Name resolution for scan locations
       String officialName;
+      String? displayName;
+      String? profileImageUrl;
+
       if (profile?['source'] == 'authority_profiles' &&
           profile?['display_name'] != null) {
         officialName = profile!['display_name'];
+        displayName = profile['display_name'];
       } else if (profile?['full_name'] != null) {
         officialName = profile!['full_name'];
+        displayName = null; // No display_name available
       } else {
         officialName = 'Border Official ${profileId.substring(0, 8)}';
+        displayName = null;
       }
 
+      // Get profile image URL
+      profileImageUrl = profile?['profile_image_url'];
+
       final scanTime = DateTime.parse(scan['created_at']);
+      final borderId = scan['border_id']?.toString();
+      final border = borderData[borderId];
+
+      // Calculate real distance from border
+      double? distanceFromBorderKm;
+      String borderName = 'Border Checkpoint';
+      bool isOutlier = false;
+
+      if (border != null &&
+          border['latitude'] != null &&
+          border['longitude'] != null) {
+        final borderLat = border['latitude'] as double;
+        final borderLng = border['longitude'] as double;
+        borderName = border['name'] ?? 'Border Checkpoint';
+
+        // Calculate distance using Haversine formula
+        distanceFromBorderKm =
+            _calculateDistance(latitude, longitude, borderLat, borderLng);
+
+        // Mark as outlier if more than 5km from border
+        isOutlier = distanceFromBorderKm > 5.0;
+
+        debugPrint(
+            '📍 Scan at ($latitude, $longitude) is ${distanceFromBorderKm.toStringAsFixed(1)}km from border ($borderLat, $borderLng) - ${isOutlier ? "OUTLIER" : "normal"}');
+      } else {
+        debugPrint(
+            '📍 No border coordinates available for distance calculation');
+        distanceFromBorderKm = null;
+        isOutlier = false;
+      }
 
       // Create location key (group nearby scans)
       final locationKey =
           '${latitude.toStringAsFixed(4)}_${longitude.toStringAsFixed(4)}_$profileId';
-
-      // For now, assume all locations are valid (not outliers)
-      // In a real implementation, you'd compare against known border coordinates
-      final isOutlier = false;
 
       if (locationGroups.containsKey(locationKey)) {
         final existing = locationGroups[locationKey]!;
@@ -723,9 +837,11 @@ class BorderOfficialsService {
           scanCount: existing.scanCount + 1,
           officialId: profileId,
           officialName: officialName,
+          displayName: displayName,
+          profileImageUrl: profileImageUrl,
           isOutlier: isOutlier,
-          distanceFromBorderKm: 0.5, // Mock distance
-          borderName: 'Border Checkpoint',
+          distanceFromBorderKm: distanceFromBorderKm,
+          borderName: borderName,
           lastScanTime: scanTime.isAfter(existing.lastScanTime)
               ? scanTime
               : existing.lastScanTime,
@@ -737,9 +853,11 @@ class BorderOfficialsService {
           scanCount: 1,
           officialId: profileId,
           officialName: officialName,
+          displayName: displayName,
+          profileImageUrl: profileImageUrl,
           isOutlier: isOutlier,
-          distanceFromBorderKm: 0.5, // Mock distance
-          borderName: 'Border Checkpoint',
+          distanceFromBorderKm: distanceFromBorderKm,
+          borderName: borderName,
           lastScanTime: scanTime,
         );
       }
@@ -754,7 +872,108 @@ class BorderOfficialsService {
       return [];
     }
 
-    return realLocations;
+    // Group by official and area to reduce clutter
+    final groupedLocations = _groupByOfficialAndArea(realLocations);
+    debugPrint('📍 Grouped into ${groupedLocations.length} location clusters');
+
+    return groupedLocations;
+  }
+
+  /// Calculate distance between two points using Haversine formula
+  static double _calculateDistance(
+      double lat1, double lon1, double lat2, double lon2) {
+    const double earthRadius = 6371; // Earth's radius in kilometers
+
+    final double dLat = _degreesToRadians(lat2 - lat1);
+    final double dLon = _degreesToRadians(lon2 - lon1);
+
+    final double a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(_degreesToRadians(lat1)) *
+            math.cos(_degreesToRadians(lat2)) *
+            math.sin(dLon / 2) *
+            math.sin(dLon / 2);
+
+    final double c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+
+    return earthRadius * c;
+  }
+
+  /// Convert degrees to radians
+  static double _degreesToRadians(double degrees) {
+    return degrees * (math.pi / 180);
+  }
+
+  /// Group scan locations by official and area to reduce clutter
+  static List<ScanLocationData> _groupByOfficialAndArea(
+      List<ScanLocationData> locations) {
+    final Map<String, List<ScanLocationData>> groups = {};
+
+    // Group locations by official and approximate area (~1km precision)
+    for (final location in locations) {
+      // Round coordinates to ~1km precision for grouping
+      final areaLat = (location.latitude * 100).round() / 100;
+      final areaLng = (location.longitude * 100).round() / 100;
+      final groupKey = '${location.officialId}_${areaLat}_${areaLng}';
+
+      groups.putIfAbsent(groupKey, () => []).add(location);
+    }
+
+    // Create consolidated locations from groups
+    final List<ScanLocationData> consolidatedLocations = [];
+
+    for (final group in groups.values) {
+      if (group.isEmpty) continue;
+
+      // Calculate center point of the group
+      final avgLat =
+          group.map((l) => l.latitude).reduce((a, b) => a + b) / group.length;
+      final avgLng =
+          group.map((l) => l.longitude).reduce((a, b) => a + b) / group.length;
+
+      // Sum up scan counts
+      final totalScans = group.map((l) => l.scanCount).reduce((a, b) => a + b);
+
+      // Get the most recent scan time
+      final latestScanTime = group
+          .map((l) => l.lastScanTime)
+          .reduce((a, b) => a.isAfter(b) ? a : b);
+
+      // Use data from the first location as base
+      final baseLocation = group.first;
+
+      // Check if any location in the group is an outlier
+      final hasOutliers = group.any((l) => l.isOutlier);
+
+      // Calculate average distance from border
+      final distances = group
+          .where((l) => l.distanceFromBorderKm != null)
+          .map((l) => l.distanceFromBorderKm!);
+      final avgDistance = distances.isNotEmpty
+          ? distances.reduce((a, b) => a + b) / distances.length
+          : null;
+
+      // Create consolidated location
+      final consolidatedLocation = ScanLocationData(
+        latitude: avgLat,
+        longitude: avgLng,
+        scanCount: totalScans,
+        officialId: baseLocation.officialId,
+        officialName: baseLocation.officialName,
+        displayName: baseLocation.displayName,
+        profileImageUrl: baseLocation.profileImageUrl,
+        isOutlier: hasOutliers,
+        distanceFromBorderKm: avgDistance,
+        borderName: baseLocation.borderName,
+        lastScanTime: latestScanTime,
+      );
+
+      consolidatedLocations.add(consolidatedLocation);
+    }
+
+    debugPrint(
+        '📍 Consolidated ${locations.length} locations into ${consolidatedLocations.length} grouped locations');
+
+    return consolidatedLocations;
   }
 
   /// Generate hourly activity from real scan data

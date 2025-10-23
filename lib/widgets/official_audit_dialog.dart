@@ -215,7 +215,8 @@ class OfficialAuditDialog extends StatelessWidget {
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('${movement.borderName} • ${movement.officialName}'),
+          Text(
+              '${_formatBorderName(movement.borderName, movement.movementType)} • ${movement.officialName}'),
           const SizedBox(height: 4),
           Row(
             children: [
@@ -228,38 +229,72 @@ class OfficialAuditDialog extends StatelessWidget {
                   color: Colors.grey.shade600,
                 ),
               ),
-              if (movement.scanPurpose != null) ...[
+              if (movement.notes != null && movement.notes!.isNotEmpty) ...[
                 const SizedBox(width: 12),
-                Icon(Icons.info_outline, size: 12, color: Colors.grey.shade600),
+                Icon(Icons.note, size: 12, color: Colors.grey.shade600),
                 const SizedBox(width: 4),
-                Text(
-                  movement.scanPurpose!,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey.shade600,
+                Expanded(
+                  child: Text(
+                    movement.notes!,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade600,
+                      fontStyle: FontStyle.italic,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ],
             ],
           ),
+          if (_hasVehicleInfo(movement)) ...[
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Icon(Icons.directions_car,
+                    size: 12, color: Colors.grey.shade600),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    _formatVehicleInfo(movement),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade600,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ],
+          if (movement.passId != null && movement.passId!.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Icon(Icons.confirmation_number,
+                    size: 12, color: Colors.grey.shade600),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    'Pass: ${_formatPassId(movement.passId!)}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade600,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
-      trailing: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: _getMovementTypeColor(movement.movementType)
-              .withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Text(
-          movement.newStatus,
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-            color: _getMovementTypeColor(movement.movementType),
-          ),
-        ),
-      ),
+      trailing: _buildMovementTrailing(movement),
       onTap: () => _showPassDetails(context, movement),
     );
   }
@@ -480,6 +515,7 @@ class OfficialAuditDialog extends StatelessWidget {
             id,
             pass_id,
             movement_type,
+            entries_deducted,
             latitude,
             longitude,
             created_at,
@@ -488,6 +524,9 @@ class OfficialAuditDialog extends StatelessWidget {
             purchased_passes!inner(
               id,
               vehicle_description,
+              vehicle_registration_number,
+              vehicle_make,
+              vehicle_model,
               status,
               profiles!inner(
                 full_name,
@@ -513,6 +552,8 @@ class OfficialAuditDialog extends StatelessWidget {
         try {
           movements.add(PassMovement(
             movementId: record['id'] as String,
+            passId: record['pass_id']
+                as String?, // Include pass ID for vehicle/owner details
             borderName:
                 record['borders']?['name'] as String? ?? 'Unknown Border',
             officialName: bobbyProfile?.displayName ?? 'Bobby',
@@ -521,13 +562,20 @@ class OfficialAuditDialog extends StatelessWidget {
             latitude: (record['latitude'] as num?)?.toDouble() ?? 0.0,
             longitude: (record['longitude'] as num?)?.toDouble() ?? 0.0,
             processedAt: DateTime.parse(record['created_at'] as String),
-            entriesDeducted: 1, // Default for scans
+            entriesDeducted: record['entries_deducted'] as int? ?? 0,
             previousStatus: 'active',
             newStatus:
                 record['purchased_passes']['status'] as String? ?? 'active',
             scanPurpose: record['scan_purpose'] as String?,
             notes: record['notes'] as String?,
             authorityType: 'border_authority',
+            vehicleDescription:
+                record['purchased_passes']?['vehicle_description'] as String?,
+            vehicleRegistration: record['purchased_passes']
+                ?['vehicle_registration_number'] as String?,
+            vehicleMake: record['purchased_passes']?['vehicle_make'] as String?,
+            vehicleModel:
+                record['purchased_passes']?['vehicle_model'] as String?,
           ));
         } catch (e) {
           debugPrint('❌ Error parsing movement record: $e');
@@ -611,9 +659,99 @@ class OfficialAuditDialog extends StatelessWidget {
         return 'Pass Verification Scan';
       case 'manual_verification':
         return 'Manual Document Verification';
+      case 'local_authority_scan':
+        if (movement.scanPurpose != null && movement.scanPurpose!.isNotEmpty) {
+          return _formatScanPurpose(movement.scanPurpose!);
+        }
+        return 'Local Authority Scan';
       default:
         return 'Border Activity';
     }
+  }
+
+  String _formatScanPurpose(String scanPurpose) {
+    // Convert snake_case to Title Case
+    return scanPurpose
+        .split('_')
+        .map((word) => word[0].toUpperCase() + word.substring(1).toLowerCase())
+        .join(' ');
+  }
+
+  String _formatBorderName(String borderName, String movementType) {
+    // If it's "Unknown Border" and it's a local authority scan, show "Local Authority"
+    if (borderName.toLowerCase() == 'unknown border' &&
+        movementType.toLowerCase() == 'local_authority_scan') {
+      return 'Local Authority';
+    }
+    return borderName;
+  }
+
+  Widget _buildMovementTrailing(PassMovement movement) {
+    // Always show entries deducted with color coding
+    // Green for 0 entries deducted, Red for > 0 entries deducted
+    final isDeducted = movement.entriesDeducted > 0;
+    final backgroundColor =
+        isDeducted ? Colors.red.shade100 : Colors.green.shade100;
+    final textColor = isDeducted ? Colors.red.shade700 : Colors.green.shade700;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        'Entries Deducted: ${movement.entriesDeducted}',
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: textColor,
+        ),
+      ),
+    );
+  }
+
+  bool _hasVehicleInfo(PassMovement movement) {
+    return movement.vehicleRegistration != null ||
+        movement.vehicleMake != null ||
+        movement.vehicleModel != null ||
+        movement.vehicleDescription != null;
+  }
+
+  String _formatVehicleInfo(PassMovement movement) {
+    final parts = <String>[];
+
+    if (movement.vehicleRegistration != null &&
+        movement.vehicleRegistration!.isNotEmpty) {
+      parts.add(movement.vehicleRegistration!);
+    }
+
+    if (movement.vehicleMake != null && movement.vehicleMake!.isNotEmpty) {
+      if (movement.vehicleModel != null && movement.vehicleModel!.isNotEmpty) {
+        parts.add('${movement.vehicleMake} ${movement.vehicleModel}');
+      } else {
+        parts.add(movement.vehicleMake!);
+      }
+    } else if (movement.vehicleModel != null &&
+        movement.vehicleModel!.isNotEmpty) {
+      parts.add(movement.vehicleModel!);
+    }
+
+    if (parts.isEmpty &&
+        movement.vehicleDescription != null &&
+        movement.vehicleDescription!.isNotEmpty) {
+      parts.add(movement.vehicleDescription!);
+    }
+
+    return parts.join(' • ');
+  }
+
+  String _formatPassId(String passId) {
+    // Show first 8 characters of the pass ID for brevity
+    if (passId.length > 8) {
+      return '${passId.substring(0, 8)}...';
+    }
+    return passId;
   }
 
   /// Format date time for display

@@ -39,7 +39,6 @@ import 'vehicle_management_screen.dart';
 import 'pass_dashboard_screen.dart';
 import 'authority_validation_screen.dart';
 import 'account_security_screen.dart';
-import '../test_icons_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -2199,18 +2198,6 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor: Colors.blue.shade700,
         foregroundColor: Colors.white,
         actions: [
-          IconButton(
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const TestIconsScreen(),
-                ),
-              );
-            },
-            icon: const Icon(Icons.bug_report),
-            tooltip: 'Test Icons',
-          ),
           IconButton(
             onPressed: () => _signOut(context),
             icon: const Icon(Icons.logout),

@@ -9,7 +9,6 @@ import '../services/border_service.dart';
 import '../services/border_type_service.dart';
 import '../services/role_service.dart';
 import '../widgets/platform_location_picker.dart';
-import 'border_official_assignment_screen.dart';
 
 class BorderManagementScreen extends StatefulWidget {
   final Map<String, dynamic>? selectedCountry; // For backward compatibility
@@ -203,17 +202,6 @@ class _BorderManagementScreenState extends State<BorderManagementScreen> {
     );
   }
 
-  void _showAssignOfficialsScreen(border_model.Border border) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => BorderOfficialAssignmentScreen(
-          border: border,
-          authorityId: _selectedAuthority!.id,
-        ),
-      ),
-    );
-  }
-
   void _deleteBorder(border_model.Border border) {
     showDialog(
       context: context,
@@ -253,28 +241,6 @@ class _BorderManagementScreenState extends State<BorderManagementScreen> {
     );
   }
 
-  void _toggleBorderStatus(border_model.Border border) async {
-    try {
-      await BorderService.toggleBorderStatus(border.id, !border.isActive);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Border ${border.isActive ? 'deactivated' : 'activated'} successfully',
-            ),
-          ),
-        );
-        _loadBorders();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error updating border status: $e')),
-        );
-      }
-    }
-  }
-
   String _getBorderTypeName(String borderTypeId) {
     final borderType = _borderTypes.firstWhere(
       (bt) => bt.id == borderTypeId,
@@ -287,6 +253,123 @@ class _BorderManagementScreenState extends State<BorderManagementScreen> {
       ),
     );
     return borderType.label;
+  }
+
+  Widget _buildBorderMapPreview(border_model.Border border) {
+    // Check if border has valid coordinates
+    if (border.latitude == null || border.longitude == null) {
+      return Container(
+        width: 120,
+        height: 100,
+        decoration: BoxDecoration(
+          color: Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.map_outlined, size: 28, color: Colors.grey.shade400),
+            const SizedBox(height: 6),
+            Text(
+              'No Location',
+              style: TextStyle(
+                color: Colors.grey.shade500,
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      width: 120,
+      height: 100,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Stack(
+          children: [
+            GoogleMap(
+              initialCameraPosition: CameraPosition(
+                target: LatLng(border.latitude!, border.longitude!),
+                zoom: 12,
+              ),
+              onMapCreated: (GoogleMapController controller) async {
+                // Hide all Google Maps UI elements
+                const String mapStyle = '''
+                [
+                  {
+                    "featureType": "all",
+                    "elementType": "labels",
+                    "stylers": [
+                      {
+                        "visibility": "simplified"
+                      }
+                    ]
+                  }
+                ]
+                ''';
+                controller.setMapStyle(mapStyle);
+              },
+              markers: {
+                Marker(
+                  markerId: MarkerId('border_${border.id}'),
+                  position: LatLng(border.latitude!, border.longitude!),
+                  icon: BitmapDescriptor.defaultMarkerWithHue(
+                    border.isActive
+                        ? BitmapDescriptor.hueOrange
+                        : BitmapDescriptor.hueRed,
+                  ),
+                ),
+              },
+              mapType: MapType.normal,
+              myLocationButtonEnabled: false,
+              zoomControlsEnabled: false,
+              mapToolbarEnabled: false,
+              compassEnabled: false,
+              scrollGesturesEnabled: false,
+              zoomGesturesEnabled: false,
+              tiltGesturesEnabled: false,
+              rotateGesturesEnabled: false,
+              indoorViewEnabled: false,
+              trafficEnabled: false,
+              buildingsEnabled: false,
+              liteModeEnabled: true,
+              fortyFiveDegreeImageryEnabled: false,
+            ),
+
+            // Status overlay
+            Positioned(
+              top: 6,
+              right: 6,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: border.isActive
+                      ? Colors.green.withOpacity(0.9)
+                      : Colors.red.withOpacity(0.9),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  border.isActive ? 'ON' : 'OFF',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 9,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -438,141 +521,163 @@ class _BorderManagementScreenState extends State<BorderManagementScreen> {
                             itemBuilder: (context, index) {
                               final border = _borders[index];
                               return Card(
-                                margin: const EdgeInsets.only(bottom: 8.0),
-                                child: ListTile(
-                                  leading: CircleAvatar(
-                                    backgroundColor: border.isActive
-                                        ? Colors.orange.shade100
-                                        : Colors.grey.shade100,
-                                    child: Icon(
-                                      Icons.location_on,
-                                      color: border.isActive
-                                          ? Colors.orange.shade700
-                                          : Colors.grey,
-                                    ),
-                                  ),
-                                  title: Text(
-                                    border.name,
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      color:
-                                          border.isActive ? null : Colors.grey,
-                                    ),
-                                  ),
-                                  subtitle: Column(
+                                margin: const EdgeInsets.only(bottom: 12.0),
+                                elevation: 2,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(16.0),
+                                  child: Row(
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                      Text(
-                                          'Type: ${_getBorderTypeName(border.borderTypeId)}'),
-                                      if (border.description != null)
-                                        Text(border.description!),
-                                      Row(
-                                        children: [
-                                          Icon(
-                                            Icons.schedule_outlined,
-                                            size: 16,
-                                            color:
-                                                border.allowOutOfScheduleScans
-                                                    ? Colors.orange.shade600
-                                                    : Colors.grey.shade400,
-                                          ),
-                                          const SizedBox(width: 4),
-                                          Text(
-                                            border.allowOutOfScheduleScans
-                                                ? 'Out-of-schedule scans allowed'
-                                                : 'Schedule enforcement active',
-                                            style: TextStyle(
-                                              color:
-                                                  border.allowOutOfScheduleScans
-                                                      ? Colors.orange.shade600
-                                                      : Colors.grey.shade600,
-                                              fontWeight: FontWeight.w500,
-                                              fontSize: 13,
+                                      // Map preview
+                                      _buildBorderMapPreview(border),
+                                      const SizedBox(width: 16),
+
+                                      // Border details
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            // Title and status
+                                            Row(
+                                              children: [
+                                                Expanded(
+                                                  child: Text(
+                                                    border.name,
+                                                    style: TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      fontSize: 16,
+                                                      color: border.isActive
+                                                          ? null
+                                                          : Colors.grey,
+                                                    ),
+                                                  ),
+                                                ),
+                                                Container(
+                                                  padding: const EdgeInsets
+                                                      .symmetric(
+                                                    horizontal: 8,
+                                                    vertical: 4,
+                                                  ),
+                                                  decoration: BoxDecoration(
+                                                    color: border.isActive
+                                                        ? Colors.green.shade100
+                                                        : Colors.red.shade100,
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            12),
+                                                  ),
+                                                  child: Text(
+                                                    border.isActive
+                                                        ? 'Active'
+                                                        : 'Inactive',
+                                                    style: TextStyle(
+                                                      color: border.isActive
+                                                          ? Colors
+                                                              .green.shade700
+                                                          : Colors.red.shade700,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                      fontSize: 12,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
                                             ),
-                                          ),
-                                        ],
-                                      ),
-                                      Text(
-                                        'Status: ${border.isActive ? 'Active' : 'Inactive'}',
-                                        style: TextStyle(
-                                          color: border.isActive
-                                              ? Colors.green
-                                              : Colors.red,
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  trailing: PopupMenuButton<String>(
-                                    onSelected: (value) {
-                                      switch (value) {
-                                        case 'toggle':
-                                          _toggleBorderStatus(border);
-                                          break;
-                                        case 'edit':
-                                          _showEditBorderDialog(border);
-                                          break;
-                                        case 'assign_officials':
-                                          _showAssignOfficialsScreen(border);
-                                          break;
-                                        case 'delete':
-                                          _deleteBorder(border);
-                                          break;
-                                      }
-                                    },
-                                    itemBuilder: (context) => [
-                                      PopupMenuItem(
-                                        value: 'toggle',
-                                        child: Row(
-                                          children: [
-                                            Icon(
-                                              border.isActive
-                                                  ? Icons.toggle_off
-                                                  : Icons.toggle_on,
-                                              size: 20,
-                                              color: border.isActive
-                                                  ? Colors.grey
-                                                  : Colors.green,
+                                            const SizedBox(height: 8),
+
+                                            // Border type
+                                            Text(
+                                              'Type: ${_getBorderTypeName(border.borderTypeId)}',
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w500,
+                                                color: Colors.grey,
+                                              ),
                                             ),
-                                            const SizedBox(width: 8),
-                                            Text(border.isActive
-                                                ? 'Deactivate'
-                                                : 'Activate'),
-                                          ],
-                                        ),
-                                      ),
-                                      const PopupMenuItem(
-                                        value: 'edit',
-                                        child: Row(
-                                          children: [
-                                            Icon(Icons.edit, size: 20),
-                                            SizedBox(width: 8),
-                                            Text('Edit'),
-                                          ],
-                                        ),
-                                      ),
-                                      const PopupMenuItem(
-                                        value: 'assign_officials',
-                                        child: Row(
-                                          children: [
-                                            Icon(Icons.people,
-                                                size: 20, color: Colors.purple),
-                                            SizedBox(width: 8),
-                                            Text('Assign Officials'),
-                                          ],
-                                        ),
-                                      ),
-                                      const PopupMenuItem(
-                                        value: 'delete',
-                                        child: Row(
-                                          children: [
-                                            Icon(Icons.delete,
-                                                size: 20, color: Colors.red),
-                                            SizedBox(width: 8),
-                                            Text('Delete',
+
+                                            // Description
+                                            if (border.description != null) ...[
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                border.description!,
                                                 style: TextStyle(
-                                                    color: Colors.red)),
+                                                  color: Colors.grey.shade600,
+                                                  fontSize: 14,
+                                                ),
+                                                maxLines: 2,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ],
+
+                                            const SizedBox(height: 8),
+
+                                            // Schedule info
+                                            Row(
+                                              children: [
+                                                Icon(
+                                                  Icons.schedule_outlined,
+                                                  size: 16,
+                                                  color: border
+                                                          .allowOutOfScheduleScans
+                                                      ? Colors.orange.shade600
+                                                      : Colors.grey.shade400,
+                                                ),
+                                                const SizedBox(width: 4),
+                                                Expanded(
+                                                  child: Text(
+                                                    border.allowOutOfScheduleScans
+                                                        ? 'Out-of-schedule scans allowed'
+                                                        : 'Schedule enforcement active',
+                                                    style: TextStyle(
+                                                      color: border
+                                                              .allowOutOfScheduleScans
+                                                          ? Colors
+                                                              .orange.shade600
+                                                          : Colors
+                                                              .grey.shade600,
+                                                      fontWeight:
+                                                          FontWeight.w500,
+                                                      fontSize: 13,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+
+                                            const SizedBox(height: 12),
+
+                                            // Action buttons
+                                            Row(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.end,
+                                              children: [
+                                                TextButton.icon(
+                                                  onPressed: () =>
+                                                      _showEditBorderDialog(
+                                                          border),
+                                                  icon: const Icon(Icons.edit,
+                                                      size: 16),
+                                                  label: const Text('Edit'),
+                                                  style: TextButton.styleFrom(
+                                                    foregroundColor:
+                                                        Colors.orange,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 8),
+                                                TextButton.icon(
+                                                  onPressed: () =>
+                                                      _deleteBorder(border),
+                                                  icon: const Icon(Icons.delete,
+                                                      size: 16),
+                                                  label: const Text('Delete'),
+                                                  style: TextButton.styleFrom(
+                                                    foregroundColor: Colors.red,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
                                           ],
                                         ),
                                       ),
@@ -649,10 +754,25 @@ class _AddEditBorderDialogState extends State<_AddEditBorderDialog> {
       _selectedBorderType =
           widget.borderTypes.isNotEmpty ? widget.borderTypes.first : null;
     }
+
+    // Add listeners to update map preview when coordinates change
+    _latitudeController.addListener(_updateMapPreview);
+    _longitudeController.addListener(_updateMapPreview);
+    _nameController.addListener(_updateMapPreview);
+  }
+
+  void _updateMapPreview() {
+    // Trigger a rebuild to update the map preview
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   @override
   void dispose() {
+    _latitudeController.removeListener(_updateMapPreview);
+    _longitudeController.removeListener(_updateMapPreview);
+    _nameController.removeListener(_updateMapPreview);
     _nameController.dispose();
     _descriptionController.dispose();
     _latitudeController.dispose();
@@ -944,6 +1064,10 @@ class _AddEditBorderDialogState extends State<_AddEditBorderDialog> {
                         ),
                       ],
                     ),
+
+                    // Map preview
+                    const SizedBox(height: 16),
+                    _buildLocationPreview(),
                   ],
                 ),
               ),
@@ -1003,6 +1127,230 @@ class _AddEditBorderDialogState extends State<_AddEditBorderDialog> {
               : Text(widget.border != null ? 'Update' : 'Create'),
         ),
       ],
+    );
+  }
+
+  Widget _buildLocationPreview() {
+    final latText = _latitudeController.text.trim();
+    final lngText = _longitudeController.text.trim();
+
+    if (latText.isEmpty || lngText.isEmpty) {
+      return Container(
+        height: 120,
+        decoration: BoxDecoration(
+          color: Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.map_outlined, size: 32, color: Colors.grey.shade400),
+              const SizedBox(height: 8),
+              Text(
+                'Location Preview',
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Select location to see preview',
+                style: TextStyle(
+                  color: Colors.grey.shade500,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final lat = double.tryParse(latText);
+    final lng = double.tryParse(lngText);
+
+    if (lat == null ||
+        lng == null ||
+        lat < -90 ||
+        lat > 90 ||
+        lng < -180 ||
+        lng > 180) {
+      return Container(
+        height: 120,
+        decoration: BoxDecoration(
+          color: Colors.red.shade50,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.red.shade200),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.error_outline, size: 32, color: Colors.red.shade400),
+              const SizedBox(height: 8),
+              Text(
+                'Invalid Coordinates',
+                style: TextStyle(
+                  color: Colors.red.shade700,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Please check latitude and longitude values',
+                style: TextStyle(
+                  color: Colors.red.shade600,
+                  fontSize: 12,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      height: 200,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Stack(
+          children: [
+            GoogleMap(
+              initialCameraPosition: CameraPosition(
+                target: LatLng(lat, lng),
+                zoom: 14,
+              ),
+              markers: {
+                Marker(
+                  markerId: const MarkerId('border_location'),
+                  position: LatLng(lat, lng),
+                  icon: BitmapDescriptor.defaultMarkerWithHue(
+                      BitmapDescriptor.hueOrange),
+                  infoWindow: InfoWindow(
+                    title: _nameController.text.isNotEmpty
+                        ? _nameController.text
+                        : 'Border Location',
+                    snippet:
+                        'Lat: ${lat.toStringAsFixed(4)}, Lng: ${lng.toStringAsFixed(4)}',
+                  ),
+                ),
+              },
+              mapType: MapType.normal,
+              myLocationButtonEnabled: false,
+              zoomControlsEnabled: false,
+              mapToolbarEnabled: false,
+              compassEnabled: false,
+              scrollGesturesEnabled: false,
+              zoomGesturesEnabled: false,
+              tiltGesturesEnabled: false,
+              rotateGesturesEnabled: false,
+            ),
+
+            // Tap overlay to open full location picker
+            Positioned.fill(
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: _selectLocationOnMap,
+                  child: Container(),
+                ),
+              ),
+            ),
+
+            // Overlay with location info
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [
+                      Colors.black.withOpacity(0.8),
+                      Colors.transparent,
+                    ],
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.location_on,
+                        color: Colors.white, size: 16),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _nameController.text.isNotEmpty
+                                ? _nameController.text
+                                : 'Border Location',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          Text(
+                            '${lat.toStringAsFixed(6)}, ${lng.toStringAsFixed(6)}',
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 11,
+                              fontFamily: 'monospace',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.withOpacity(0.9),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.edit,
+                                  color: Colors.white, size: 12),
+                              const SizedBox(width: 4),
+                              const Text(
+                                'Tap to Edit',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_supabase_auth/services/invitation_service.dart';
 import '../models/profile.dart';
@@ -676,7 +677,16 @@ class _UserRoleManagementDialogState extends State<_UserRoleManagementDialog> {
 
     if (confirmed == true) {
       try {
+        debugPrint(
+            '🔍 Removing role: $roleName for profile: ${widget.profile.id}');
         await CountryUserService.deleteUserRole(profileRoleId);
+        debugPrint('✅ Role removed successfully');
+
+        // Ensure user remains active in authority_profiles after role removal
+        // Role management should not affect user's active status in the authority
+        await CountryUserService.ensureUserActiveInAuthority(
+            widget.profile.id, widget.authorityId);
+
         widget.onRoleChanged();
         await _loadData();
         if (mounted) {
@@ -698,6 +708,11 @@ class _UserRoleManagementDialogState extends State<_UserRoleManagementDialog> {
       String profileRoleId, bool newStatus, String roleName) async {
     try {
       await CountryUserService.toggleUserRoleStatus(profileRoleId, newStatus);
+
+      // Ensure user remains active in authority_profiles after role status change
+      await CountryUserService.ensureUserActiveInAuthority(
+          widget.profile.id, widget.authorityId);
+
       widget.onRoleChanged();
       await _loadData();
       if (mounted) {
@@ -1018,6 +1033,10 @@ class _AssignRoleDialogState extends State<_AssignRoleDialog> {
         roleId: _selectedRoleId!,
         authorityId: widget.authorityId,
       );
+
+      // Ensure user remains active in authority_profiles after role assignment
+      await CountryUserService.ensureUserActiveInAuthority(
+          widget.profileId, widget.authorityId);
 
       widget.onRoleAssigned();
       if (mounted) {

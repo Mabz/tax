@@ -228,6 +228,31 @@ class CountryUserService {
     }
   }
 
+  /// Ensure a user remains active in authority_profiles after role changes
+  /// This prevents the database from automatically deactivating users when they have no roles
+  static Future<void> ensureUserActiveInAuthority(
+      String profileId, String authorityId) async {
+    try {
+      debugPrint(
+          '🔍 Ensuring user $profileId remains active in authority $authorityId');
+
+      // Update the authority_profiles record to ensure is_active = true
+      await _supabase
+          .from('authority_profiles')
+          .update({
+            'is_active': true,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('profile_id', profileId)
+          .eq('authority_id', authorityId);
+
+      debugPrint('✅ User ensured active in authority_profiles');
+    } catch (e) {
+      debugPrint('❌ Error ensuring user active in authority: $e');
+      // Don't rethrow - this is a safety measure, not critical
+    }
+  }
+
   /// Assign a role to a user for a specific authority
   static Future<void> assignUserRole({
     required String profileId,

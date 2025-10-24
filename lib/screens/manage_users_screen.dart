@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../services/authority_profiles_service.dart';
 import '../widgets/profile_image_widget.dart';
@@ -343,15 +344,25 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
                             }
 
                             try {
+                              debugPrint(
+                                  '🔍 UI: Updating profile ${profile.profileId}');
+                              debugPrint(
+                                  '🔍 UI: Display name: "${displayNameController.text.trim()}"');
+                              debugPrint('🔍 UI: Is active: $isActive');
+
+                              final authorityId = widget
+                                  .selectedAuthority['authority_id'] as String;
                               final success = await AuthorityProfilesService
                                   .updateAuthorityProfile(
                                 profileId: profile.profileId,
+                                authorityId: authorityId,
                                 displayName: displayNameController.text.trim(),
                                 isActive: isActive,
                                 notes:
                                     null, // Notes not supported in current schema
                               );
 
+                              debugPrint('🔍 UI: Update result: $success');
                               Navigator.of(context).pop(success);
                             } catch (e) {
                               ScaffoldMessenger.of(context).showSnackBar(

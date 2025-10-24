@@ -58,63 +58,6 @@ class BorderManagerService {
     }
   }
 
-  /// Get all border managers for a specific authority (BACKUP - direct query)
-  static Future<List<BorderManager>> _getBorderManagersForAuthorityDirect(
-    String authorityId,
-  ) async {
-    try {
-      // Get border managers for this specific authority using profile_roles
-      final response = await _supabase
-          .from('profile_roles')
-          .select('''
-            profiles!inner(
-              id,
-              full_name,
-              email,
-              profile_image_url
-            ),
-            roles!inner(name)
-          ''')
-          .eq('authority_id', authorityId)
-          .eq('roles.name', 'border_manager')
-          .eq('is_active', true);
-
-      // Convert to BorderManager objects with assignment details
-      List<BorderManager> managers = [];
-      for (var item in response) {
-        final profile = item['profiles'];
-
-        // Get border assignments for this manager
-        final assignmentsResponse = await _supabase
-            .from('border_manager_borders')
-            .select('''
-              borders!inner(name, authority_id)
-            ''')
-            .eq('profile_id', profile['id'])
-            .eq('is_active', true)
-            .eq('borders.authority_id', authorityId);
-
-        final borderCount = assignmentsResponse.length;
-        final assignedBorders = assignmentsResponse
-            .map((assignment) => assignment['borders']['name'] as String)
-            .join(', ');
-
-        managers.add(BorderManager(
-          profileId: profile['id'] ?? '',
-          fullName: profile['full_name'] ?? '',
-          email: profile['email'] ?? '',
-          profileImageUrl: profile['profile_image_url'],
-          borderCount: borderCount,
-          assignedBorders: assignedBorders,
-        ));
-      }
-
-      return managers;
-    } catch (e) {
-      throw Exception('Failed to get border managers: $e');
-    }
-  }
-
   /// Get all borders for a country (for assignment purposes)
   static Future<List<border_model.Border>> getBordersForCountry(
       String countryId) async {
@@ -276,6 +219,8 @@ class BorderManagerService {
             id,
             name,
             description,
+            latitude,
+            longitude,
             border_types(label)
           ''')
           .eq('authority_id', authorityId)
@@ -292,7 +237,7 @@ class BorderManagerService {
             await _supabase.from('border_manager_borders').select('''
               profile_id,
               assigned_at,
-              profiles!inner(
+              profiles!border_manager_borders_profile_id_fkey(
                 id,
                 full_name,
                 email,
@@ -311,11 +256,19 @@ class BorderManagerService {
           );
         }).toList();
 
+        final latitude = borderData['latitude']?.toDouble();
+        final longitude = borderData['longitude']?.toDouble();
+
+        print(
+            '🗺️ Border ${borderData['name']}: lat=$latitude, lng=$longitude');
+
         assignments.add(BorderManagerAssignmentWithDetails(
           borderId: borderId,
           borderName: borderData['name'],
           borderDescription: borderData['description'],
           borderType: borderData['border_types']?['label'],
+          borderLatitude: latitude,
+          borderLongitude: longitude,
           assignedManagers: assignedManagers,
         ));
       }
@@ -698,6 +651,8 @@ class BorderManagerAssignmentWithDetails {
   final String borderName;
   final String? borderDescription;
   final String? borderType;
+  final double? borderLatitude;
+  final double? borderLongitude;
   final List<BorderManagerAssignment> assignedManagers;
 
   BorderManagerAssignmentWithDetails({
@@ -705,6 +660,8 @@ class BorderManagerAssignmentWithDetails {
     required this.borderName,
     this.borderDescription,
     this.borderType,
+    this.borderLatitude,
+    this.borderLongitude,
     required this.assignedManagers,
   });
 }

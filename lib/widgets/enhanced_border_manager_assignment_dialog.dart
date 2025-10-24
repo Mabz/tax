@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../models/border_manager.dart';
 import '../models/border.dart' as border_model;
@@ -31,7 +32,8 @@ class _EnhancedBorderManagerAssignmentDialogState
   String? _error;
   List<border_model.Border> _availableBorders = [];
   BorderManager? _selectedManager;
-  border_model.Border? _selectedBorder;
+  Set<String> _selectedBorderIds = <String>{};
+  Set<String> _originallyAssignedBorderIds = <String>{};
   bool _isAssigning = false;
 
   @override
@@ -54,10 +56,41 @@ class _EnhancedBorderManagerAssignmentDialogState
         widget.countryId,
       );
 
+      // If a manager is selected, load their current border assignments
+      Set<String> assignedBorderIds = <String>{};
+      if (_selectedManager != null) {
+        try {
+          final assignments =
+              await BorderManagerService.getBorderManagerAssignmentsByAuthority(
+            widget.authorityId,
+          );
+
+          // Find assignments for the selected manager
+          for (final assignment in assignments) {
+            for (final managerAssignment in assignment.assignedManagers) {
+              if (managerAssignment.profileId == _selectedManager!.profileId) {
+                assignedBorderIds.add(assignment.borderId);
+                break;
+              }
+            }
+          }
+        } catch (e) {
+          debugPrint('Error loading manager assignments: $e');
+        }
+      }
+
+      debugPrint(
+          '🔍 Available borders: ${borders.map((b) => '${b.name} (${b.id})').toList()}');
+      debugPrint('🔍 Selected border IDs: $assignedBorderIds');
+
       setState(() {
         _availableBorders = borders;
+        _selectedBorderIds = Set<String>.from(assignedBorderIds);
+        _originallyAssignedBorderIds = Set<String>.from(assignedBorderIds);
         _isLoading = false;
       });
+
+      debugPrint('🔍 Final _selectedBorderIds: $_selectedBorderIds');
     } catch (e) {
       setState(() {
         _error = e.toString();
@@ -66,26 +99,59 @@ class _EnhancedBorderManagerAssignmentDialogState
     }
   }
 
-  Future<void> _assignManagerToBorder() async {
-    if (_selectedManager == null || _selectedBorder == null) return;
+  Future<void> _saveChanges() async {
+    if (_selectedManager == null) return;
 
     setState(() {
       _isAssigning = true;
     });
 
     try {
-      await BorderManagerService.assignManagerToBorder(
-        _selectedManager!.profileId,
-        _selectedBorder!.id,
-      );
+      // Find borders to assign (newly selected)
+      final bordersToAssign =
+          _selectedBorderIds.difference(_originallyAssignedBorderIds);
+
+      // Find borders to unassign (previously selected but now unchecked)
+      final bordersToUnassign =
+          _originallyAssignedBorderIds.difference(_selectedBorderIds);
+
+      // Assign new borders
+      for (final borderId in bordersToAssign) {
+        await BorderManagerService.assignManagerToBorder(
+          _selectedManager!.profileId,
+          borderId,
+        );
+      }
+
+      // Unassign removed borders
+      for (final borderId in bordersToUnassign) {
+        await BorderManagerService.revokeManagerFromBorder(
+          _selectedManager!.profileId,
+          borderId,
+        );
+      }
 
       if (mounted) {
         Navigator.of(context).pop();
+
+        // Show appropriate success message
+        String message;
+        if (bordersToAssign.isNotEmpty && bordersToUnassign.isNotEmpty) {
+          message =
+              'Successfully updated border assignments for ${_selectedManager!.fullName}';
+        } else if (bordersToAssign.isNotEmpty) {
+          message =
+              'Successfully assigned ${bordersToAssign.length} border(s) to ${_selectedManager!.fullName}';
+        } else if (bordersToUnassign.isNotEmpty) {
+          message =
+              'Successfully removed ${bordersToUnassign.length} border(s) from ${_selectedManager!.fullName}';
+        } else {
+          message = 'No changes made to border assignments';
+        }
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              'Successfully assigned ${_selectedManager!.fullName} to ${_selectedBorder!.name}',
-            ),
+            content: Text(message),
             backgroundColor: Colors.orange,
           ),
         );
@@ -93,17 +159,27 @@ class _EnhancedBorderManagerAssignmentDialogState
       }
     } catch (e) {
       if (mounted) {
-        setState(() {
-          _isAssigning = false;
-        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to assign manager: $e'),
+            content: Text('Error updating assignments: $e'),
             backgroundColor: Colors.red,
           ),
         );
       }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isAssigning = false;
+        });
+      }
     }
+  }
+
+  void _onManagerSelected(BorderManager manager) {
+    setState(() {
+      _selectedManager = manager;
+    });
+    _loadData(); // Reload data to get the manager's current assignments
   }
 
   @override
@@ -264,9 +340,7 @@ class _EnhancedBorderManagerAssignmentDialogState
                                               manager.profileId;
                                       return InkWell(
                                         onTap: () {
-                                          setState(() {
-                                            _selectedManager = manager;
-                                          });
+                                          _onManagerSelected(manager);
                                         },
                                         borderRadius: BorderRadius.circular(12),
                                         child: Container(
@@ -284,9 +358,9 @@ class _EnhancedBorderManagerAssignmentDialogState
                                                 value: manager,
                                                 groupValue: _selectedManager,
                                                 onChanged: (value) {
-                                                  setState(() {
-                                                    _selectedManager = value;
-                                                  });
+                                                  if (value != null) {
+                                                    _onManagerSelected(value);
+                                                  }
                                                 },
                                                 activeColor: Colors.orange,
                                               ),
@@ -374,12 +448,19 @@ class _EnhancedBorderManagerAssignmentDialogState
                                   ),
                                   child: Column(
                                     children: _availableBorders.map((border) {
-                                      final isSelected =
-                                          _selectedBorder?.id == border.id;
+                                      final isSelected = _selectedBorderIds
+                                          .contains(border.id);
+                                      debugPrint(
+                                          '🔍 Border ${border.name} (${border.id}): isSelected = $isSelected, _selectedBorderIds = $_selectedBorderIds');
                                       return InkWell(
                                         onTap: () {
                                           setState(() {
-                                            _selectedBorder = border;
+                                            if (isSelected) {
+                                              _selectedBorderIds
+                                                  .remove(border.id);
+                                            } else {
+                                              _selectedBorderIds.add(border.id);
+                                            }
                                           });
                                         },
                                         borderRadius: BorderRadius.circular(12),
@@ -394,12 +475,17 @@ class _EnhancedBorderManagerAssignmentDialogState
                                           ),
                                           child: Row(
                                             children: [
-                                              Radio<border_model.Border>(
-                                                value: border,
-                                                groupValue: _selectedBorder,
+                                              Checkbox(
+                                                value: isSelected,
                                                 onChanged: (value) {
                                                   setState(() {
-                                                    _selectedBorder = value;
+                                                    if (value == true) {
+                                                      _selectedBorderIds
+                                                          .add(border.id);
+                                                    } else {
+                                                      _selectedBorderIds
+                                                          .remove(border.id);
+                                                    }
                                                   });
                                                 },
                                                 activeColor: Colors.orange,
@@ -482,11 +568,9 @@ class _EnhancedBorderManagerAssignmentDialogState
                     Expanded(
                       flex: 2,
                       child: ElevatedButton(
-                        onPressed: _isAssigning ||
-                                _selectedManager == null ||
-                                _selectedBorder == null
+                        onPressed: _isAssigning || _selectedManager == null
                             ? null
-                            : _assignManagerToBorder,
+                            : _saveChanges,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.orange.shade600,
                           foregroundColor: Colors.white,
@@ -505,7 +589,7 @@ class _EnhancedBorderManagerAssignmentDialogState
                                 ),
                               )
                             : const Text(
-                                'Assign Manager',
+                                'Save Changes',
                                 style: TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.w600,

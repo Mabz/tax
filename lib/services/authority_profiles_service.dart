@@ -249,14 +249,20 @@ class AuthorityProfilesService {
   }
 
   /// Update authority profile information (display name, status)
+  /// profileId should be the profile_id from the authority_profiles table (UUID of the user)
+  /// authorityId should be provided to ensure we update the correct record
   static Future<bool> updateAuthorityProfile({
     required String profileId,
+    String? authorityId,
     String? displayName,
     bool? isActive,
     String? notes, // Keep parameter for compatibility but don't use it
   }) async {
     try {
       debugPrint('🔍 Updating authority profile: $profileId');
+      debugPrint('🔍 Authority ID: $authorityId');
+      debugPrint('🔍 Display name: $displayName');
+      debugPrint('🔍 Is active: $isActive');
 
       final updateData = <String, dynamic>{
         'updated_at': DateTime.now().toIso8601String(),
@@ -266,22 +272,35 @@ class AuthorityProfilesService {
         updateData['is_active'] = isActive;
       }
 
+      // If display name is provided, add it to the update data
+      if (displayName != null && displayName.isNotEmpty) {
+        updateData['display_name'] = displayName;
+      }
+
       // Note: notes field is not stored in authority_profiles table
       // It's kept as parameter for UI compatibility but not persisted
 
-      // Update authority profile
+      // Build the query to find the specific authority_profiles record
+      var query = _supabase
+          .from('authority_profiles')
+          .select('id')
+          .eq('profile_id', profileId);
+
+      // If authority ID is provided, use it to ensure we get the right record
+      if (authorityId != null) {
+        query = query.eq('authority_id', authorityId);
+      }
+
+      final existingRecord = await query.single();
+
+      debugPrint('🔍 Found authority profile record: ${existingRecord['id']}');
+
+      // Update authority profile using the primary key
+      debugPrint('🔍 Update data: $updateData');
       await _supabase
           .from('authority_profiles')
           .update(updateData)
-          .eq('profile_id', profileId);
-
-      // If display name is provided, update the profile table
-      if (displayName != null && displayName.isNotEmpty) {
-        await _supabase.from('profiles').update({
-          'full_name': displayName,
-          'updated_at': DateTime.now().toIso8601String(),
-        }).eq('id', profileId);
-      }
+          .eq('id', existingRecord['id']);
 
       debugPrint('✅ Authority profile updated successfully');
       return true;

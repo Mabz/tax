@@ -254,7 +254,7 @@ class EnhancedBorderService {
         }
       }
 
-      for (final item in response as List) {
+      for (final item in response) {
         final movementData = item as Map<String, dynamic>;
         final profileId = movementData['profile_id'] as String?;
 
@@ -381,20 +381,82 @@ class EnhancedBorderService {
   }) async {
     try {
       debugPrint('🔄 Assigning official to border with permissions');
+      debugPrint('   Profile ID: $profileId');
+      debugPrint('   Border ID: $borderId');
+      debugPrint('   Can Check In: $canCheckIn');
+      debugPrint('   Can Check Out: $canCheckOut');
 
-      // Use the enhanced function that handles both assignment and permissions
-      await _supabase
-          .rpc('assign_official_to_border_with_permissions', params: {
-        'target_profile_id': profileId,
-        'target_border_id': borderId,
-        'can_check_in_param': canCheckIn,
-        'can_check_out_param': canCheckOut,
+      // First check if assignment already exists
+      final existingAssignment = await _supabase
+          .from('border_official_borders')
+          .select('id, is_active')
+          .eq('profile_id', profileId)
+          .eq('border_id', borderId)
+          .maybeSingle();
+
+      if (existingAssignment != null) {
+        if (existingAssignment['is_active'] == true) {
+          debugPrint('⚠️ Assignment already exists and is active');
+          // Update existing assignment
+          await _supabase
+              .from('border_official_borders')
+              .update({
+                'can_check_in': canCheckIn,
+                'can_check_out': canCheckOut,
+                'updated_at': DateTime.now().toIso8601String(),
+              })
+              .eq('profile_id', profileId)
+              .eq('border_id', borderId);
+          debugPrint('✅ Updated existing assignment');
+          return;
+        } else {
+          // Reactivate existing assignment
+          await _supabase
+              .from('border_official_borders')
+              .update({
+                'is_active': true,
+                'can_check_in': canCheckIn,
+                'can_check_out': canCheckOut,
+                'assigned_at': DateTime.now().toIso8601String(),
+                'updated_at': DateTime.now().toIso8601String(),
+              })
+              .eq('profile_id', profileId)
+              .eq('border_id', borderId);
+          debugPrint('✅ Reactivated existing assignment');
+          return;
+        }
+      }
+
+      // Create new assignment using direct insert
+      await _supabase.from('border_official_borders').insert({
+        'profile_id': profileId,
+        'border_id': borderId,
+        'can_check_in': canCheckIn,
+        'can_check_out': canCheckOut,
+        'is_active': true,
+        'assigned_at': DateTime.now().toIso8601String(),
       });
 
       debugPrint('✅ Official assigned with permissions successfully');
     } catch (e) {
       debugPrint('❌ Error assigning official with permissions: $e');
-      rethrow;
+
+      // Try fallback to RPC function if direct insert fails
+      try {
+        debugPrint('🔄 Trying fallback RPC function...');
+        await _supabase
+            .rpc('assign_official_to_border_with_permissions', params: {
+          'target_profile_id': profileId,
+          'target_border_id': borderId,
+          'can_check_in_param': canCheckIn,
+          'can_check_out_param': canCheckOut,
+        });
+        debugPrint('✅ Fallback RPC assignment successful');
+      } catch (rpcError) {
+        debugPrint('❌ Fallback RPC also failed: $rpcError');
+        throw Exception(
+            'Failed to assign official to border: $e (RPC fallback: $rpcError)');
+      }
     }
   }
 
@@ -421,6 +483,106 @@ class EnhancedBorderService {
       debugPrint('❌ Error getting border assignments: $e');
       // Fallback to a manual approach
       return _getBorderAssignmentsFallback(countryId);
+    }
+  }
+
+  /// Get border assignments with location data for map display
+  static Future<List<BorderAssignmentWithLocation>>
+      getBorderAssignmentsWithLocationByAuthority(
+    String authorityId,
+  ) async {
+    try {
+      debugPrint(
+          '🔍 Getting border assignments with location for authority: $authorityId');
+
+      // Get all borders for this authority with location data
+      final bordersResponse = await _supabase
+          .from('borders')
+          .select('''
+            id,
+            name,
+            description,
+            latitude,
+            longitude,
+            border_types(label)
+          ''')
+          .eq('authority_id', authorityId)
+          .eq('is_active', true)
+          .order('name');
+
+      List<BorderAssignmentWithLocation> assignments = [];
+
+      for (var borderData in bordersResponse) {
+        final borderId = borderData['id'] as String;
+
+        // Get assignments for this border
+        final assignmentsResponse =
+            await _supabase.from('border_official_borders').select('''
+              id,
+              profile_id,
+              can_check_in,
+              can_check_out,
+              assigned_at,
+              profiles!border_official_borders_profile_id_fkey(
+                id,
+                full_name,
+                email,
+                profile_image_url
+              )
+            ''').eq('border_id', borderId).eq('is_active', true);
+
+        // Get display names from authority_profiles if available
+        final profileIds =
+            assignmentsResponse.map((a) => a['profile_id'] as String).toList();
+        Map<String, String> displayNames = {};
+
+        if (profileIds.isNotEmpty) {
+          try {
+            final authorityProfilesResponse = await _supabase
+                .from('authority_profiles')
+                .select('profile_id, display_name')
+                .inFilter('profile_id', profileIds)
+                .eq('is_active', true);
+
+            for (final profile in authorityProfilesResponse) {
+              displayNames[profile['profile_id']] = profile['display_name'];
+            }
+          } catch (e) {
+            debugPrint('⚠️ Could not get display names: $e');
+          }
+        }
+
+        for (var assignment in assignmentsResponse) {
+          final profile = assignment['profiles'];
+          final profileId = assignment['profile_id'] as String;
+
+          assignments.add(BorderAssignmentWithLocation(
+            id: assignment['id'],
+            profileId: profileId,
+            borderId: borderId,
+            officialName: profile['full_name'] ?? 'Unknown',
+            officialEmail: profile['email'] ?? 'Unknown',
+            officialDisplayName:
+                displayNames[profileId] ?? profile['full_name'] ?? 'Unknown',
+            officialProfileImageUrl: profile['profile_image_url'],
+            borderName: borderData['name'],
+            borderDescription: borderData['description'],
+            borderType: borderData['border_types']?['label'],
+            borderLatitude: (borderData['latitude'] as num?)?.toDouble(),
+            borderLongitude: (borderData['longitude'] as num?)?.toDouble(),
+            canCheckIn: assignment['can_check_in'] ?? true,
+            canCheckOut: assignment['can_check_out'] ?? true,
+            assignedAt: DateTime.parse(assignment['assigned_at']),
+          ));
+        }
+      }
+
+      debugPrint(
+          '✅ Retrieved ${assignments.length} border assignments with location');
+      return assignments;
+    } catch (e) {
+      debugPrint('❌ Error getting border assignments with location: $e');
+      rethrow;
     }
   }
 
@@ -568,48 +730,56 @@ class EnhancedBorderService {
     try {
       debugPrint(
           '🔄 Batch assigning official to ${borderAssignments.length} borders');
+      debugPrint('   Profile ID: $profileId');
+
+      final List<String> successfulAssignments = [];
+      final List<String> failedAssignments = [];
 
       for (final assignment in borderAssignments) {
         final borderId = assignment['borderId'] as String;
+        final borderName = assignment['borderName'] as String;
         final canCheckIn = assignment['canCheckIn'] as bool? ?? true;
         final canCheckOut = assignment['canCheckOut'] as bool? ?? true;
 
-        // Validate permissions
-        if (!canCheckIn && !canCheckOut) {
-          throw Exception(
-              'At least one permission must be granted for border: ${assignment['borderName']}');
-        }
+        try {
+          debugPrint(
+              '🔄 Processing assignment for border: $borderName ($borderId)');
 
-        // Check if assignment already exists
-        final existingAssignments = await _supabase
-            .from('border_official_borders')
-            .select('id')
-            .eq('profile_id', profileId)
-            .eq('border_id', borderId)
-            .eq('is_active', true);
+          // Validate permissions
+          if (!canCheckIn && !canCheckOut) {
+            throw Exception(
+                'At least one permission must be granted for border: $borderName');
+          }
 
-        if (existingAssignments.isNotEmpty) {
-          // Update existing assignment
-          await updateOfficialBorderAssignment(
-            profileId: profileId,
-            borderId: borderId,
-            canCheckIn: canCheckIn,
-            canCheckOut: canCheckOut,
-          );
-          debugPrint('✅ Updated existing assignment for border: $borderId');
-        } else {
-          // Create new assignment
+          // Use the improved assignment method
           await assignOfficialToBorderWithPermissions(
             profileId: profileId,
             borderId: borderId,
             canCheckIn: canCheckIn,
             canCheckOut: canCheckOut,
           );
-          debugPrint('✅ Created new assignment for border: $borderId');
+
+          successfulAssignments.add(borderName);
+          debugPrint('✅ Successfully assigned to border: $borderName');
+        } catch (e) {
+          failedAssignments.add(borderName);
+          debugPrint('❌ Failed to assign to border $borderName: $e');
+
+          // Continue with other assignments instead of failing completely
+          continue;
         }
       }
 
-      debugPrint('✅ Batch assignment completed successfully');
+      debugPrint('✅ Batch assignment completed');
+      debugPrint(
+          '   Successful: ${successfulAssignments.length} (${successfulAssignments.join(', ')})');
+
+      if (failedAssignments.isNotEmpty) {
+        debugPrint(
+            '   Failed: ${failedAssignments.length} (${failedAssignments.join(', ')})');
+        throw Exception(
+            'Some assignments failed: ${failedAssignments.join(', ')}. Successfully assigned: ${successfulAssignments.join(', ')}');
+      }
     } catch (e) {
       debugPrint('❌ Error in batch assignment: $e');
       rethrow;
@@ -999,6 +1169,77 @@ class BorderAssignmentWithPermissions {
       officialDisplayName: officialDisplayName,
       officialProfileImageUrl: officialProfileImageUrl,
       borderName: borderName,
+      canCheckIn: json['can_check_in'] as bool? ?? true,
+      canCheckOut: json['can_check_out'] as bool? ?? true,
+      assignedAt: DateTime.parse(json['assigned_at'] as String),
+    );
+  }
+
+  String get permissionsDescription {
+    if (canCheckIn && canCheckOut) {
+      return 'Check-In & Check-Out';
+    } else if (canCheckIn) {
+      return 'Check-In Only';
+    } else if (canCheckOut) {
+      return 'Check-Out Only';
+    } else {
+      return 'No Permissions';
+    }
+  }
+}
+
+/// Enhanced border assignment with location data for map display
+class BorderAssignmentWithLocation {
+  final String id;
+  final String profileId;
+  final String borderId;
+  final String officialName;
+  final String officialEmail;
+  final String officialDisplayName;
+  final String? officialProfileImageUrl;
+  final String borderName;
+  final String? borderDescription;
+  final String? borderType;
+  final double? borderLatitude;
+  final double? borderLongitude;
+  final bool canCheckIn;
+  final bool canCheckOut;
+  final DateTime assignedAt;
+
+  BorderAssignmentWithLocation({
+    required this.id,
+    required this.profileId,
+    required this.borderId,
+    required this.officialName,
+    required this.officialEmail,
+    required this.officialDisplayName,
+    this.officialProfileImageUrl,
+    required this.borderName,
+    this.borderDescription,
+    this.borderType,
+    this.borderLatitude,
+    this.borderLongitude,
+    required this.canCheckIn,
+    required this.canCheckOut,
+    required this.assignedAt,
+  });
+
+  factory BorderAssignmentWithLocation.fromJson(Map<String, dynamic> json) {
+    return BorderAssignmentWithLocation(
+      id: json['id'] as String,
+      profileId: json['profile_id'] as String,
+      borderId: json['border_id'] as String,
+      officialName: json['official_name'] as String? ?? 'Unknown',
+      officialEmail: json['official_email'] as String? ?? 'Unknown',
+      officialDisplayName: json['official_display_name'] as String? ??
+          json['official_name'] as String? ??
+          'Unknown',
+      officialProfileImageUrl: json['official_profile_image_url'] as String?,
+      borderName: json['border_name'] as String? ?? 'Unknown',
+      borderDescription: json['border_description'] as String?,
+      borderType: json['border_type'] as String?,
+      borderLatitude: (json['border_latitude'] as num?)?.toDouble(),
+      borderLongitude: (json['border_longitude'] as num?)?.toDouble(),
       canCheckIn: json['can_check_in'] as bool? ?? true,
       canCheckOut: json['can_check_out'] as bool? ?? true,
       assignedAt: DateTime.parse(json['assigned_at'] as String),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../models/border_official.dart';
 import '../services/border_official_service.dart';
 import '../services/enhanced_border_service.dart';
@@ -56,33 +57,6 @@ class _BorderOfficialManagementScreenState
         _error = 'Failed to load border officials: $e';
         _isLoading = false;
       });
-    }
-  }
-
-  Future<void> _revokeOfficialFromBorder(
-      String officialId, String borderId) async {
-    try {
-      await BorderOfficialService.revokeOfficialFromBorder(
-          officialId, borderId);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Border official revoked successfully'),
-            backgroundColor: Colors.orange,
-          ),
-        );
-        await _loadAuthorityData();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to revoke official: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
     }
   }
 
@@ -380,10 +354,9 @@ class _BorderOfficialManagementScreenState
   }
 
   Widget _buildBorderAssignmentsTab() {
-    return FutureBuilder<List<BorderAssignmentWithPermissions>>(
-      future:
-          EnhancedBorderService.getBorderAssignmentsWithPermissionsByAuthority(
-              _authorityId),
+    return FutureBuilder<List<BorderAssignmentWithLocation>>(
+      future: EnhancedBorderService.getBorderAssignmentsWithLocationByAuthority(
+          _authorityId),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(
@@ -419,7 +392,7 @@ class _BorderOfficialManagementScreenState
                     size: 64, color: Colors.grey),
                 SizedBox(height: 16),
                 Text(
-                  'No border assignments found for this country.',
+                  'No border assignments found for this authority.',
                   style: TextStyle(fontSize: 16, color: Colors.grey),
                 ),
               ],
@@ -427,121 +400,312 @@ class _BorderOfficialManagementScreenState
           );
         }
 
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: enhancedAssignments.length,
-          itemBuilder: (context, index) {
-            final assignment = enhancedAssignments[index];
-            return Card(
-              margin: const EdgeInsets.only(bottom: 12),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.location_on,
-                          color: Colors.orange.shade600,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            assignment.borderName,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 16,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 1,
-                          ),
-                        ),
-                        IconButton(
-                          icon: Icon(Icons.remove_circle_outline,
-                              color: Colors.red.shade600),
-                          onPressed: () =>
-                              _showEnhancedRevokeConfirmation(assignment),
-                          tooltip: 'Revoke Assignment',
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        ProfileImageWidget(
-                          currentImageUrl: assignment.officialProfileImageUrl,
-                          size: 16,
-                          isEditable: false,
-                        ),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            assignment.officialDisplayName,
-                            style: const TextStyle(fontWeight: FontWeight.w500),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Icon(Icons.email,
-                            size: 16, color: Colors.grey.shade600),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            assignment.officialEmail,
-                            style: TextStyle(color: Colors.grey.shade600),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
+        // Group assignments by border
+        final Map<String, List<BorderAssignmentWithLocation>> borderGroups = {};
+        for (final assignment in enhancedAssignments) {
+          if (!borderGroups.containsKey(assignment.borderName)) {
+            borderGroups[assignment.borderName] = [];
+          }
+          borderGroups[assignment.borderName]!.add(assignment);
+        }
+
+        // Sort border names
+        final sortedBorderNames = borderGroups.keys.toList()..sort();
+
+        return Column(
+          children: [
+            // Header with statistics
+            Container(
+              padding: const EdgeInsets.all(16),
+              margin: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.orange.shade200),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.assignment_ind,
+                      color: Colors.orange.shade700, size: 24),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Permissions: ',
+                          'Border Official Assignments',
                           style: TextStyle(
-                            fontWeight: FontWeight.w500,
-                            color: Colors.grey.shade700,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.orange.shade800,
                           ),
                         ),
-                        _buildPermissionChip(
-                          'Check-In',
-                          assignment.canCheckIn,
-                          Colors.green,
-                        ),
-                        const SizedBox(width: 8),
-                        _buildPermissionChip(
-                          'Check-Out',
-                          assignment.canCheckOut,
-                          Colors.blue,
+                        const SizedBox(height: 4),
+                        Text(
+                          '${borderGroups.length} borders • ${enhancedAssignments.length} total assignments',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.orange.shade600,
+                          ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Assigned: ${assignment.assignedAt.toString().split(' ')[0]}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            );
-          },
+            ),
+            // Borders list grouped by border
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                itemCount: sortedBorderNames.length,
+                itemBuilder: (context, index) {
+                  final borderName = sortedBorderNames[index];
+                  final borderAssignments = borderGroups[borderName]!;
+
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 16),
+                    elevation: 2,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Border header
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade50,
+                            borderRadius: const BorderRadius.only(
+                              topLeft: Radius.circular(12),
+                              topRight: Radius.circular(12),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              // Map preview
+                              Container(
+                                width: 80,
+                                height: 80,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(8),
+                                  border:
+                                      Border.all(color: Colors.grey.shade300),
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: borderAssignments.isNotEmpty &&
+                                          borderAssignments
+                                                  .first.borderLatitude !=
+                                              null &&
+                                          borderAssignments
+                                                  .first.borderLongitude !=
+                                              null
+                                      ? GoogleMap(
+                                          initialCameraPosition: CameraPosition(
+                                            target: LatLng(
+                                              borderAssignments
+                                                  .first.borderLatitude!,
+                                              borderAssignments
+                                                  .first.borderLongitude!,
+                                            ),
+                                            zoom: 12,
+                                          ),
+                                          style: '''
+                                            [
+                                              {
+                                                "featureType": "all",
+                                                "elementType": "labels",
+                                                "stylers": [
+                                                  {
+                                                    "visibility": "simplified"
+                                                  }
+                                                ]
+                                              }
+                                            ]
+                                            ''',
+                                          markers: {
+                                            Marker(
+                                              markerId: MarkerId(
+                                                  'border_${borderAssignments.first.borderId}'),
+                                              position: LatLng(
+                                                borderAssignments
+                                                    .first.borderLatitude!,
+                                                borderAssignments
+                                                    .first.borderLongitude!,
+                                              ),
+                                              icon: BitmapDescriptor
+                                                  .defaultMarkerWithHue(
+                                                BitmapDescriptor.hueOrange,
+                                              ),
+                                            ),
+                                          },
+                                          mapType: MapType.normal,
+                                          myLocationButtonEnabled: false,
+                                          zoomControlsEnabled: false,
+                                          mapToolbarEnabled: false,
+                                          compassEnabled: false,
+                                          scrollGesturesEnabled: false,
+                                          zoomGesturesEnabled: false,
+                                          tiltGesturesEnabled: false,
+                                          rotateGesturesEnabled: false,
+                                          indoorViewEnabled: false,
+                                          trafficEnabled: false,
+                                          buildingsEnabled: false,
+                                          liteModeEnabled: true,
+                                          fortyFiveDegreeImageryEnabled: false,
+                                        )
+                                      : Container(
+                                          color: Colors.grey.shade200,
+                                          child: Column(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            children: [
+                                              Icon(
+                                                Icons.map_outlined,
+                                                color: Colors.grey.shade500,
+                                                size: 20,
+                                              ),
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                'No Location',
+                                                style: TextStyle(
+                                                  fontSize: 8,
+                                                  color: Colors.grey.shade500,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              // Border info
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            borderName,
+                                            style: const TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                        if (borderAssignments.isNotEmpty &&
+                                            borderAssignments
+                                                    .first.borderType !=
+                                                null)
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 8,
+                                              vertical: 4,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: Colors.blue.shade50,
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                              border: Border.all(
+                                                  color: Colors.blue.shade200),
+                                            ),
+                                            child: Text(
+                                              borderAssignments
+                                                  .first.borderType!,
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w600,
+                                                color: Colors.blue.shade700,
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                    if (borderAssignments.isNotEmpty &&
+                                        borderAssignments
+                                                .first.borderDescription !=
+                                            null) ...[
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        borderAssignments
+                                            .first.borderDescription!,
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color: Colors.grey.shade600,
+                                        ),
+                                      ),
+                                    ],
+                                    const SizedBox(height: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: borderAssignments.isEmpty
+                                            ? Colors.red.shade50
+                                            : Colors.green.shade50,
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(
+                                          color: borderAssignments.isEmpty
+                                              ? Colors.red.shade200
+                                              : Colors.green.shade200,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        borderAssignments.isEmpty
+                                            ? 'No officials assigned'
+                                            : '${borderAssignments.length} official${borderAssignments.length == 1 ? '' : 's'} assigned',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: borderAssignments.isEmpty
+                                              ? Colors.red.shade700
+                                              : Colors.green.shade700,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        // Assigned officials section
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Assigned Border Officials',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.grey.shade800,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              // Grid layout for officials (2 columns)
+                              _buildOfficialsGrid(borderAssignments),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
         );
       },
     );
   }
 
   void _showEnhancedRevokeConfirmation(
-      BorderAssignmentWithPermissions assignment) {
+      BorderAssignmentWithLocation assignment) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -613,6 +777,195 @@ class _BorderOfficialManagementScreenState
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             child: const Text('Revoke', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatDate(DateTime date) {
+    final now = DateTime.now();
+    final difference = now.difference(date);
+
+    if (difference.inDays == 0) {
+      return 'today';
+    } else if (difference.inDays == 1) {
+      return 'yesterday';
+    } else if (difference.inDays < 7) {
+      return '${difference.inDays} days ago';
+    } else {
+      return '${date.day}/${date.month}/${date.year}';
+    }
+  }
+
+  Widget _buildOfficialsGrid(List<BorderAssignmentWithLocation> assignments) {
+    if (assignments.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.info_outline, size: 20, color: Colors.grey.shade600),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'No officials assigned',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey.shade700,
+                    ),
+                  ),
+                  Text(
+                    'This border currently has no assigned officials',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Create a grid with 2 columns
+    final List<Widget> rows = [];
+    for (int i = 0; i < assignments.length; i += 2) {
+      final List<Widget> rowChildren = [];
+
+      // First official in the row
+      rowChildren.add(
+        Expanded(
+          child: _buildOfficialCard(assignments[i]),
+        ),
+      );
+
+      // Second official in the row (if exists)
+      if (i + 1 < assignments.length) {
+        rowChildren.add(const SizedBox(width: 12));
+        rowChildren.add(
+          Expanded(
+            child: _buildOfficialCard(assignments[i + 1]),
+          ),
+        );
+      } else {
+        // Add empty space if odd number of officials
+        rowChildren.add(const SizedBox(width: 12));
+        rowChildren.add(const Expanded(child: SizedBox()));
+      }
+
+      rows.add(
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: rowChildren,
+        ),
+      );
+
+      // Add spacing between rows
+      if (i + 2 < assignments.length) {
+        rows.add(const SizedBox(height: 12));
+      }
+    }
+
+    return Column(children: rows);
+  }
+
+  Widget _buildOfficialCard(BorderAssignmentWithLocation assignment) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.orange.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Official info row
+          Row(
+            children: [
+              ProfileImageWidget(
+                currentImageUrl: assignment.officialProfileImageUrl,
+                size: 32,
+                isEditable: false,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      assignment.officialDisplayName,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      assignment.officialEmail,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey.shade600,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              // Actions
+              IconButton(
+                icon: Icon(
+                  Icons.remove_circle_outline,
+                  color: Colors.red.shade600,
+                  size: 18,
+                ),
+                onPressed: () => _showEnhancedRevokeConfirmation(assignment),
+                tooltip: 'Revoke Assignment',
+                padding: const EdgeInsets.all(2),
+                constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // Permissions row
+          Row(
+            children: [
+              Expanded(
+                child: Row(
+                  children: [
+                    _buildPermissionChip(
+                      'In',
+                      assignment.canCheckIn,
+                      Colors.green,
+                    ),
+                    const SizedBox(width: 4),
+                    _buildPermissionChip(
+                      'Out',
+                      assignment.canCheckOut,
+                      Colors.blue,
+                    ),
+                  ],
+                ),
+              ),
+              Text(
+                _formatDate(assignment.assignedAt),
+                style: TextStyle(
+                  fontSize: 9,
+                  color: Colors.grey.shade500,
+                ),
+              ),
+            ],
           ),
         ],
       ),

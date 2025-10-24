@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../models/border_manager.dart';
 import '../services/border_manager_service.dart';
-import '../services/border_manager_service_temp.dart' as temp;
-import '../widgets/enhanced_border_manager_assignment_dialog_v4.dart';
+import '../widgets/enhanced_border_manager_assignment_dialog.dart';
 import '../widgets/profile_image_widget.dart';
 
 class BorderManagerManagementScreen extends StatefulWidget {
@@ -59,32 +59,6 @@ class _BorderManagerManagementScreenState
     }
   }
 
-  Future<void> _revokeManagerFromBorder(
-      String managerId, String borderId) async {
-    try {
-      await BorderManagerService.revokeManagerFromBorder(managerId, borderId);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Border manager revoked successfully'),
-            backgroundColor: Colors.orange,
-          ),
-        );
-        await _loadAuthorityData();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to revoke manager: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
   void _showBorderAssignmentDialog() async {
     if (_borderManagers.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -98,7 +72,7 @@ class _BorderManagerManagementScreenState
 
     showDialog(
       context: context,
-      builder: (context) => EnhancedBorderManagerAssignmentDialogV4(
+      builder: (context) => EnhancedBorderManagerAssignmentDialog(
         borderManagers: _borderManagers,
         countryId: _countryId,
         authorityId: _authorityId,
@@ -110,7 +84,7 @@ class _BorderManagerManagementScreenState
   void _showBorderAssignmentDialogForManager(BorderManager manager) async {
     showDialog(
       context: context,
-      builder: (context) => EnhancedBorderManagerAssignmentDialogV4(
+      builder: (context) => EnhancedBorderManagerAssignmentDialog(
         borderManagers: _borderManagers,
         countryId: _countryId,
         authorityId: _authorityId,
@@ -383,10 +357,9 @@ class _BorderManagerManagementScreenState
   }
 
   Widget _buildBorderAssignmentsTab() {
-    return FutureBuilder<List<temp.BorderManagerAssignmentWithDetails>>(
-      future:
-          temp.BorderManagerServiceTemp.getBorderManagerAssignmentsByAuthority(
-              _authorityId),
+    return FutureBuilder<List<BorderManagerAssignmentWithDetails>>(
+      future: BorderManagerService.getBorderManagerAssignmentsByAuthority(
+          _authorityId),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(
@@ -430,159 +403,397 @@ class _BorderManagerManagementScreenState
           );
         }
 
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: borderAssignments.length,
-          itemBuilder: (context, index) {
-            final assignment = borderAssignments[index];
-            return Card(
-              margin: const EdgeInsets.only(bottom: 12),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+        return Column(
+          children: [
+            // Header with statistics
+            Container(
+              padding: const EdgeInsets.all(16),
+              margin: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.orange.shade200),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.border_all,
+                      color: Colors.orange.shade700, size: 24),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(
-                          Icons.location_on,
-                          color: Colors.orange.shade600,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                assignment.borderName,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              if (assignment.borderDescription != null)
-                                Text(
-                                  assignment.borderDescription!,
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey.shade600,
-                                  ),
-                                ),
-                            ],
+                        Text(
+                          'Border Assignments Overview',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.orange.shade800,
                           ),
                         ),
-                        if (assignment.borderType != null)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.blue.shade50,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Colors.blue.shade200),
-                            ),
-                            child: Text(
-                              assignment.borderType!,
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.blue.shade700,
-                              ),
-                            ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${borderAssignments.length} borders • ${borderAssignments.fold<int>(0, (sum, border) => sum + border.assignedManagers.length)} total assignments',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.orange.shade600,
                           ),
+                        ),
                       ],
                     ),
-                    const SizedBox(height: 12),
-                    if (assignment.assignedManagers.isEmpty)
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade100,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.grey.shade300),
-                        ),
-                        child: const Row(
-                          children: [
-                            Icon(Icons.info_outline,
-                                size: 16, color: Colors.grey),
-                            SizedBox(width: 8),
-                            Text(
-                              'No managers assigned to this border',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.grey,
-                                fontStyle: FontStyle.italic,
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                    else ...[
-                      Text(
-                        'Assigned Managers (${assignment.assignedManagers.length}):',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.grey.shade700,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      ...assignment.assignedManagers.map((manager) {
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          padding: const EdgeInsets.all(12),
+                  ),
+                ],
+              ),
+            ),
+            // Borders list grouped by border
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                itemCount: borderAssignments.length,
+                itemBuilder: (context, index) {
+                  final assignment = borderAssignments[index];
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 16),
+                    elevation: 2,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Border header with map
+                        Container(
+                          padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: Colors.orange.shade50,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.orange.shade200),
+                            color: Colors.grey.shade50,
+                            borderRadius: const BorderRadius.only(
+                              topLeft: Radius.circular(12),
+                              topRight: Radius.circular(12),
+                            ),
                           ),
                           child: Row(
                             children: [
-                              ProfileImageWidget(
-                                currentImageUrl: manager.profileImageUrl,
-                                size: 32,
-                                isEditable: false,
+                              // Map preview
+                              Container(
+                                width: 80,
+                                height: 80,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(8),
+                                  border:
+                                      Border.all(color: Colors.grey.shade300),
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: assignment.borderLatitude != null &&
+                                          assignment.borderLongitude != null
+                                      ? GoogleMap(
+                                          initialCameraPosition: CameraPosition(
+                                            target: LatLng(
+                                                assignment.borderLatitude!,
+                                                assignment.borderLongitude!),
+                                            zoom: 12,
+                                          ),
+                                          style: '''
+                                            [
+                                              {
+                                                "featureType": "all",
+                                                "elementType": "labels",
+                                                "stylers": [
+                                                  {
+                                                    "visibility": "simplified"
+                                                  }
+                                                ]
+                                              }
+                                            ]
+                                            ''',
+                                          markers: {
+                                            Marker(
+                                              markerId: MarkerId(
+                                                  'border_${assignment.borderId}'),
+                                              position: LatLng(
+                                                  assignment.borderLatitude!,
+                                                  assignment.borderLongitude!),
+                                              icon: BitmapDescriptor
+                                                  .defaultMarkerWithHue(
+                                                BitmapDescriptor.hueOrange,
+                                              ),
+                                            ),
+                                          },
+                                          mapType: MapType.normal,
+                                          myLocationButtonEnabled: false,
+                                          zoomControlsEnabled: false,
+                                          mapToolbarEnabled: false,
+                                          compassEnabled: false,
+                                          scrollGesturesEnabled: false,
+                                          zoomGesturesEnabled: false,
+                                          tiltGesturesEnabled: false,
+                                          rotateGesturesEnabled: false,
+                                          indoorViewEnabled: false,
+                                          trafficEnabled: false,
+                                          buildingsEnabled: false,
+                                          liteModeEnabled: true,
+                                          fortyFiveDegreeImageryEnabled: false,
+                                        )
+                                      : Container(
+                                          color: Colors.grey.shade200,
+                                          child: Column(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            children: [
+                                              Icon(
+                                                Icons.map_outlined,
+                                                color: Colors.grey.shade500,
+                                                size: 20,
+                                              ),
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                'No Location',
+                                                style: TextStyle(
+                                                  fontSize: 8,
+                                                  color: Colors.grey.shade500,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                ),
                               ),
-                              const SizedBox(width: 12),
+                              const SizedBox(width: 16),
+                              // Border info
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(
-                                      manager.fullName,
-                                      style: const TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w600,
-                                      ),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            assignment.borderName,
+                                            style: const TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                        if (assignment.borderType != null)
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 8,
+                                              vertical: 4,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: Colors.blue.shade50,
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                              border: Border.all(
+                                                  color: Colors.blue.shade200),
+                                            ),
+                                            child: Text(
+                                              assignment.borderType!,
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w600,
+                                                color: Colors.blue.shade700,
+                                              ),
+                                            ),
+                                          ),
+                                      ],
                                     ),
-                                    Text(
-                                      manager.email,
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.grey.shade600,
+                                    if (assignment.borderDescription !=
+                                        null) ...[
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        assignment.borderDescription!,
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color: Colors.grey.shade600,
+                                        ),
+                                      ),
+                                    ],
+                                    const SizedBox(height: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color:
+                                            assignment.assignedManagers.isEmpty
+                                                ? Colors.red.shade50
+                                                : Colors.green.shade50,
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(
+                                          color: assignment
+                                                  .assignedManagers.isEmpty
+                                              ? Colors.red.shade200
+                                              : Colors.green.shade200,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        assignment.assignedManagers.isEmpty
+                                            ? 'No managers assigned'
+                                            : '${assignment.assignedManagers.length} manager${assignment.assignedManagers.length == 1 ? '' : 's'} assigned',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: assignment
+                                                  .assignedManagers.isEmpty
+                                              ? Colors.red.shade700
+                                              : Colors.green.shade700,
+                                        ),
                                       ),
                                     ),
                                   ],
                                 ),
                               ),
-                              Text(
-                                'Assigned ${_formatDate(manager.assignedAt)}',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: Colors.grey.shade500,
-                                ),
-                              ),
                             ],
                           ),
-                        );
-                      }).toList(),
-                    ],
-                  ],
-                ),
+                        ),
+                        // Assigned managers section
+                        if (assignment.assignedManagers.isNotEmpty)
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Assigned Border Managers',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.grey.shade800,
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                ...assignment.assignedManagers.map((manager) {
+                                  return Container(
+                                    margin: const EdgeInsets.only(bottom: 8),
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: Colors.orange.shade50,
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                          color: Colors.orange.shade200),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        ProfileImageWidget(
+                                          currentImageUrl:
+                                              manager.profileImageUrl,
+                                          size: 40,
+                                          isEditable: false,
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                manager.fullName,
+                                                style: const TextStyle(
+                                                  fontSize: 15,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                manager.email,
+                                                style: TextStyle(
+                                                  fontSize: 13,
+                                                  color: Colors.grey.shade600,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.end,
+                                          children: [
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                horizontal: 6,
+                                                vertical: 2,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: Colors.green.shade100,
+                                                borderRadius:
+                                                    BorderRadius.circular(4),
+                                              ),
+                                              child: Text(
+                                                'Active',
+                                                style: TextStyle(
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: Colors.green.shade700,
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              'Since ${_formatDate(manager.assignedAt)}',
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                color: Colors.grey.shade500,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }),
+                              ],
+                            ),
+                          )
+                        else
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            child: Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade100,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.grey.shade300),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.info_outline,
+                                      size: 20, color: Colors.grey.shade600),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'No managers assigned',
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w600,
+                                            color: Colors.grey.shade700,
+                                          ),
+                                        ),
+                                        Text(
+                                          'This border currently has no assigned managers',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.grey.shade600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  );
+                },
               ),
-            );
-          },
+            ),
+          ],
         );
       },
     );

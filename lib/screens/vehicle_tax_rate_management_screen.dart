@@ -29,6 +29,8 @@ class _VehicleTaxRateManagementScreenState
 
   String get _countryId => widget.selectedCountry['id'] as String;
   String get _countryName => widget.selectedCountry['name'] as String;
+  String get _authorityName =>
+      widget.selectedCountry['authority_name'] as String;
 
   @override
   void initState() {
@@ -193,13 +195,13 @@ class _VehicleTaxRateManagementScreenState
     return Scaffold(
       appBar: AppBar(
         title: const Text('Vehicle Tax Rate'),
-        backgroundColor: Colors.orange,
-        foregroundColor: Colors.white,
+        backgroundColor: Colors.orange.shade100,
+        foregroundColor: Colors.orange.shade800,
       ),
       body: SafeArea(child: _buildBody()),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showTaxRateDialog(),
-        backgroundColor: Colors.orange,
+        backgroundColor: Colors.orange.shade600,
         child: const Icon(Icons.add, color: Colors.white),
       ),
     );
@@ -259,23 +261,35 @@ class _VehicleTaxRateManagementScreenState
           bottom: BorderSide(color: Colors.orange.shade200),
         ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Text(
-            _countryName,
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: Colors.orange.shade800,
-            ),
+          Icon(
+            Icons.business,
+            color: Colors.orange.shade800,
+            size: 24,
           ),
-          const SizedBox(height: 4),
-          Text(
-            '${_taxRates.length} tax rate(s) configured',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.orange.shade600,
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _authorityName,
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.orange.shade800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${_taxRates.length} tax rate(s) configured',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.orange.shade600,
+                  ),
+                ),
+              ],
             ),
           ),
         ],

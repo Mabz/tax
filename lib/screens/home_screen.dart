@@ -1221,7 +1221,7 @@ class _HomeScreenState extends State<HomeScreen> {
             contentPadding:
                 const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
             leading: Icon(Icons.public, color: Colors.purple, size: 26),
-            title: const Text('Manage Countries',
+            title: const Text('Countries',
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
             subtitle: const Text('Add, edit, or remove countries'),
             onTap: () {
@@ -1240,7 +1240,7 @@ class _HomeScreenState extends State<HomeScreen> {
             contentPadding:
                 const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
             leading: Icon(Icons.people, color: Colors.purple, size: 26),
-            title: const Text('Manage Users',
+            title: const Text('Users',
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
             subtitle: const Text('Search and manage user profiles'),
             onTap: () {
@@ -1260,7 +1260,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
             leading:
                 Icon(Icons.account_balance, color: Colors.purple, size: 26),
-            title: const Text('Manage Authorities',
+            title: const Text('Authorities',
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
             subtitle: const Text('Create and manage revenue authorities'),
             onTap: () {
@@ -1279,7 +1279,7 @@ class _HomeScreenState extends State<HomeScreen> {
             contentPadding:
                 const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
             leading: Icon(Icons.border_all, color: Colors.purple, size: 26),
-            title: const Text('Manage Border Types',
+            title: const Text('Border Types',
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
             subtitle: const Text('Configure border crossing types'),
             onTap: () {
@@ -1317,7 +1317,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         ListTile(
           leading: const Icon(Icons.mail, color: Colors.orange),
-          title: const Text('Manage Invitations'),
+          title: const Text('Invitations'),
           subtitle: Text(_selectedAuthority != null
               ? 'Send invitations for ${_selectedAuthority!.name}'
               : 'Send and manage role invitations'),
@@ -1353,7 +1353,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         ListTile(
           leading: const Icon(Icons.admin_panel_settings, color: Colors.orange),
-          title: const Text('Manage Authority'),
+          title: const Text('Authority'),
           subtitle: Text(_selectedAuthority != null
               ? 'Manage ${_selectedAuthority!.name}'
               : 'Manage authority details'),
@@ -1384,7 +1384,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         ListTile(
           leading: const Icon(Icons.people, color: Colors.orange),
-          title: const Text('Manage Users'),
+          title: const Text('Users'),
           subtitle: Text(_selectedAuthority != null
               ? 'Manage authority user profiles for ${_selectedAuthority!.name}'
               : 'Manage authority user profiles'),
@@ -1417,7 +1417,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ListTile(
           leading: const Icon(Icons.admin_panel_settings_outlined,
               color: Colors.orange),
-          title: const Text('Manage Roles'),
+          title: const Text('Role Assignment'),
           subtitle: Text(_selectedAuthority != null
               ? 'Assign roles and send invitations for ${_selectedAuthority!.name}'
               : 'Manage user roles and send invitations'),
@@ -1447,41 +1447,10 @@ class _HomeScreenState extends State<HomeScreen> {
             );
           },
         ),
-        ListTile(
-          leading: const Icon(Icons.history, color: Colors.orange),
-          title: const Text('Audit Logs'),
-          subtitle: Text(_selectedAuthority != null
-              ? 'View logs for ${_selectedAuthority!.name}'
-              : 'View audit trail and activity logs'),
-          onTap: () {
-            if (_selectedAuthority == null) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Please select an authority first'),
-                  backgroundColor: Colors.orange,
-                ),
-              );
-              return;
-            }
-            Navigator.of(context).pop();
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (context) => AuditManagementScreen(
-                  selectedCountry: {
-                    'id': _selectedAuthority!.countryId,
-                    'name': _selectedAuthority!.countryName ?? 'Unknown',
-                    'country_code': _selectedAuthority!.countryCode ?? '',
-                    'authority_id': _selectedAuthority!.id,
-                    'authority_name': _selectedAuthority!.name,
-                  },
-                ),
-              ),
-            );
-          },
-        ),
+
         ListTile(
           leading: const Icon(Icons.location_on, color: Colors.orange),
-          title: const Text('Manage Borders'),
+          title: const Text('Borders'),
           subtitle: Text(_selectedAuthority != null
               ? 'Manage borders for ${_selectedAuthority!.name}'
               : 'Create and manage border crossings'),
@@ -1667,6 +1636,38 @@ class _HomeScreenState extends State<HomeScreen> {
                 builder: (context) => PassTemplateManagementScreen(
                   authorityId: _selectedAuthority!.id,
                   authorityName: _selectedAuthority!.name,
+                ),
+              ),
+            );
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.history, color: Colors.orange),
+          title: const Text('Audit Logs'),
+          subtitle: Text(_selectedAuthority != null
+              ? 'View logs for ${_selectedAuthority!.name}'
+              : 'View audit trail and activity logs'),
+          onTap: () {
+            if (_selectedAuthority == null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Please select an authority first'),
+                  backgroundColor: Colors.orange,
+                ),
+              );
+              return;
+            }
+            Navigator.of(context).pop();
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => AuditManagementScreen(
+                  selectedCountry: {
+                    'id': _selectedAuthority!.countryId,
+                    'name': _selectedAuthority!.countryName ?? 'Unknown',
+                    'country_code': _selectedAuthority!.countryCode ?? '',
+                    'authority_id': _selectedAuthority!.id,
+                    'authority_name': _selectedAuthority!.name,
+                  },
                 ),
               ),
             );

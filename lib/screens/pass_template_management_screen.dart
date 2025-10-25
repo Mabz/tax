@@ -138,17 +138,10 @@ class _PassTemplateManagementScreenState
               ),
               child: Row(
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.shade100,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(
-                      Icons.receipt,
-                      color: Colors.orange.shade700,
-                      size: 20,
-                    ),
+                  Icon(
+                    Icons.business,
+                    color: Colors.orange.shade800,
+                    size: 24,
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -158,15 +151,16 @@ class _PassTemplateManagementScreenState
                         Text(
                           widget.authorityName,
                           style: TextStyle(
-                            fontSize: 16,
+                            fontSize: 24,
                             fontWeight: FontWeight.bold,
                             color: Colors.orange.shade800,
                           ),
                         ),
+                        const SizedBox(height: 4),
                         Text(
                           'Pass Templates Management',
                           style: TextStyle(
-                            fontSize: 12,
+                            fontSize: 14,
                             color: Colors.orange.shade600,
                           ),
                         ),

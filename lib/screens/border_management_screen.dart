@@ -377,7 +377,7 @@ class _BorderManagementScreenState extends State<BorderManagementScreen> {
     if (_isLoading) {
       return Scaffold(
         appBar: AppBar(
-          title: const Text('Border Management'),
+          title: const Text('Borders'),
           backgroundColor: Colors.orange.shade100,
           foregroundColor: Colors.orange.shade800,
         ),
@@ -392,7 +392,7 @@ class _BorderManagementScreenState extends State<BorderManagementScreen> {
     if (_authorities.isEmpty) {
       return Scaffold(
           appBar: AppBar(
-            title: const Text('Border Management'),
+            title: const Text('Borders'),
             backgroundColor: Colors.orange.shade100,
             foregroundColor: Colors.orange.shade800,
           ),
@@ -432,7 +432,7 @@ class _BorderManagementScreenState extends State<BorderManagementScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Border Management'),
+        title: const Text('Borders'),
         backgroundColor: Colors.orange.shade100,
         foregroundColor: Colors.orange.shade800,
       ),
@@ -447,7 +447,11 @@ class _BorderManagementScreenState extends State<BorderManagementScreen> {
                 color: Colors.orange.shade50,
                 child: Row(
                   children: [
-                    Icon(Icons.business, color: Colors.orange.shade700),
+                    Icon(
+                      Icons.business,
+                      color: Colors.orange.shade800,
+                      size: 24,
+                    ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
@@ -456,11 +460,12 @@ class _BorderManagementScreenState extends State<BorderManagementScreen> {
                           Text(
                             _selectedAuthority!.name,
                             style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
                               color: Colors.orange.shade800,
                             ),
                           ),
+                          const SizedBox(height: 4),
                           if (_selectedAuthority!.countryName != null)
                             Text(
                               '${_selectedAuthority!.countryName} (${_selectedAuthority!.countryCode ?? ''})',

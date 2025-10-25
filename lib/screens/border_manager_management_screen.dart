@@ -98,9 +98,9 @@ class _BorderManagerManagementScreenState
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Border Manager Management'),
-        backgroundColor: Colors.orange.shade700,
-        foregroundColor: Colors.white,
+        title: const Text('Border Managers'),
+        backgroundColor: Colors.orange.shade100,
+        foregroundColor: Colors.orange.shade800,
         actions: [
           if (!_isLoading)
             IconButton(

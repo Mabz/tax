@@ -411,7 +411,7 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Manage Users'),
+        title: const Text('User Management'),
         backgroundColor: Colors.orange.shade100,
         foregroundColor: Colors.orange.shade800,
         actions: [
@@ -437,23 +437,35 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
                 ),
               ),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
               children: [
-                Text(
-                  widget.selectedAuthority['authority_name'],
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.orange.shade800,
-                  ),
+                Icon(
+                  Icons.business,
+                  color: Colors.orange.shade800,
+                  size: 24,
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  '${_authorityProfiles.length} user profile(s) managed',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.orange.shade600,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.selectedAuthority['authority_name'],
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.orange.shade800,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${_authorityProfiles.length} user profile(s) managed',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.orange.shade600,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],

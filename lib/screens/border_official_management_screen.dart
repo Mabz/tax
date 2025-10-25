@@ -97,9 +97,9 @@ class _BorderOfficialManagementScreenState
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Border Official Management'),
-        backgroundColor: Colors.orange.shade700,
-        foregroundColor: Colors.white,
+        title: const Text('Border Officials'),
+        backgroundColor: Colors.orange.shade100,
+        foregroundColor: Colors.orange.shade800,
         actions: [
           if (!_isLoading)
             IconButton(

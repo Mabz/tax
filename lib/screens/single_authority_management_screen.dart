@@ -288,7 +288,7 @@ class _SingleAuthorityManagementScreenState
       },
       child: Scaffold(
         appBar: AppBar(
-          title: Text('${_authority.name} Management'),
+          title: const Text('Authority'),
           backgroundColor: Colors.orange.shade600,
           foregroundColor: Colors.white,
           elevation: 0,

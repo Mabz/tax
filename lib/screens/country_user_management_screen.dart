@@ -156,7 +156,7 @@ class _CountryUserManagementScreenState
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Manage Roles'),
+        title: const Text('Role Assignment'),
         backgroundColor: Colors.orange.shade100,
         foregroundColor: Colors.orange.shade800,
         actions: [
@@ -182,23 +182,35 @@ class _CountryUserManagementScreenState
                 ),
               ),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
               children: [
-                Text(
-                  _authorityName,
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.orange.shade800,
-                  ),
+                Icon(
+                  Icons.business,
+                  color: Colors.orange.shade800,
+                  size: 24,
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  '${_users.length} user(s) assigned',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.orange.shade600,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _authorityName,
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.orange.shade800,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${_users.length} user(s) assigned',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.orange.shade600,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
